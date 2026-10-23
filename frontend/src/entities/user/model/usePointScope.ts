@@ -22,8 +22,14 @@ import { useMeQuery } from '../api/useMeQuery';
  *
  * NOTHING IS WRITTEN FOR AN OPERATOR. A remembered id from a shared browser
  * must never decide what an operator's money screen shows.
+ *
+ * `remembered: false` IS FOR A SCREEN WHOSE DEFAULT IS THE WHOLE NETWORK —
+ * «Залишки за нами» (§3.9, #229). It ignores the remembered point when READING,
+ * so it opens unpicked unless the URL says otherwise, and going back to the
+ * network there forgets nothing — that is its default view, not a working point.
+ * A point picked on it is still remembered for the screens that do read it.
  */
-export function usePointScope() {
+export function usePointScope({ remembered = true }: { remembered?: boolean } = {}) {
   const { data: me, isPending } = useMeQuery();
   const [param, setParam] = useUrlParam('point');
   const isOwner = me?.role === 'network_owner';
@@ -32,9 +38,9 @@ export function usePointScope() {
     (id: string | null) => {
       setParam(id);
       // Remembered only for the role that can choose.
-      if (isOwner) storePoint(id);
+      if (isOwner && (remembered || id !== null)) storePoint(id);
     },
-    [setParam, isOwner],
+    [setParam, isOwner, remembered],
   );
 
   // `collection_point_id` is `@IsUUID()` server-side; a hand-edited or stale
@@ -42,7 +48,7 @@ export function usePointScope() {
   // 400 every read it scopes. The remembered value is validated the same way
   // by `getStoredPoint`, so both paths carry the same guarantee.
   const fromUrl = keepUuids(param ? [param] : null)?.[0] ?? null;
-  const pointId = fromUrl ?? (isOwner ? getStoredPoint() : null);
+  const pointId = fromUrl ?? (isOwner && remembered ? getStoredPoint() : null);
 
   if (me?.role === 'point_operator') {
     return { pointId: me.collection_point_id, canPick: false, setPointId, isLoading: false };

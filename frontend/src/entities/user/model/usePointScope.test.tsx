@@ -150,3 +150,66 @@ describe('usePointScope — remembering the pick', () => {
     expect(result.current.pointId).toBeNull();
   });
 });
+
+/**
+ * A screen whose natural view is the whole network («Залишки за нами», §3.9, #229) must not open
+ * on a point the owner picked an hour ago elsewhere — only a link or a pick on that screen narrows it.
+ */
+describe('usePointScope — a screen that ignores the remembered pick', () => {
+  it('starts unpicked even though a point is remembered', () => {
+    asOwner();
+    const first = renderHook(() => usePointScope(), { wrapper: wrapperAt('/x') });
+    act(() => first.result.current.setPointId(A));
+
+    const next = renderHook(() => usePointScope({ remembered: false }), {
+      wrapper: wrapperAt('/debts'),
+    });
+    expect(next.result.current.pointId).toBeNull();
+  });
+
+  it('still lets ?point= decide', () => {
+    asOwner();
+    const { result } = renderHook(() => usePointScope({ remembered: false }), {
+      wrapper: wrapperAt(`/debts?point=${B}`),
+    });
+    expect(result.current.pointId).toBe(B);
+  });
+
+  it('still remembers a pick made on it, for the other screens', () => {
+    asOwner();
+    const here = renderHook(() => usePointScope({ remembered: false }), {
+      wrapper: wrapperAt('/debts'),
+    });
+    act(() => here.result.current.setPointId(A));
+
+    const next = renderHook(() => usePointScope(), { wrapper: wrapperAt('/y') });
+    expect(next.result.current.pointId).toBe(A);
+  });
+
+  /** «Усі точки» is this screen's default view, not a working point — the others keep theirs. */
+  it('leaves the remembered point alone when the whole network is chosen on it', () => {
+    asOwner();
+    const first = renderHook(() => usePointScope(), { wrapper: wrapperAt('/x') });
+    act(() => first.result.current.setPointId(A));
+
+    const here = renderHook(() => usePointScope({ remembered: false }), {
+      wrapper: wrapperAt(`/debts?point=${B}`),
+    });
+    act(() => here.result.current.setPointId(null));
+    expect(here.result.current.pointId).toBeNull();
+
+    const next = renderHook(() => usePointScope(), { wrapper: wrapperAt('/y') });
+    expect(next.result.current.pointId).toBe(A);
+  });
+
+  it('leaves an operator pinned to their own point', () => {
+    meMock.mockReturnValue({
+      data: { role: 'point_operator', collection_point_id: 'p1' },
+      isPending: false,
+    });
+    const { result } = renderHook(() => usePointScope({ remembered: false }), {
+      wrapper: wrapperAt('/debts'),
+    });
+    expect(result.current.pointId).toBe('p1');
+  });
+});

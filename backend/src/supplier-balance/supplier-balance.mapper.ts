@@ -72,10 +72,12 @@ export function toSupplierBalanceRowResponse(row: SupplierBalanceRow): SupplierB
   };
 }
 
-/** The «Залишки» page plus the oldest open date among EVERY visible row owed money — not just
- *  this page's — for the «Найстаріший залишок» tile (#101). */
+/** The «Залишки» page plus two figures over EVERY visible row owed money — not just this
+ *  page's: the oldest open date for «Найстаріший залишок» (#101) and the sum for «Всього винні»
+ *  (#229), a scale-2 string. */
 export interface SupplierBalanceListResponse extends Paginated<SupplierBalanceRowResponse> {
   oldest_open_date: string | null;
+  total_owed: string;
 }
 
 /** One line of «Відкриті залишки» — spec §4.3. Every amount a scale-2 string. */

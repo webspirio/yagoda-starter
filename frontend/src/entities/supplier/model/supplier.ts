@@ -48,10 +48,13 @@ export interface SupplierBalanceRow {
   oldest_open_date: string | null;
 }
 
-/** `GET /supplier-balances` — the page, plus the oldest open date among EVERY row owed money in
- *  scope, not just the loaded ones, for «Найстаріший залишок» (#101). */
+/** `GET /supplier-balances` — the page, plus two figures over EVERY row in scope, not just the
+ *  loaded ones: the oldest open date for «Найстаріший залишок» (#101) and the sum owed for
+ *  «Всього винні» (#229). */
 export interface SupplierBalanceList extends Paginated<SupplierBalanceRow> {
   oldest_open_date: string | null;
+  /** Σ of the positive debts over EVERY visible row, not the loaded page (#229). */
+  total_owed: string;
 }
 
 /**

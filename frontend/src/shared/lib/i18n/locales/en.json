@@ -1075,7 +1075,6 @@
     "searchPlaceholder": "Find a supplier",
     "tiles": {
       "totalOwed": "Total owed",
-      "totalOwedHint": "on this page",
       "oldest": "Oldest balance",
       "oldestHint": "since the drop-off on {{date}}",
       "withDebt": "Suppliers with a balance"
@@ -1083,6 +1082,7 @@
     "col": {
       "supplier": "Supplier",
       "point": "Point",
+      "age": "Age",
       "balance": "Balance",
       "action": "Action"
     },
@@ -1092,6 +1092,7 @@
     "days_other": "{{count}} days",
     "ageSince": "oldest balance since {{date}}",
     "payout": "Pay out without berries",
+    "truncated": "Showing the first {{shown}} of {{total}} suppliers — sorting covers only these.",
     "empty": {
       "title": "No open balances",
       "hint": "Every drop-off has been settled in full.",

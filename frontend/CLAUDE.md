@@ -35,7 +35,7 @@ src/
       ErrorBoundary.tsx        # React class error boundary → ErrorFallback
       ErrorFallback.tsx        # dev: full stack trace / prod: generic message + retry/reload
       RouteError.tsx           # router errorElement — reports the error, renders ErrorFallback
-  entities/user/                # session store (Zustand), Me type (model/user.ts), useMeQuery / useUpdateMeMutation / usePointScope (validated ?point= scoping for money screens) — authenticated-account concerns only
+  entities/user/                # session store (Zustand), Me type (model/user.ts), useMeQuery / useUpdateMeMutation / usePointScope (validated ?point= scoping for money screens; `{ remembered: false }` for «Залишки за нами», whose default is the whole network — reads `?point=` only and never forgets the remembered point on «Усі точки», #229) — authenticated-account concerns only
   entities/collection-point/    # usePointOptionsQuery — active points as select options, shared by users / suppliers / prices
   entities/supplier/            # useSuppliersQuery / useSupplierQuery / useSupplierBalanceQuery, Supplier type — the point's supplier directory and running balance, read by the pickers, journal, day, the crate dialogs and the receipt widget; `useSupplierTotalsQuery` (`GET /supplier-totals`, #230) — the suppliers page's ranked list with all-time weight, accrued and main product, every active supplier in one unpaged request, cached under the `supplierBalances` prefix so every document write refreshes it
   entities/product-grade/       # usePricedGradesQuery — grades joined to product names and the point's current price, for reception; the bare `useGradeCatalogQuery` join is slice-internal (see the note in its index.ts)

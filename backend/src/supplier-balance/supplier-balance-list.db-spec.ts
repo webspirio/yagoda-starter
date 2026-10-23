@@ -4,6 +4,7 @@ import { openTestDataSource } from '../testing/db-harness';
 import { ListSupplierBalancesQuery } from './queries/list-supplier-balances.query';
 import { ListSupplierBalancesQueryDto } from './dto/list-supplier-balances.query';
 import { UserRole } from '../users/user-role.enum';
+import { gte } from '../common/money';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
@@ -231,11 +232,14 @@ describe('ListSupplierBalancesQuery.list (Postgres)', () => {
     expect(page.total).toBe(4);
     expect(page.data.every((r) => r.collection_point_id === pointA)).toBe(true);
     expect(names(page)).not.toContain('Богдан');
+    // «Всього винні» is pinned with the rows: point A's 70 + 40 + 40, Степан's credit out (#229).
+    expect(page.total_owed).toBe('150.00');
   });
 
   it('lets the owner filter to one point, and see all points without a filter', async () => {
     const b = await service.list(owner, query({ collection_point_id: pointB }));
     expect(b.total).toBe(1);
+    expect(b.total_owed).toBe('500.00');
     expect(b.data[0]).toMatchObject({
       supplier_id: bohdanId,
       first_name: 'Богдан',
@@ -245,5 +249,7 @@ describe('ListSupplierBalancesQuery.list (Postgres)', () => {
     // Unfiltered: the whole persisted database, so only a lower bound is knowable.
     const all = await service.list(owner, query({ limit: 1 }));
     expect(all.total).toBeGreaterThanOrEqual(4 + 1);
+    // «Усі точки» (#229): the sum spans both points, not the one loaded row.
+    expect(gte(all.total_owed, '650.00')).toBe(true);
   });
 });

@@ -33,6 +33,8 @@ function compareKeys(a: Exclude<SortKey, null>, b: Exclude<SortKey, null>): numb
  */
 export function useClientSort<Row>(rows: Row[], keys: SortKeys<Row>, initial: SortState) {
   const [sort, setSort] = React.useState<SortState>(initial);
+  // A column the table dropped takes its sort with it, or no header would show the order.
+  if (!keys[sort.key] && keys[initial.key]) setSort(initial);
 
   const onSortChange = (key: string) => {
     if (!keys[key]) return;

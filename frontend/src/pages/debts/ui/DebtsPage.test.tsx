@@ -13,8 +13,8 @@ const { pointScopeMock, balancesMock, payoutDialogMock, payoutReceiptMock } = vi
   payoutReceiptMock: vi.fn(),
 }));
 
-vi.mock('@/features/point-scope', () => ({
-  useWorkingPoint: () => pointScopeMock(),
+vi.mock('@/entities/user', () => ({
+  usePointScope: (options: unknown) => pointScopeMock(options),
 }));
 
 vi.mock('@/entities/collection-point', () => ({
@@ -80,8 +80,9 @@ const page = (
   data: SupplierBalanceRow[],
   total = data.length,
   oldest_open_date: string | null = '2026-07-01',
+  total_owed = '18670.40',
 ) => ({
-  data: { data, total, page: 1, limit: 100, oldest_open_date },
+  data: { data, total, page: 1, limit: 100, oldest_open_date, total_owed },
   isPending: false,
   isError: false,
 });
@@ -90,6 +91,12 @@ function tableRow(name: string): HTMLElement {
   const el = screen.getByText(name).closest('tr');
   if (!el) throw new Error(`No table row containing "${name}"`);
   return el as HTMLElement;
+}
+
+/** The row's cell under «Age» — the badge also rides beside the name for a phone. */
+function ageCell(name: string): HTMLElement {
+  const col = screen.getAllByRole('columnheader').findIndex((h) => h.textContent === 'Age');
+  return within(tableRow(name)).getAllByRole('cell')[col];
 }
 
 function renderDebts(entry = '/debts') {
@@ -249,15 +256,14 @@ describe('DebtsPage — the operator', () => {
     expect(screen.queryByText('Point')).toBeNull();
   });
 
-  it('does not warn about a partial total when the server returned every row', () => {
+  it("reads «Total owed» off the server's envelope, so a truncated list still shows the whole sum (#229)", () => {
+    balancesMock.mockReturnValue(page([rowA, rowB, rowC], 150, '2026-07-01', '250000.00'));
     renderDebts();
-    expect(screen.queryByText('on this page')).toBeNull();
-  });
 
-  it('warns the total is partial when the server truncated the list', () => {
-    balancesMock.mockReturnValue(page([rowA, rowB, rowC], 150));
-    renderDebts();
-    expect(screen.getByText('on this page')).toBeInTheDocument();
+    expect(screen.getByText('Total owed').closest('[data-slot="stat-tile"]')).toHaveTextContent(
+      '250,000.00 ₴',
+    );
+    expect(screen.queryByText('on this page')).toBeNull();
   });
 });
 
@@ -299,9 +305,9 @@ describe('DebtsPage — how old the balances are (#101)', () => {
   it('counts the days per row, in red past a week, and none for a credit', () => {
     renderDebts();
 
-    const stale = within(tableRow('Оксана Кушнірук')).getByText('15 days');
+    const stale = within(ageCell('Оксана Кушнірук')).getByText('15 days');
     expect(stale).toHaveAttribute('data-variant', 'destructive');
-    const fresh = within(tableRow('Петро Іваненко')).getByText('4 days');
+    const fresh = within(ageCell('Петро Іваненко')).getByText('4 days');
     expect(fresh).toHaveAttribute('data-variant', 'secondary');
     expect(within(tableRow('Марія Бондар')).queryByText(/days?$/)).toBeNull();
   });
@@ -316,15 +322,22 @@ describe('DebtsPage — how old the balances are (#101)', () => {
     );
     renderDebts();
 
-    expect(within(tableRow('Оксана Кушнірук')).getByText('7 days')).toHaveAttribute(
+    expect(within(ageCell('Оксана Кушнірук')).getByText('7 days')).toHaveAttribute(
       'data-variant',
       'secondary',
     );
-    expect(within(tableRow('Петро Іваненко')).getByText('8 days')).toHaveAttribute(
+    expect(within(ageCell('Петро Іваненко')).getByText('8 days')).toHaveAttribute(
       'data-variant',
       'destructive',
     );
-    expect(within(tableRow('Марія Бондар')).getByText('1 day')).toBeInTheDocument();
+    expect(within(ageCell('Марія Бондар')).getByText('1 day')).toBeInTheDocument();
+  });
+
+  it('repeats the badge beside the name, for a phone where the age column is hidden', () => {
+    renderDebts();
+
+    const nameCell = within(tableRow('Оксана Кушнірук')).getAllByRole('cell')[0];
+    expect(within(nameCell).getByText('15 days')).toHaveClass('sm:hidden');
   });
 
   it('shows no badge for a row that owes nothing, even with a date — and none without a date', () => {
@@ -347,7 +360,7 @@ describe('DebtsPage — how old the balances are (#101)', () => {
     );
     renderDebts();
 
-    expect(within(tableRow('Оксана Кушнірук')).getByText('0 days')).toBeInTheDocument();
+    expect(within(ageCell('Оксана Кушнірук')).getByText('0 days')).toBeInTheDocument();
     expect(oldestTile()).toHaveTextContent('0 days');
   });
 });
@@ -366,10 +379,50 @@ describe('DebtsPage — the owner', () => {
     const { container } = renderDebts();
 
     expect(screen.getByLabelText('All points')).toBeInTheDocument();
-    expect(within(tableRow('Оксана Кушнірук')).getByText('Shypynky')).toBeInTheDocument();
+    expect(
+      within(tableRow('Оксана Кушнірук')).getByText('Shypynky', { selector: 'td' }),
+    ).toBeInTheDocument();
     expect(balancesMock).toHaveBeenCalledWith({ pointId: null });
 
     await expectNoAxeViolations(container);
+  });
+
+  it('ignores the point remembered from other screens — the whole network is the default (#229)', () => {
+    renderDebts();
+
+    expect(pointScopeMock).toHaveBeenCalledWith({ remembered: false });
+  });
+
+  it('names the point under the supplier on a phone, where the point column is hidden (#229)', () => {
+    renderDebts();
+
+    const cell = within(tableRow('Оксана Кушнірук')).getByRole('link', {
+      name: 'Оксана Кушнірук',
+    }).parentElement as HTMLElement;
+    expect(within(cell).getByText('Shypynky')).toHaveClass('sm:hidden');
+  });
+
+  it('names no point under the supplier once a point is chosen', () => {
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    renderDebts();
+
+    expect(within(tableRow('Оксана Кушнірук')).queryByText('Shypynky')).toBeNull();
+  });
+
+  it('clears the pick when the owner chooses «All points»', async () => {
+    const user = userEvent.setup();
+    const setPointId = vi.fn();
+    pointScopeMock.mockReturnValue({ pointId: 'p1', canPick: true, setPointId, isLoading: false });
+    renderDebts();
+
+    await user.selectOptions(screen.getByLabelText('All points'), '');
+
+    expect(setPointId).toHaveBeenCalledWith(null);
   });
 
   it('asks the point scope to change when the owner picks a point', async () => {
@@ -386,6 +439,134 @@ describe('DebtsPage — the owner', () => {
     await user.selectOptions(screen.getByLabelText('All points'), 'p1');
 
     expect(setPointId).toHaveBeenCalledWith('p1');
+  });
+});
+
+describe('DebtsPage — sorting by a column (#229)', () => {
+  const names = () =>
+    screen
+      .getAllByRole('row')
+      .slice(1)
+      .map((r) => within(r).getByRole('link').textContent);
+  const rowD: SupplierBalanceRow = {
+    ...rowA,
+    supplier_id: 's4',
+    first_name: 'Анна',
+    last_name: 'Ткач',
+    collection_point_id: 'p2',
+    debt: '900.00',
+    oldest_open_date: '2026-07-05',
+  };
+
+  beforeEach(() => {
+    pointScopeMock.mockReturnValue({
+      pointId: null,
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    // The age sort reads «today» — pinned as in the #101 block, so no machine clock decides it.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(2026, 6, 16, 12));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('opens on the biggest balance first, whatever order the rows arrive in', () => {
+    balancesMock.mockReturnValue(page([rowC, rowD, rowB, rowA]));
+    renderDebts();
+
+    expect(names()).toEqual(['Оксана Кушнірук', 'Петро Іваненко', 'Анна Ткач', 'Марія Бондар']);
+    expect(screen.getByRole('columnheader', { name: 'Balance' })).toHaveAttribute(
+      'aria-sort',
+      'descending',
+    );
+  });
+
+  it('sorts by the supplier, the point and the balance on a header press', async () => {
+    balancesMock.mockReturnValue(page([rowA, rowB, rowC, rowD]));
+    const user = userEvent.setup();
+    renderDebts();
+
+    await user.click(screen.getByRole('button', { name: 'Supplier' }));
+    expect(names()).toEqual(['Анна Ткач', 'Марія Бондар', 'Оксана Кушнірук', 'Петро Іваненко']);
+
+    // Haiove before Shypynky; within a point the server's order holds.
+    await user.click(screen.getByRole('button', { name: 'Point' }));
+    expect(names()).toEqual(['Анна Ткач', 'Оксана Кушнірук', 'Петро Іваненко', 'Марія Бондар']);
+
+    // A credit is the smallest balance, compared as a decimal, not as text.
+    await user.click(screen.getByRole('button', { name: 'Balance' }));
+    expect(names()).toEqual(['Марія Бондар', 'Анна Ткач', 'Петро Іваненко', 'Оксана Кушнірук']);
+    await user.click(screen.getByRole('button', { name: 'Balance' }));
+    expect(names()).toEqual(['Оксана Кушнірук', 'Петро Іваненко', 'Анна Ткач', 'Марія Бондар']);
+  });
+
+  it('sorts by how long the balance has waited, a credit last either way', async () => {
+    balancesMock.mockReturnValue(page([rowA, rowB, rowC, rowD]));
+    const user = userEvent.setup();
+    renderDebts();
+
+    await user.click(screen.getByRole('button', { name: 'Age' }));
+    expect(names()).toEqual(['Петро Іваненко', 'Анна Ткач', 'Оксана Кушнірук', 'Марія Бондар']);
+    await user.click(screen.getByRole('button', { name: 'Age' }));
+    expect(names()).toEqual(['Оксана Кушнірук', 'Анна Ткач', 'Петро Іваненко', 'Марія Бондар']);
+  });
+
+  it('keeps the sort while a search narrows the rows', async () => {
+    balancesMock.mockReturnValue(page([rowA, rowB, rowC, rowD]));
+    const user = userEvent.setup();
+    renderDebts();
+
+    await user.click(screen.getByRole('button', { name: 'Supplier' }));
+    await user.type(screen.getByLabelText('Find a supplier'), 'к');
+    expect(names()).toEqual(['Анна Ткач', 'Оксана Кушнірук', 'Петро Іваненко']);
+  });
+
+  it('says the sort covers only the loaded rows when the server holds more', () => {
+    balancesMock.mockReturnValue(page([rowA, rowB], 150));
+    renderDebts();
+
+    expect(screen.getByText(/first 2 of 150 suppliers/)).toBeInTheDocument();
+  });
+
+  it('says nothing about a partial list when it holds every row', () => {
+    renderDebts();
+
+    expect(screen.queryByText(/sorting covers only these/)).toBeNull();
+  });
+
+  it('leaves the partial-list note to the empty state when a search finds nobody', async () => {
+    balancesMock.mockReturnValue(page([rowA, rowB], 150));
+    const user = userEvent.setup();
+    renderDebts();
+
+    await user.type(screen.getByLabelText('Find a supplier'), 'zzzzz');
+
+    expect(screen.getByText('Check the name. Only the first 2 balances are loaded.')).toBeVisible();
+    expect(screen.queryByText(/sorting covers only these/)).toBeNull();
+  });
+
+  it('goes back to the biggest balance first when a picked point takes the «Point» column away', async () => {
+    balancesMock.mockReturnValue(page([rowA, rowB, rowC, rowD]));
+    const user = userEvent.setup();
+    const { router } = renderDebts();
+    await user.click(screen.getByRole('button', { name: 'Point' }));
+
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+    await act(() => router.navigate('/debts?point=p1'));
+
+    expect(screen.queryByRole('columnheader', { name: 'Point' })).toBeNull();
+    expect(screen.getByRole('columnheader', { name: 'Balance' })).toHaveAttribute(
+      'aria-sort',
+      'descending',
+    );
   });
 });
 
