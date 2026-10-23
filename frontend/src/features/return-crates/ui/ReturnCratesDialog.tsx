@@ -18,7 +18,8 @@ import { toast } from '@/shared/ui/toast';
 import { cratesRules, formatUah } from '@/shared/lib/money';
 import { useDebouncedValue } from '@/shared/lib/useDebouncedValue';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
-import { useSuppliersQuery, supplierName } from '@/entities/supplier';
+import { useCrateHoldersQuery } from '@/entities/crate';
+import { supplierName } from '@/entities/supplier';
 import { useReturnCratesMutation, useReturnPreviewQuery } from '../api/useReturnCrates';
 
 interface ReturnFormValues {
@@ -55,7 +56,8 @@ export function ReturnCratesDialog({
 }) {
   const { t, i18n } = useTranslation();
   const accept = useReturnCratesMutation();
-  const suppliers = useSuppliersQuery('', pointId ?? null);
+  // Holders, not the directory: a deactivated person can still hold crates (#228).
+  const holders = useCrateHoldersQuery(pointId ?? null, open);
 
   const {
     register,
@@ -93,7 +95,13 @@ export function ReturnCratesDialog({
     }
   });
 
-  const rows = suppliers.data?.data ?? [];
+  // The server ranks by crates held; someone returning crates knows the name.
+  const rows = [...(holders.data ?? [])].sort((a, b) =>
+    supplierName(a).localeCompare(supplierName(b), 'uk'),
+  );
+  // A failed or unfinished read is not «nobody holds crates», and either blocks the write.
+  const nobody = !holders.isError && holders.data?.length === 0;
+  const holdersUnavailable = holders.isPending || holders.isError;
   const split = preview.data;
 
   return (
@@ -117,14 +125,26 @@ export function ReturnCratesDialog({
                 {...register('supplier_id', { required: 'crates.errors.supplierRequired' })}
               >
                 <option value="">{t('crates.field.supplierPlaceholder')}</option>
-                {rows.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {supplierName(s)}
+                {rows.map((h) => (
+                  <option key={h.supplier_id} value={h.supplier_id}>
+                    {`${supplierName(h)} — ${h.outstanding_units}`}
+                    {h.is_active ? '' : ` · ${t('crates.inField.inactive')}`}
                   </option>
                 ))}
               </SelectField>
             )}
           </Field>
+
+          {holders.isError ? (
+            <div role="alert" className="flex items-center gap-2 text-sm text-destructive">
+              <span>{t('crates.return.holdersFailed')}</span>
+              <Button type="button" size="sm" variant="outline" onClick={() => holders.refetch()}>
+                {t('common.retry')}
+              </Button>
+            </div>
+          ) : nobody ? (
+            <p className="text-sm text-muted-foreground">{t('crates.return.noHolders')}</p>
+          ) : null}
 
           <Field
             name="units"
@@ -209,7 +229,9 @@ export function ReturnCratesDialog({
             </Button>
             <Button
               type="submit"
-              disabled={isSubmitting || (split ? split.shortfall > 0 : false)}
+              disabled={
+                isSubmitting || holdersUnavailable || nobody || (split ? split.shortfall > 0 : false)
+              }
             >
               {t('crates.return.submit')}
             </Button>

@@ -14,8 +14,10 @@ import { BooleanQueryParam } from '../../common/dto/boolean-query-param';
  *
  * `include_zero` DEFAULTS TO FALSE. A supplier who has brought everything back
  * is not «holding crates», and a screen titled «У людей» that listed them
- * would be answering a different question than it asks. The flag exists
- * because the owner auditing a season does want the whole roster.
+ * would be answering a different question than it asks. With it the list is
+ * everyone who ever took crates here, including those who brought all of them
+ * back — never someone who never took any, whom the owner auditing a season
+ * has no use for.
  */
 export class ListCrateBalancesQueryDto extends PaginationQueryDto {
   @IsOptional()

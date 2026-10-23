@@ -17,6 +17,7 @@ const base: CrateStanding = {
   with_berry: 0,
   total: 400,
   shortfall: 100,
+  holders: 2,
 };
 
 describe('CrateStandingBar', () => {

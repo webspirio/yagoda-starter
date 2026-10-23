@@ -1,6 +1,7 @@
 export {
   useCrateBalancesQuery,
   useCrateBalanceQuery,
+  useCrateHoldersQuery,
   useCrateIssuancesQuery,
   useCrateReturnsQuery,
   useCrateStandingQuery,

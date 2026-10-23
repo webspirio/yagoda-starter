@@ -183,6 +183,13 @@
     "description": "Who delivered how much, all time — weight, main product and accrued.",
     "new": "New supplier",
     "searchPlaceholder": "Search by name or phone",
+    "status": {
+      "label": "Show",
+      "active": "Active",
+      "inactive": "Inactive",
+      "all": "All"
+    },
+    "inactive": "Inactive",
     "col": {
       "name": "Name",
       "weight": "Total weight",
@@ -208,6 +215,10 @@
     "empty": {
       "title": "No suppliers yet",
       "hint": "Add the first supplier to start taking deliveries."
+    },
+    "emptyInactive": {
+      "title": "No deactivated suppliers",
+      "hint": "A supplier switched off in the edit dialog shows up here."
     },
     "form": {
       "createTitle": "Add supplier",
@@ -1102,6 +1113,8 @@
     }
   },
   "supplierCard": {
+    "inactive": "Inactive",
+    "inactiveBanner": "This supplier is deactivated — receipts, payouts and top-ups are unavailable. Activate them first to move money.",
     "eyebrow": "{{point}} · {{kind}}",
     "noPhone": "no phone on file",
     "note": "“{{note}}”",
@@ -1374,6 +1387,8 @@
       "inTransitHint": "{{in_transit}} in transit — accept the transfer first."
     },
     "return": {
+      "noHolders": "Nobody at this point is holding crates.",
+      "holdersFailed": "Could not load who holds crates.",
       "title": "Accept crates",
       "description": "Returns consume the oldest issuances first and refund each at the price it was taken at.",
       "submit": "Accept",

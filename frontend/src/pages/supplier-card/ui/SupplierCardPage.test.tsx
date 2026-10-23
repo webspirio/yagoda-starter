@@ -282,6 +282,7 @@ function renderCard(opts?: {
   intakes?: Intake[];
   balance?: SupplierBalanceOne;
   settlement?: Partial<SupplierSettlement>;
+  state?: unknown;
 }) {
   if (opts?.intakes) {
     intakesMock.mockReturnValue(page<Intake>(opts.intakes));
@@ -297,7 +298,7 @@ function renderCard(opts?: {
     });
   }
   const router = createMemoryRouter([{ path: '/suppliers/:id', element: <SupplierCardPage /> }], {
-    initialEntries: [`/suppliers/${opts?.id ?? 'sup1'}`],
+    initialEntries: [{ pathname: `/suppliers/${opts?.id ?? 'sup1'}`, state: opts?.state }],
   });
   return render(<RouterProvider router={router} />);
 }
@@ -1340,5 +1341,65 @@ describe('SupplierCardPage — top-ups', () => {
 
     const row = screen.getByText('Доплата').closest('li')!;
     expect(within(row).queryByRole('button', { name: /void/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('SupplierCardPage — an inactive supplier (#228)', () => {
+  const inactive = () =>
+    supplierMock.mockReturnValue({
+      data: { ...SUPPLIER, is_active: false },
+      isPending: false,
+      isError: false,
+    });
+
+  it('says so with a badge and a banner, and offers no pay-out', () => {
+    inactive();
+    renderCard();
+
+    expect(screen.getByText('Inactive')).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'This supplier is deactivated — receipts, payouts and top-ups are unavailable. Activate them first to move money.',
+    );
+    expect(screen.queryByRole('button', { name: /Pay out balance/ })).not.toBeInTheDocument();
+  });
+
+  it('offers the owner no top-up, but still a void on a payout', () => {
+    inactive();
+    meMock.mockReturnValue({ data: OWNER, isPending: false, isError: false });
+    intakesMock.mockReturnValue(page<Intake>([intakeFixture]));
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({ id: 'y1', code: 'VD-0001', amount: '300.00', created_at: '2026-09-08T09:20:00Z' }),
+      ]),
+    );
+    renderCard();
+
+    expect(screen.queryByRole('button', { name: /add a balance/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Void' })).toBeInTheDocument();
+  });
+
+  it('shows no badge or banner for an active supplier', () => {
+    renderCard();
+
+    expect(screen.queryByText('Inactive')).not.toBeInTheDocument();
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+});
+
+describe('SupplierCardPage — back link keeps the list view (#228)', () => {
+  const back = () => screen.getByRole('link', { name: /All suppliers/ });
+
+  it('returns to the list view the card was opened from', () => {
+    renderCard({ state: { from: '?status=inactive&sort=name' } });
+    expect(back()).toHaveAttribute('href', '/suppliers?status=inactive&sort=name');
+  });
+
+  it.each([
+    ['no state', undefined],
+    ['a protocol-relative string', { from: '//evil.example' }],
+    ['a non-string', { from: 42 }],
+  ])('falls back to the plain list for %s', (_name, state) => {
+    renderCard({ state });
+    expect(back()).toHaveAttribute('href', '/suppliers');
   });
 });

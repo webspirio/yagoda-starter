@@ -73,6 +73,16 @@ export class CrateBalancesService {
       pointPredicate = `s.collection_point_id = ${pointPlaceholder}`;
     }
 
+    // `include_zero` widens to everyone who ever took crates here — never to
+    // a supplier with no live issuance, who has nothing to be «at zero» about.
+    const where: string[] = [];
+    if (pointId) where.push(`sup.collection_point_id = ${pointPlaceholder}`);
+    if (query.include_zero) {
+      where.push(`EXISTS (
+          SELECT 1 FROM crate_issuances ci JOIN shifts s ON s.id = ci.shift_id
+           WHERE ci.supplier_id = sup.id AND ci.voided_at IS NULL AND ${pointPredicate})`);
+    }
+
     // Open tranches (`openTranchesSql`, `crate-balance.service.ts`) first,
     // then aggregate per supplier.
     const base = `
@@ -100,7 +110,7 @@ export class CrateBalancesService {
              COALESCE(r.receipt_units, 0) AS receipt_units
         FROM suppliers sup
         ${query.include_zero ? 'LEFT JOIN' : 'JOIN'} rolled r ON r.supplier_id = sup.id
-       ${pointId ? `WHERE sup.collection_point_id = ${pointPlaceholder}` : ''}`;
+       ${where.length ? `WHERE ${where.join(' AND ')}` : ''}`;
 
     const [countRow] = (await this.dataSource.query(
       `SELECT count(*)::int AS count FROM (${base}) t`,

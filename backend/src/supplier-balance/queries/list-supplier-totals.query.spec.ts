@@ -40,9 +40,20 @@ describe('ListSupplierTotalsQuery', () => {
   const list = (actor: typeof owner | typeof operator, over: Record<string, unknown> = {}) =>
     query.list(actor, { sort: 'weight', ...over } as never);
 
-  it('lists active suppliers only', async () => {
-    await list(owner);
-    expect(qb.where).toHaveBeenCalledWith('s.is_active = true');
+  it.each([
+    [undefined, 's.is_active = true'],
+    ['active', 's.is_active = true'],
+    ['inactive', 's.is_active = false'],
+  ])('status %s filters on %s', async (status, predicate) => {
+    await list(owner, { status });
+    expect(qb.andWhere).toHaveBeenCalledWith(predicate);
+  });
+
+  it('status all adds no is_active predicate', async () => {
+    await list(owner, { status: 'all' });
+    for (const m of ['where', 'andWhere']) {
+      for (const [sql] of qb[m].mock.calls) expect(sql).not.toContain('is_active');
+    }
   });
 
   it('pins an operator to their own point, ignoring the requested one', async () => {

@@ -2,11 +2,15 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 import { STALE } from '@/shared/api/queryClient';
-import type { SupplierTotalsRow, SupplierTotalsSort } from '../model/supplier';
+import type {
+  SupplierTotalsRow,
+  SupplierTotalsSort,
+  SupplierTotalsStatus,
+} from '../model/supplier';
 
 /**
- * The suppliers page (#230): `GET /supplier-totals`, every active supplier in
- * one list — unpaged, because the sort keys move with every document and an
+ * The suppliers page (#230): `GET /supplier-totals`, every supplier of the
+ * chosen `status` in one list — unpaged, because the sort keys move with every document and an
  * offset page would skip a supplier (PR #253 review).
  * UNDER THE `supplierBalances` PREFIX on purpose — every receipt, payout and
  * top-up write (and its void) already invalidates it, so a new receipt moves
@@ -16,15 +20,16 @@ export function useSupplierTotalsQuery(filter: {
   search: string;
   sort: SupplierTotalsSort;
   order: 'asc' | 'desc';
+  status: SupplierTotalsStatus;
 }) {
   const q = filter.search.trim();
-  const { sort, order } = filter;
+  const { sort, order, status } = filter;
   return useQuery({
-    queryKey: [...queryKeys.supplierBalances, 'totals', { q, sort, order }],
+    queryKey: [...queryKeys.supplierBalances, 'totals', { q, sort, order, status }],
     queryFn: async (): Promise<SupplierTotalsRow[]> =>
       (
         await httpClient.get<SupplierTotalsRow[]>('/supplier-totals', {
-          params: { ...(q ? { q } : {}), sort, order },
+          params: { ...(q ? { q } : {}), sort, order, status },
         })
       ).data,
     staleTime: STALE.list,

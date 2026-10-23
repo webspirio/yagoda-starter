@@ -158,6 +158,17 @@ describe('DebtsPage — the operator', () => {
     ).toBeEnabled();
   });
 
+  it('disables "Pay out without berries" for an inactive supplier, even one still owed money', () => {
+    // The backend refuses SUPPLIER_INACTIVE; the supplier card offers no payout either (#228).
+    renderDebts();
+
+    expect(
+      within(tableRow('Петро Іваненко')).getByRole('button', {
+        name: 'Pay out without berries',
+      }),
+    ).toBeDisabled();
+  });
+
   it('filters the loaded rows client-side by name as the operator types', async () => {
     const user = userEvent.setup();
     renderDebts();

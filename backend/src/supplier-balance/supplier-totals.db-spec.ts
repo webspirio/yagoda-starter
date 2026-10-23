@@ -230,6 +230,18 @@ describe('ListSupplierTotalsQuery.list (Postgres)', () => {
     expect(names(page)).toEqual(['Марія', 'Іван', 'Петро', 'Андрій', 'Ольга', 'Ольга']);
   });
 
+  it('status=inactive lists exactly the deactivated supplier, flagged', async () => {
+    const page = await service.list(owner, q({ status: 'inactive' }));
+    expect(lastNames(page)).toEqual(['Гнатюк']);
+    expect(page[0]).toMatchObject({ is_active: false, kg_total: '10.00' });
+  });
+
+  it('status=all merges both, Гнатюк in his alphabetical place, is_active per row', async () => {
+    const page = await service.list(owner, q({ sort: 'name', status: 'all' }));
+    expect(names(page)).toEqual(['Марія', 'Степан', 'Іван', 'Петро', 'Андрій', 'Ольга', 'Ольга']);
+    expect(page.map((r) => r.is_active)).toEqual([true, false, true, true, true, true, true]);
+  });
+
   it('breaks a same-name tie by id', async () => {
     const ids = (await service.list(owner, q({ sort: 'name', q: 'Ярема' }))).map((r) => r.id);
     expect(ids).toHaveLength(2);

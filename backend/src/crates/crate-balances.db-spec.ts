@@ -37,6 +37,12 @@ describe('CrateBalancesService.list (Postgres)', () => {
   let voided: string;
   /** At the other point entirely. */
   let elsewhere: string;
+  /** Never took a crate. */
+  let never: string;
+  /** Deactivated, still holding 7. */
+  let goneQuiet: string;
+  /** Deactivated, brought everything back. */
+  let goneSettled: string;
 
   const owner = () =>
     ({ sub: userId, role: UserRole.NetworkOwner, collection_point_id: null }) as AuthenticatedUser;
@@ -193,6 +199,16 @@ describe('CrateBalancesService.list (Postgres)', () => {
     await giveBack(shiftA, settled, gone, 10, '100.00');
     await issue(shiftA, voided, 15, 'deposit', '100.00', { voided: true });
     await issue(shiftB, elsewhere, 5, 'deposit', '100.00');
+
+    never = await supplier(pointA, 'Нічого');
+    goneQuiet = await supplier(pointA, 'НеактивнийТримає');
+    goneSettled = await supplier(pointA, 'НеактивнийПовернув');
+    await issue(shiftA, goneQuiet, 7, 'deposit', '100.00');
+    const goneBack = await issue(shiftA, goneSettled, 3, 'deposit', '100.00');
+    await giveBack(shiftA, goneSettled, goneBack, 3, '100.00');
+    await ds.query(`UPDATE suppliers SET is_active = false WHERE id = ANY($1)`, [
+      [goneQuiet, goneSettled],
+    ]);
   });
 
   afterAll(async () => {
@@ -243,6 +259,29 @@ describe('CrateBalancesService.list (Postgres)', () => {
     await issue(shiftA, mixed, 70, 'receipt', '0.00');
     const row = await rowFor(mixed);
     expect(row).toMatchObject({ outstanding_units: 90, deposit_units: 20, receipt_units: 70 });
+  });
+
+  it('leaves out a supplier who never took a crate, even with include_zero', async () => {
+    expect(await rowFor(never, { include_zero: true })).toBeUndefined();
+  });
+
+  it('leaves out a supplier whose only issuance was voided, even with include_zero', async () => {
+    expect(await rowFor(voided, { include_zero: true })).toBeUndefined();
+  });
+
+  it('lists an INACTIVE holder both ways, flagged inactive', async () => {
+    for (const include_zero of [false, true]) {
+      const row = await rowFor(goneQuiet, { include_zero });
+      expect(row).toMatchObject({ outstanding_units: 7, is_active: false });
+    }
+  });
+
+  it('lists an inactive supplier who returned everything only with include_zero', async () => {
+    expect(await rowFor(goneSettled)).toBeUndefined();
+    expect(await rowFor(goneSettled, { include_zero: true })).toMatchObject({
+      outstanding_units: 0,
+      is_active: false,
+    });
   });
 
   it('ignores a VOIDED issuance entirely', async () => {

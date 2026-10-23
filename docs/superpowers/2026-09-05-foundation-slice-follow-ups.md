@@ -1642,3 +1642,19 @@ everything `pages/day` showed now sits on `/point-cash`, and two things overlap:
   whatever `?date=` is. Also not new — the date stepper predates #221 — but the
   page now stands in for «Каса за день» on past days too, so the wording should
   follow the date.
+
+## Left over from inactive suppliers (#228, 2026-10-21)
+
+Spec: `docs/superpowers/specs/2026-10-21-inactive-suppliers-design.md` §7.
+
+- **Can an owed inactive supplier be paid?** Today no: the backend refuses the payout
+  (`SUPPLIER_INACTIVE`, `create-payout.command.ts`) and the UI copy says «спершу активуйте»,
+  so the workflow is activate → pay → deactivate. A question for the client, not a defect.
+  If the answer becomes yes, two screens re-enable together: the card's payout actions and
+  «Борги»'s «Видати без ягоди», disabled on an inactive row since #270's review.
+- **Optional:** warn in the supplier edit dialog when deactivating someone who still holds
+  crates or is owed money.
+- **A search with no match reads as an empty list** (`SuppliersPage.tsx`). Under «Неактивні»
+  it shows «Деактивованих постачальників немає» even when there are some; under «Активні»
+  the same pre-existing defect shows «ще немає постачальників». The empty state should
+  distinguish «нічого не знайдено за цим пошуком» from «немає жодного».

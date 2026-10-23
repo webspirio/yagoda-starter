@@ -214,7 +214,9 @@ export function DebtsPage() {
     cell: (row) => (
       <Button
         size="sm"
-        disabled={cmp(row.debt, '0') !== 1}
+        // The backend refuses a payout to an inactive supplier (SUPPLIER_INACTIVE),
+        // so the row offers none — the supplier card doesn't either (#228).
+        disabled={!row.is_active || cmp(row.debt, '0') !== 1}
         onClick={(event) => {
           // The row itself navigates to the supplier card — this button must
           // not trigger that when it opens the payout dialog instead.

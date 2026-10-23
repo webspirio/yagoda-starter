@@ -24,4 +24,13 @@ describe('ListSupplierTotalsQueryDto', () => {
     expect(errors({ sort: 'phone' })).not.toHaveLength(0);
     expect(errors({ order: 'up' })).not.toHaveLength(0);
   });
+
+  it('defaults status to active and accepts all three', () => {
+    expect(parse({}).status).toBe('active');
+    for (const status of ['active', 'inactive', 'all']) expect(errors({ status })).toHaveLength(0);
+  });
+
+  it('refuses an unknown status', () => {
+    expect(errors({ status: 'archived' })).not.toHaveLength(0);
+  });
 });

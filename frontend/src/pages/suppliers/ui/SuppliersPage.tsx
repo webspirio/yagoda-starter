@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { ListPage } from '@/shared/ui/templates/list-page';
 import type { Column } from '@/shared/ui/data-table';
+import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
+import { SelectField } from '@/shared/ui/select-field';
 import { TextInput } from '@/shared/ui/text-input';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
@@ -14,6 +16,7 @@ import { useSupplierTotalsQuery } from '@/entities/supplier';
 import type { Supplier, SupplierTotalsRow } from '@/entities/supplier';
 import { SupplierFormDialog } from '@/features/edit-supplier';
 import { nextSort, readSort, toUrl } from '../model/supplierSort';
+import { readStatus, statusToUrl } from '../model/supplierStatus';
 
 /** Last name first: the «Ім'я» column sorts by it, so the order reads at a glance. */
 const listName = (s: { first_name: string; last_name: string }) => `${s.last_name} ${s.first_name}`;
@@ -21,18 +24,24 @@ const listName = (s: { first_name: string; last_name: string }) => `${s.last_nam
 export function SuppliersPage() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
+  // The card's Back returns to this exact list (#228), so it gets the query string.
+  const cardState = { from: location.search };
   const [search, setSearch] = useState('');
   // Debounced so each keystroke does not fire its own request.
   const debouncedSearch = useDebouncedValue(search);
   // In the URL so Back from a card returns to the same ranking (#230).
   const [sortParam] = useUrlParam('sort');
   const [orderParam] = useUrlParam('order');
+  const [statusParam] = useUrlParam('status');
   const patchUrl = useUrlPatch();
   const sort = readSort(sortParam, orderParam);
+  const status = readStatus(statusParam);
   const { data, isPending, isError, isFetching, refetch } = useSupplierTotalsQuery({
     search: debouncedSearch,
     sort: sort.key,
     order: sort.order,
+    status,
   });
 
   const [editing, setEditing] = useState<Supplier | null>(null);
@@ -62,17 +71,21 @@ export function SuppliersPage() {
       header: t('suppliers.col.name'),
       sortable: true,
       cell: (s) => (
-        <Link
-          to={`/suppliers/${s.id}`}
-          // The row itself navigates to the card too (`onRowClick` below) —
-          // without this the link's click would bubble into that handler,
-          // firing the same navigation twice. The link is what a keyboard
-          // reaches; the row is only a bigger target for the mouse.
-          onClick={(e) => e.stopPropagation()}
-          className="font-medium text-primary underline-offset-2 hover:underline"
-        >
-          {listName(s)}
-        </Link>
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <Link
+            to={`/suppliers/${s.id}`}
+            state={cardState}
+            // The row itself navigates to the card too (`onRowClick` below) —
+            // without this the link's click would bubble into that handler,
+            // firing the same navigation twice. The link is what a keyboard
+            // reaches; the row is only a bigger target for the mouse.
+            onClick={(e) => e.stopPropagation()}
+            className="font-medium text-primary underline-offset-2 hover:underline"
+          >
+            {listName(s)}
+          </Link>
+          {!s.is_active ? <Badge variant="outline">{t('suppliers.inactive')}</Badge> : null}
+        </span>
       ),
     },
     {
@@ -146,24 +159,47 @@ export function SuppliersPage() {
         description={t('suppliers.description')}
         actions={<Button onClick={openCreate}>{t('suppliers.new')}</Button>}
         toolbar={
-          <TextInput
-            type="search"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={t('suppliers.searchPlaceholder')}
-            aria-label={t('suppliers.searchPlaceholder')}
-            className="max-w-xs"
-          />
+          <>
+            <TextInput
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t('suppliers.searchPlaceholder')}
+              aria-label={t('suppliers.searchPlaceholder')}
+              className="max-w-xs"
+            />
+            <SelectField
+              aria-label={t('suppliers.status.label')}
+              value={status}
+              onChange={(e) => patchUrl({ status: statusToUrl(readStatus(e.target.value)) })}
+              className="w-auto"
+            >
+              {(['active', 'inactive', 'all'] as const).map((v) => (
+                <option key={v} value={v}>
+                  {t(`suppliers.status.${v}`)}
+                </option>
+              ))}
+            </SelectField>
+          </>
         }
         columns={columns}
         rows={rows}
         rowKey={(s) => s.id}
-        onRowClick={(s) => navigate(`/suppliers/${s.id}`)}
+        onRowClick={(s) => navigate(`/suppliers/${s.id}`, { state: cardState })}
         sort={sort}
         onSortChange={(key) => patchUrl(toUrl(nextSort(sort, key)))}
         footer={footer}
         isEmpty={!isPending && !isError && rows.length === 0}
-        empty={<EmptyState title={t('suppliers.empty.title')} hint={t('suppliers.empty.hint')} />}
+        empty={
+          status === 'inactive' ? (
+            <EmptyState
+              title={t('suppliers.emptyInactive.title')}
+              hint={t('suppliers.emptyInactive.hint')}
+            />
+          ) : (
+            <EmptyState title={t('suppliers.empty.title')} hint={t('suppliers.empty.hint')} />
+          )
+        }
       >
         {isPending ? (
           <div className="flex justify-center py-12">

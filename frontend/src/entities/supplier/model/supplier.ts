@@ -35,6 +35,7 @@ export type SupplierTotalsRow = Supplier & {
 };
 
 export type SupplierTotalsSort = 'weight' | 'amount' | 'name';
+export type SupplierTotalsStatus = 'active' | 'inactive' | 'all';
 
 /** One row of `GET /supplier-balances` — the debts list of a point. */
 export interface SupplierBalanceRow {

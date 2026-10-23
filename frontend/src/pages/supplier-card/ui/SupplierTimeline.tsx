@@ -78,9 +78,9 @@ export function SupplierTimeline({
   /** A standalone payout (no `intake_id`) has a slip of its own to open. */
   onOpenPayoutReceipt: (payoutId: string) => void;
   onVoidPayout: (payout: Payout) => void;
-  /** Owner only. Absent for an operator — §10.2: «заблокована кнопка вчить
+  /** Owner only, and only for an active supplier. Absent for an operator — §10.2: «заблокована кнопка вчить
    *  шукати обхід, відсутня не вчить нічого». */
-  onAddTopUp: (intake: Intake) => void;
+  onAddTopUp?: (intake: Intake) => void;
   onVoidTopUp: (topUp: IntakeTopUp) => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -280,7 +280,7 @@ export function SupplierTimeline({
               {/* NOT OFFERED ON A VOIDED RECEIPT: `counts_toward_balance` folds
                   in the parent's void, so a top-up written here would count for
                   nothing the moment it was saved. */}
-              {isOwner && !row.voided ? (
+              {isOwner && onAddTopUp && !row.voided ? (
                 <Button
                   type="button"
                   variant="ghost"

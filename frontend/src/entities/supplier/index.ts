@@ -2,6 +2,7 @@ export type {
   Supplier,
   SupplierTotalsRow,
   SupplierTotalsSort,
+  SupplierTotalsStatus,
   SupplierKind,
   SupplierBalanceRow,
   SupplierBalanceOne,

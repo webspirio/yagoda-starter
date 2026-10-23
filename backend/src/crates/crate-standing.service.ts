@@ -28,6 +28,8 @@ export interface CrateStandingResponse {
   in_transit: number;
   /** Open units of live tranches — out with people. */
   in_field: number;
+  /** People holding at least one crate here — the row count of `/crate-balances` without `include_zero`. */
+  holders: number;
   /** Of `in_field`, the units out on a deposit (the rest are on a розписка). */
   deposit_units: number;
   /** The point's crates book — `crateBookSql`, not re-derived. */
@@ -96,6 +98,7 @@ export class CrateStandingService {
                 ${inTransitCratesSql('$1')} AS in_transit,
                 ${crateTareUnitsSql('sh.collection_point_id = $1 AND sh.closed_at IS NULL')} AS with_berry,
                 (SELECT COALESCE(SUM(remaining_units), 0)::int FROM tranche) AS in_field,
+                (SELECT COUNT(DISTINCT supplier_id)::int FROM tranche) AS holders,
                 (SELECT COALESCE(SUM(remaining_units), 0)::int FROM tranche
                   WHERE mode = '${CrateIssuanceMode.Deposit}'::crate_issuance_mode) AS deposit_units,
                 ${crateBookSql('$1')}::text AS deposit_held
@@ -108,6 +111,7 @@ export class CrateStandingService {
               f.on_hand,
               f.in_transit,
               f.in_field,
+              f.holders,
               f.deposit_units,
               f.deposit_held,
               f.with_berry,
