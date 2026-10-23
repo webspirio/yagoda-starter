@@ -62,6 +62,13 @@ describe('ChecksDisclosure', () => {
     expect(norm(container.textContent)).toContain('не перезважено 500,00 ₴');
   });
 
+  it('summary reads «Не сходиться» when a check fails', () => {
+    const { container } = renderIt({ checks: { shares_ok: true, total_ok: false } });
+    const summary = container.querySelector('summary')?.textContent ?? '';
+    expect(summary).toContain('Не сходиться');
+    expect(summary).not.toContain('Звірено');
+  });
+
   it('renders nothing when checks is null', () => {
     const { container } = renderIt({ checks: null });
     expect(container).toBeEmptyDOMElement();

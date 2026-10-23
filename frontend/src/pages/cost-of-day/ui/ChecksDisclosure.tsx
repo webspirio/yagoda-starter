@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { CheckCircle2, XCircle } from 'lucide-react';
 import { formatUah } from '@/shared/lib/money';
 import type { CostOfDay } from '@/entities/cost-of-day';
 
@@ -66,6 +67,14 @@ export function ChecksDisclosure({
       .join(' + ');
 
   const expenses = formatUah(day.expenses_amount, locale);
+  const allOk = day.checks.shares_ok && day.checks.total_ok;
+  const tone = (ok: boolean) => (ok ? 'text-[var(--leaf)]' : 'text-destructive');
+  const mark = (ok: boolean) =>
+    ok ? (
+      <CheckCircle2 aria-hidden className="mr-1 inline size-3.5" />
+    ) : (
+      <XCircle aria-hidden className="mr-1 inline size-3.5" />
+    );
   const unweighed = day.unweighed.accrued !== '0.00';
 
   return (
@@ -80,11 +89,14 @@ export function ChecksDisclosure({
       }}
       className="rounded-lg border border-border px-4 py-2 text-sm"
     >
-      <summary className="cursor-pointer font-medium text-[var(--leaf)]">
-        {t('costOfDay.status.checked')} · {t('costOfDay.checks.title')}
+      <summary className={`cursor-pointer font-medium ${tone(allOk)}`}>
+        {mark(allOk)}
+        {t(allOk ? 'costOfDay.status.checked' : 'costOfDay.status.mismatch')} ·{' '}
+        {t('costOfDay.checks.title')}
       </summary>
       <div className="mt-2 space-y-1 tabular-nums text-muted-foreground">
-        <p>
+        <p className={tone(day.checks.shares_ok)}>
+          {mark(day.checks.shares_ok)}
           {t('costOfDay.checks.shares', {
             shares: join(day.products.map((p) => p.basket_share)),
             basket: formatUah(day.basket, locale),
@@ -92,7 +104,8 @@ export function ChecksDisclosure({
             expenses,
           })}
         </p>
-        <p>
+        <p className={tone(day.checks.total_ok)}>
+          {mark(day.checks.total_ok)}
           {t(unweighed ? 'costOfDay.checks.totalUnweighed' : 'costOfDay.checks.total', {
             fulls: join(day.products.map((p) => p.full_cost)),
             full: day.full_cost === null ? '—' : formatUah(day.full_cost, locale),
