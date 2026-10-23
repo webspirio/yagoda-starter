@@ -65,37 +65,35 @@ export function SupplierSection({
       </div>
 
       {supplier ? (
-        <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {rows.length === 0 ? (
-            t('reception.supplier.historyEmpty')
-          ) : (
-            <>
-              <span>{t('reception.supplier.recent')}</span>
-              <ul className="inline">
-                {rows.map((row) => (
-                  <li
-                    key={row.id}
-                    className={cn(
-                      'ml-2 inline',
-                      row.voided_at !== null && 'line-through',
-                    )}
-                  >
-                    {formatShortDate(row.business_date, locale)} {'·'}{' '}
-                    {row.voided_at !== null ? (
-                      <span>{t('reception.today.voided')}</span>
-                    ) : (
-                      <span>{formatKg(row.net_kg, locale)}</span>
-                    )}{' '}
-                    {'·'} <span className="font-mono">{formatUah(row.amount, locale)}</span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          {' '}
+        <div className="flex min-w-0 flex-1 items-center gap-2 text-xs text-muted-foreground">
+          <span className="min-w-0 truncate">
+            {rows.length === 0 ? (
+              t('reception.supplier.historyEmpty')
+            ) : (
+              <>
+                <span>{t('reception.supplier.recent')}</span>
+                <ul className="inline">
+                  {rows.map((row) => (
+                    <li
+                      key={row.id}
+                      className={cn('ml-2 inline', row.voided_at !== null && 'line-through')}
+                    >
+                      {formatShortDate(row.business_date, locale)} {'·'}{' '}
+                      {row.voided_at !== null ? (
+                        <span>{t('reception.today.voided')}</span>
+                      ) : (
+                        <span>{formatKg(row.net_kg, locale)}</span>
+                      )}{' '}
+                      {'·'} <span className="font-mono">{formatUah(row.amount, locale)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </span>
           <Link
             to={`/suppliers/${supplier.id}`}
-            className="ml-2 inline-flex items-center gap-0.5 transition-colors hover:text-foreground"
+            className="flex shrink-0 items-center gap-0.5 transition-colors hover:text-foreground"
           >
             {t('reception.supplier.card')}
             <ChevronRight className="size-3.5" />

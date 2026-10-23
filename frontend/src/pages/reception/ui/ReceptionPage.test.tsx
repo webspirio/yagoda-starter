@@ -612,10 +612,11 @@ describe('ReceptionPage — choosing the supplier', () => {
     expect(within(line).getAllByText('120.40 kg')).toHaveLength(2);
     expect(within(line).getByText('820.50 ₴')).toBeInTheDocument();
     expect(within(line).getByText('1,290.00 ₴')).toBeInTheDocument();
-    expect(within(line).getByRole('link', { name: 'Supplier card' })).toHaveAttribute(
-      'href',
-      '/suppliers/s1',
-    );
+    // The card link is the row's only navigation: it sits OUTSIDE the
+    // truncating element so the ellipsis can never clip it.
+    const link = screen.getByRole('link', { name: 'Supplier card' });
+    expect(link).toHaveAttribute('href', '/suppliers/s1');
+    expect(line.contains(link)).toBe(false);
   });
 
   it('reads a negative balance as money owed to the supplier, not by them', async () => {
