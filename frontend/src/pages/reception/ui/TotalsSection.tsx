@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/button';
-import { Eyebrow } from '@/shared/ui/eyebrow';
 import { Field } from '@/shared/ui/field';
 import { DecimalInput } from '@/shared/ui/decimal-input';
 import { useDecimalField } from '@/shared/ui/use-decimal-field';
@@ -164,48 +163,55 @@ export function TotalsSection({
     // «Розрахунок» is the card's accessible name (a labelled `section` is a
     // region landmark), no longer a visible eyebrow — 23 px the 650 px
     // budget could not spare (spec §5.1).
-    <section aria-label={t('reception.totals.eyebrow')} className="flex flex-col gap-3 p-4">
-      <div className="flex items-baseline justify-between gap-3 text-sm">
-        <span className="text-muted-foreground">
-          {t('reception.totals.accruedToday')}
-          {lineCount > 1 ? t('reception.totals.linesSuffix', { count: lineCount }) : ''}
-        </span>
-        <span className="font-mono">
-          {accrued === null ? (
-            <span className="text-muted-foreground">{isPreviewing ? '…' : '—'}</span>
-          ) : (
-            formatUah(accrued, locale)
-          )}
-        </span>
-      </div>
-
-      {cmp(carried, '0') === 1 ? (
-        <div className="flex items-center justify-between gap-3 rounded-lg bg-amber/10 px-3 py-1 text-sm">
-          <span className="text-muted-foreground">{t('reception.totals.debt')}</span>
-          <span className="font-mono">+ {formatUah(carried, locale)}</span>
+    // Three groups, read top to bottom: what is owed (the ledger and its
+    // «Разом»), what is handed over now (the field and its chips), then what
+    // that leaves and the button. Body text is 14–16 px throughout — the
+    // operator reads this card at arm's length while counting cash.
+    <section aria-label={t('reception.totals.eyebrow')} className="flex flex-col gap-4 p-4">
+      <div className="flex flex-col gap-2">
+        <div className="flex items-baseline justify-between gap-3 text-base">
+          <span className="text-muted-foreground">
+            {t('reception.totals.accruedToday')}
+            {lineCount > 1 ? t('reception.totals.linesSuffix', { count: lineCount }) : ''}
+          </span>
+          <span className="font-mono font-medium">
+            {accrued === null ? (
+              <span className="text-muted-foreground">{isPreviewing ? '…' : '—'}</span>
+            ) : (
+              formatUah(accrued, locale)
+            )}
+          </span>
         </div>
-      ) : null}
 
-      <div className="flex flex-wrap items-baseline justify-between gap-2 border-t border-foreground/20 pt-1">
-        <Eyebrow>{t('reception.totals.total')}</Eyebrow>
-        <span className="font-mono text-3xl leading-none font-semibold tracking-tight">
-          {total === null ? (
-            <span className="text-base text-muted-foreground">{isPreviewing ? '…' : '—'}</span>
-          ) : (
-            formatUah(total, locale)
-          )}
-        </span>
+        {cmp(carried, '0') === 1 ? (
+          <div className="flex items-baseline justify-between gap-3 text-base">
+            <span className="text-muted-foreground">{t('reception.totals.debt')}</span>
+            <span className="font-mono font-medium text-amber">+ {formatUah(carried, locale)}</span>
+          </div>
+        ) : null}
+
+        <div className="mt-1 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-t border-border pt-3">
+          <span className="text-base font-semibold">{t('reception.totals.total')}</span>
+          <span className="font-mono text-3xl leading-none font-semibold tracking-tight">
+            {total === null ? (
+              <span className="text-base text-muted-foreground">{isPreviewing ? '…' : '—'}</span>
+            ) : (
+              formatUah(total, locale)
+            )}
+          </span>
+        </div>
+
+        {credit !== null ? (
+          // §3.5/§3.8: a negative balance is never added to «Разом» — it is
+          // shown below it, in green, as information.
+          <p className="text-sm text-leaf">
+            {t('reception.supplier.credit', { uah: formatUah(credit, locale) })}
+          </p>
+        ) : null}
       </div>
-
-      {credit !== null ? (
-        // §3.5/§3.8: a negative balance is never added to «Разом» — it is
-        // shown below it, in green, as information.
-        <p className="text-xs text-leaf">
-          {t('reception.supplier.credit', { uah: formatUah(credit, locale) })}
-        </p>
-      ) : null}
 
       <Field
+        size="large"
         name="paid_amount"
         label={t('reception.totals.paid')}
         error={paidError ?? formatError}
@@ -217,21 +223,20 @@ export function TotalsSection({
             <div className="relative">
               <DecimalInput
                 {...a11y}
-                className="h-10 pr-9 font-mono text-xl font-semibold"
+                className="h-12 pr-10 font-mono text-2xl font-semibold"
                 value={paid}
                 onChange={(e) => onPaidChange(e.target.value)}
                 {...paidField.inputProps}
               />
-              <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-sm text-muted-foreground">
+              <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-base text-muted-foreground">
                 ₴
               </span>
             </div>
-            <div className="mt-1 flex flex-wrap gap-1.5">
+            <div className="mt-2 grid grid-cols-3 gap-2">
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                className="h-7"
+                className="h-9 px-2 text-sm"
                 onClick={() => settle(cap ?? '0')}
               >
                 {t('reception.totals.all')}
@@ -239,8 +244,7 @@ export function TotalsSection({
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                className="h-7"
+                className="h-9 px-2 text-sm"
                 disabled={cap === null || cmp(cap, '100') === -1}
                 onClick={() => settle(floorToHundreds(cap ?? '0'))}
               >
@@ -249,8 +253,7 @@ export function TotalsSection({
               <Button
                 type="button"
                 variant="outline"
-                size="sm"
-                className="h-7"
+                className="h-9 px-2 text-sm"
                 onClick={() => settle('0')}
               >
                 {t('reception.totals.allToBalance')}
@@ -260,13 +263,12 @@ export function TotalsSection({
         )}
       </Field>
 
-      {/* One line at the card's ~355 px (spec §5.1): truncates, with the
-          whole sentence on hover — the DOM text is unchanged. */}
+      {/* Wraps rather than truncates: what is left owed is the one sentence
+          the operator says out loud to the supplier. */}
       <div
         data-testid="remainder-row"
-        title={remainderText}
         className={cn(
-          'truncate rounded-lg px-3 py-1 text-xs whitespace-nowrap',
+          'rounded-lg px-3 py-2 text-sm leading-snug font-medium',
           total === null
             ? 'bg-muted/50 text-muted-foreground'
             : owed
@@ -278,7 +280,7 @@ export function TotalsSection({
       </div>
 
       {limitedByCash ? (
-        <p className="rounded-lg bg-amber/10 px-2.5 py-0.5 text-xs leading-snug text-amber">
+        <p className="rounded-lg bg-amber/10 px-3 py-2 text-sm leading-snug text-amber">
           {t('reception.totals.cashNote', { uah: formatUah(drawer, locale) })}
         </p>
       ) : null}
@@ -286,7 +288,7 @@ export function TotalsSection({
       {crateReturn}
 
       {showDraftHint ? (
-        <p className="text-xs text-muted-foreground">{t('reception.lines.draftHint')}</p>
+        <p className="text-sm text-muted-foreground">{t('reception.lines.draftHint')}</p>
       ) : null}
 
       {formErrorKey ? (
@@ -299,7 +301,7 @@ export function TotalsSection({
           rather than running past the ~355 px card — never truncated. */}
       <Button
         type="submit"
-        className="h-auto min-h-11 w-full py-1.5 text-center text-base leading-tight whitespace-normal"
+        className="h-auto min-h-12 w-full py-2 text-center text-base leading-tight font-semibold whitespace-normal"
         disabled={disabled || isSubmitting}
       >
         <Check className="size-5" />

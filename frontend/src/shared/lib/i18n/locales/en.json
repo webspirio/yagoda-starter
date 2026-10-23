@@ -950,7 +950,7 @@
       "priceDelta": "{{delta}} vs the grade price"
     },
     "line": {
-      "preview": "tare {{tare}} · net {{net}} · {{price}}{{bonus}} → {{amount}}",
+      "preview": "tare {{tare}} · net {{net}} · {{price}} ₴/kg → {{amount}}",
       "pending": "…",
       "tareMissing": "Enter the tare quantity — without it the gross weight would count entirely as net.",
       "gradeMissing": "Choose a grade for this line — otherwise it won't make it into the receipt.",

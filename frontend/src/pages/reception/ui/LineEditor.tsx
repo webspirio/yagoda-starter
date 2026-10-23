@@ -278,7 +278,7 @@ export function LineEditor({
   // §4) — none of them disables anything. `tareError` is the one refusal among
   // them, and reads destructive.
   const warning = (text: string) => (
-    <p className="flex items-start gap-2 text-xs text-amber">
+    <p className="flex items-start gap-2 text-sm text-amber">
       <AlertTriangle className="mt-px size-3.5 shrink-0" />
       {text}
     </p>
@@ -291,6 +291,7 @@ export function LineEditor({
             first, then the tare. Брутто stays the widest, largest field. */}
         <div className="flex flex-wrap items-start gap-3">
           <Field
+            size="large"
             name={`items.${index}.gross_kg`}
             label={t('reception.weight.gross')}
             required
@@ -319,6 +320,7 @@ export function LineEditor({
 
           {revealPallet ? (
             <Field
+              size="large"
               name={`items.${index}.pallet_kg`}
               label={t('reception.weight.pallet')}
               error={palletError ?? undefined}
@@ -355,7 +357,7 @@ export function LineEditor({
               under the first and push the block down rather than widen it
               (spec §4). */}
           <div className="min-w-0 basis-full sm:min-w-[260px] sm:basis-0 sm:flex-[2.4]">
-            <div className="mb-[7px] text-[11px] font-bold tracking-wider text-muted-foreground uppercase">
+            <div className="mb-1.5 text-sm font-medium text-muted-foreground">
               {t('reception.weight.tare')}
             </div>
             <div className="flex flex-col gap-1.5">
@@ -415,7 +417,7 @@ export function LineEditor({
                       </Button>
                     </div>
                     {rowTareType ? (
-                      <span className="hidden w-14 shrink-0 text-right font-mono text-xs whitespace-nowrap text-muted-foreground sm:block">
+                      <span className="hidden w-14 shrink-0 text-right font-mono text-sm whitespace-nowrap text-muted-foreground sm:block">
                         {formatKg(mul(rowTareType.weight_kg, rowUnits), locale)}
                       </span>
                     ) : null}
@@ -442,6 +444,7 @@ export function LineEditor({
             this line's own extra price (§2.8). */}
         <div className="flex flex-wrap items-start gap-3">
           <Field
+            size="large"
             name={`product-line-${index}`}
             label={t('reception.grade.product')}
             className="min-w-[130px] flex-1"
@@ -474,6 +477,7 @@ export function LineEditor({
           </Field>
 
           <Field
+            size="large"
             name={`items.${index}.product_grade_id`}
             label={t('reception.grade.grade')}
             required
@@ -512,6 +516,7 @@ export function LineEditor({
           </Field>
 
           <Field
+            size="large"
             name={`items.${index}.bonus`}
             label={t('reception.grade.price')}
             error={bonusError ?? undefined}
@@ -567,7 +572,7 @@ export function LineEditor({
             alert per refusal, not two. */}
         <p
           className={cn(
-            'font-mono text-sm',
+            'rounded-md bg-muted/50 px-3 py-2 font-mono text-base',
             hasLineError
               ? 'text-destructive'
               : previewItem
@@ -580,8 +585,9 @@ export function LineEditor({
             ? t('reception.line.preview', {
                 tare: formatKg(previewItem.tare_weight_kg, locale),
                 net: formatKg(previewItem.net_kg, locale),
-                price: formatDecimal(previewItem.price, locale),
-                bonus: formatBonusSign(previewItem.bonus, locale),
+                // The line's own price, as the operator set it in «Ціна» —
+                // not the grade's price plus a signed bonus to add up.
+                price: formatDecimal(add(previewItem.price, previewItem.bonus), locale),
                 amount: formatUah(previewItem.amount, locale),
               })
             : t('reception.line.pending')}
@@ -598,7 +604,7 @@ export function LineEditor({
               )
             : null}
           {tareError ? (
-            <p role="alert" className="text-xs text-destructive">
+            <p role="alert" className="text-sm text-destructive">
               {t(tareError)}
             </p>
           ) : null}
@@ -657,7 +663,7 @@ export function LineEditor({
             {atCap ? (
               <span
                 title={t('reception.lines.capHint')}
-                className="min-w-0 flex-1 truncate text-right text-xs text-muted-foreground"
+                className="min-w-0 flex-1 truncate text-right text-sm text-muted-foreground"
               >
                 {t('reception.lines.capHint')}
               </span>

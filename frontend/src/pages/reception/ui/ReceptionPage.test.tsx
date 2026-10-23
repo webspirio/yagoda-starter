@@ -953,7 +953,7 @@ describe('ReceptionPage — tare rows', () => {
 });
 
 describe('ReceptionPage — the draft line preview', () => {
-  it('shows a discount without a doubled sign', async () => {
+  it('shows the line at the price actually paid — the grade price with the discount taken off', async () => {
     const user = userEvent.setup();
     previewMock.mockReturnValue(
       previewState({
@@ -966,8 +966,9 @@ describe('ReceptionPage — the draft line preview', () => {
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
-    expect(screen.getByText(/10\.00−5\.00/)).toBeInTheDocument();
-    expect(screen.queryByText(/\+−/)).toBeNull();
+    // 10.00 with a −5.00 discount reads as the 5.00 ₴/kg paid, not a sum to do.
+    expect(screen.getByText(/· 5\.00 ₴\/kg →/)).toBeInTheDocument();
+    expect(screen.queryByText(/10\.00−5\.00/)).toBeNull();
   });
 });
 

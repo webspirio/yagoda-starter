@@ -66,7 +66,7 @@ export function SupplierSection({
       </div>
 
       {supplier ? (
-        <div className="flex min-w-0 flex-1 basis-0 items-center gap-2 text-xs text-muted-foreground">
+        <div className="flex min-w-0 flex-1 basis-0 items-center gap-2 text-sm text-muted-foreground">
           <span className="min-w-0 truncate">
             {rows.length === 0 ? (
               t('reception.supplier.historyEmpty')
