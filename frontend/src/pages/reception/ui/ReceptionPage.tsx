@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
-import { PageHeader } from '@/shared/ui/page-header';
 import { Card } from '@/shared/ui/card';
 import { Button } from '@/shared/ui/button';
 import { SelectField } from '@/shared/ui/select-field';
@@ -350,7 +349,7 @@ export function ReceptionPage() {
           aria-label={t('reception.pickPoint')}
           value={pointId ?? ''}
           onChange={(e) => setPointId(e.target.value)}
-          className="w-48"
+          className="h-9 w-48"
         >
           {/* A deactivated point reached by `?point=` is not in `points`
               (active only) — without its own entry the select would show
@@ -440,145 +439,144 @@ export function ReceptionPage() {
           onClosed={(id) => setStaleResult({ mode: 'close', shiftId: id })}
         />
 
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(320px,1fr)]">
-          <form
-            onSubmit={(e) => {
-              // React bubbles `submit` along the fiber tree, not the DOM: the
-              // inline supplier dialog (`SupplierPicker` → `SupplierFormDialog`)
-              // is portaled to `document.body` by `shared/ui/dialog.tsx`, but
-              // is still a REACT descendant of this form, so without this
-              // guard its own submit would reach `handleSubmit(requestSubmit)`
-              // — a real `POST /intakes` nobody pressed «Прийняти» for.
-              if (!isOwnFormEvent(e)) return;
-              void handleSubmit(requestSubmit)(e);
-            }}
-            // Enter is how an operator moves between fields on the scale's
-            // numeric pad; it must never fire a submit the form isn't ready
-            // for. Scoped to text inputs only, so it never swallows Enter
-            // inside the grade `<select>` or on a button. Same portal guard as
-            // `onSubmit` above — the dialog's own Enter keystrokes must not be
-            // swallowed by a guard meant for THIS form.
-            onKeyDown={(e) => {
-              if (!isOwnFormEvent(e)) return;
-              if (
-                e.key === 'Enter' &&
-                (e.target as HTMLElement).tagName === 'INPUT' &&
-                !canSubmit
-              ) {
-                e.preventDefault();
+        <form
+          className="grid gap-3 lg:grid-cols-[minmax(0,1.75fr)_minmax(320px,1fr)]"
+          onSubmit={(e) => {
+            // React bubbles `submit` along the fiber tree, not the DOM: the
+            // inline supplier dialog (`SupplierPicker` → `SupplierFormDialog`)
+            // is portaled to `document.body` by `shared/ui/dialog.tsx`, but
+            // is still a REACT descendant of this form, so without this
+            // guard its own submit would reach `handleSubmit(requestSubmit)`
+            // — a real `POST /intakes` nobody pressed «Прийняти» for.
+            if (!isOwnFormEvent(e)) return;
+            void handleSubmit(requestSubmit)(e);
+          }}
+          // Enter is how an operator moves between fields on the scale's
+          // numeric pad; it must never fire a submit the form isn't ready
+          // for. Scoped to text inputs only, so it never swallows Enter
+          // inside the grade `<select>` or on a button. Same portal guard as
+          // `onSubmit` above — the dialog's own Enter keystrokes must not be
+          // swallowed by a guard meant for THIS form.
+          onKeyDown={(e) => {
+            if (!isOwnFormEvent(e)) return;
+            if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT' && !canSubmit) {
+              e.preventDefault();
+            }
+          }}
+          noValidate
+        >
+          <Card>
+            <SupplierSection
+              pointId={pointId}
+              ownerMode={isOwner}
+              supplier={supplier}
+              pickerRef={pickerRef}
+              autoFocus={supplier === null}
+              onChange={(s) => {
+                // Lines belong to the SUPPLIER who brought them — switching
+                // mid-visit (an operator picked the wrong row) leaves the
+                // committed lines behind rather than filing them under
+                // whoever is picked next. A draft-only form (one empty
+                // line, nothing committed) has nothing to lose, so it is
+                // left alone.
+                if (lines.fields.length > 1) {
+                  reset({
+                    supplier_id: s.id,
+                    items: [emptyLine(defaultTareTypeId)],
+                    paid_amount: '',
+                    returned_crates: '',
+                  });
+                  toast(t('reception.toast.linesCleared'));
+                } else {
+                  setValue('supplier_id', s.id, { shouldDirty: true });
+                }
+                setSupplier(s);
+                setPaidTouched(false);
+                setSupplierPick((n) => n + 1);
+              }}
+              disabled={!shiftOpen}
+            />
+            <LineEditor
+              key={lines.fields[draftIndex]?.id}
+              index={draftIndex}
+              control={control}
+              register={register}
+              setValue={setValue}
+              grades={grades.data}
+              tareTypes={tareTypes.data ?? []}
+              previewItem={preview.preview?.items[draftIndex] ?? null}
+              isPreviewPending={!preview.isSettled}
+              errorAt={errorAt}
+              disabled={!shiftOpen}
+              onRemoveDraft={() => lines.remove(draftIndex)}
+              // A line is committed only once the server has PRICED IT AS IT
+              // STANDS: the preview covers every line, so committing one the
+              // server has not settled on (or has just refused) would take
+              // the whole form's numbers down with it.
+              canAdd={draftReady && !atCap && shiftOpen && settled !== null && !hasServerError}
+              atCap={atCap}
+              onAdd={() => lines.append(emptyLine(defaultTareTypeId))}
+            />
+            <LinesTable
+              rows={committed}
+              disabled={!shiftOpen}
+              onRemove={(index) => lines.remove(index)}
+            />
+          </Card>
+          <Card>
+            <TotalsSection
+              accrued={accrued}
+              netKg={netKg}
+              lineCount={settled?.items.length ?? lines.fields.length}
+              debt={debt}
+              credit={debt !== null && cmp(debt, '0') === -1 ? sub('0', debt) : null}
+              cash={cash}
+              cashUnavailable={pointCash.isError}
+              paid={paidShown}
+              onPaidChange={onPaidChange}
+              paidError={
+                errorAt('paid_amount') ??
+                (paidRefused !== null && paidShown === paidRefused ? 'errors.decimalFormat' : null)
               }
-            }}
-            noValidate
-          >
-            <Card>
-              <SupplierSection
-                pointId={pointId}
-                ownerMode={isOwner}
-                supplier={supplier}
-                pickerRef={pickerRef}
-                autoFocus={supplier === null}
-                onChange={(s) => {
-                  // Lines belong to the SUPPLIER who brought them — switching
-                  // mid-visit (an operator picked the wrong row) leaves the
-                  // committed lines behind rather than filing them under
-                  // whoever is picked next. A draft-only form (one empty
-                  // line, nothing committed) has nothing to lose, so it is
-                  // left alone.
-                  if (lines.fields.length > 1) {
-                    reset({
-                      supplier_id: s.id,
-                      items: [emptyLine(defaultTareTypeId)],
-                      paid_amount: '',
-                      returned_crates: '',
-                    });
-                    toast(t('reception.toast.linesCleared'));
-                  } else {
-                    setValue('supplier_id', s.id, { shouldDirty: true });
-                  }
-                  setSupplier(s);
-                  setPaidTouched(false);
-                  setSupplierPick((n) => n + 1);
-                }}
-                disabled={!shiftOpen}
-              />
-              <LineEditor
-                key={lines.fields[draftIndex]?.id}
-                index={draftIndex}
-                control={control}
-                register={register}
-                setValue={setValue}
-                grades={grades.data}
-                tareTypes={tareTypes.data ?? []}
-                previewItem={preview.preview?.items[draftIndex] ?? null}
-                isPreviewPending={!preview.isSettled}
-                errorAt={errorAt}
-                disabled={!shiftOpen}
-                onRemoveDraft={() => lines.remove(draftIndex)}
-                // A line is committed only once the server has PRICED IT AS IT
-                // STANDS: the preview covers every line, so committing one the
-                // server has not settled on (or has just refused) would take
-                // the whole form's numbers down with it.
-                canAdd={draftReady && !atCap && shiftOpen && settled !== null && !hasServerError}
-                atCap={atCap}
-                onAdd={() => lines.append(emptyLine(defaultTareTypeId))}
-              />
-              <LinesTable
-                rows={committed}
-                disabled={!shiftOpen}
-                onRemove={(index) => lines.remove(index)}
-              />
-              <TotalsSection
-                accrued={accrued}
-                netKg={netKg}
-                lineCount={settled?.items.length ?? lines.fields.length}
-                debt={debt}
-                credit={debt !== null && cmp(debt, '0') === -1 ? sub('0', debt) : null}
-                cash={cash}
-                cashUnavailable={pointCash.isError}
-                paid={paidShown}
-                onPaidChange={onPaidChange}
-                paidError={
-                  errorAt('paid_amount') ??
-                  (paidRefused !== null && paidShown === paidRefused
-                    ? 'errors.decimalFormat'
-                    : null)
-                }
-                disabled={!canSubmit}
-                isPreviewing={isPreviewing}
-                isSubmitting={create.isPending}
-                formErrorKey={formErrorKey}
-                formErrorParams={formErrorParams}
-                showDraftHint={draftIndex > 0 && !draftReady}
-                // Keyed by the supplier pick: a new pick remounts it, so the
-                // pre-fill follows the ceiling again until the operator types.
-                crateReturn={
-                  <ReturnedCratesField
-                    key={`${values.supplier_id}:${supplierPick}`}
-                    supplierId={values.supplier_id || null}
-                    pointId={bodyPointId ?? undefined}
-                    crateTareUnits={crateTareUnits(values.items, tareTypes.data ?? [])}
-                    value={values.returned_crates}
-                    onChange={(v) => setValue('returned_crates', v, { shouldDirty: true })}
-                    disabled={!shiftOpen}
-                  />
-                }
-              />
-            </Card>
-          </form>
-        </div>
+              disabled={!canSubmit}
+              isPreviewing={isPreviewing}
+              isSubmitting={create.isPending}
+              formErrorKey={formErrorKey}
+              formErrorParams={formErrorParams}
+              showDraftHint={draftIndex > 0 && !draftReady}
+              // Keyed by the supplier pick: a new pick remounts it, so the
+              // pre-fill follows the ceiling again until the operator types.
+              crateReturn={
+                <ReturnedCratesField
+                  key={`${values.supplier_id}:${supplierPick}`}
+                  supplierId={values.supplier_id || null}
+                  pointId={bodyPointId ?? undefined}
+                  crateTareUnits={crateTareUnits(values.items, tareTypes.data ?? [])}
+                  value={values.returned_crates}
+                  onChange={(v) => setValue('returned_crates', v, { shouldDirty: true })}
+                  disabled={!shiftOpen}
+                />
+              }
+            />
+          </Card>
+        </form>
       </>
     );
 
   return (
     <>
-      <PageHeader
-        eyebrow={t('reception.eyebrow', {
-          point: pointName,
-          date: formatLongDate(todayIso(), locale),
-        })}
-        title={t('reception.title')}
-        actions={actions}
-      />
+      <div className="flex items-center justify-between gap-3 pb-3">
+        <div className="flex min-w-0 items-baseline gap-3">
+          <h1 className="font-display text-xl leading-tight font-medium">{t('reception.title')}</h1>
+          <span className="truncate text-sm text-muted-foreground">
+            {t('reception.eyebrow', {
+              point: pointName,
+              date: formatLongDate(todayIso(), locale),
+            })}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">{actions}</div>
+      </div>
       {body}
       <CountDrawerDialog
         key={openDialogInstance}

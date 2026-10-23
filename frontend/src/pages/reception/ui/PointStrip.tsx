@@ -98,7 +98,7 @@ export function PointStrip({
   const cratesHref = isOwner ? `/crates?point=${pointId}` : '/crates';
 
   return (
-    <div className="mb-4 grid gap-x-6 gap-y-3 rounded-xl border border-line2 bg-card px-4 py-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-center">
+    <div className="mb-3 grid gap-x-6 gap-y-3 rounded-xl border border-line2 bg-card px-4 py-3 sm:grid-cols-2 lg:flex lg:flex-wrap lg:items-center">
       <StatusCell
         shift={shift}
         canOpen={canOpen}
@@ -139,7 +139,7 @@ export function PointStrip({
             {t('reception.today.trigger')}
             <ChevronDown className="size-3" aria-hidden="true" />
           </Eyebrow>
-          <div className="mt-1 flex items-baseline gap-2 whitespace-nowrap font-mono text-sm leading-none font-semibold">
+          <span className="mt-1 flex items-baseline gap-2 whitespace-nowrap font-mono text-sm leading-none font-semibold">
             <span>
               {t('reception.today.summary', {
                 count: liveRows.length,
@@ -151,11 +151,11 @@ export function PointStrip({
                 {t('reception.today.open', { uah: formatUah(openToday, locale) })}
               </span>
             ) : null}
-          </div>
+          </span>
           {todayTruncated ? (
-            <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
+            <span className="mt-0.5 block truncate text-[10px] text-muted-foreground">
               {t('reception.state.truncatedCaption')}
-            </div>
+            </span>
           ) : null}
         </PopoverTrigger>
         <PopoverContent className="w-[420px] max-w-[calc(100vw-2rem)]">
@@ -236,7 +236,10 @@ function Cell({
   emphasised?: boolean;
 }) {
   return (
-    <Link to={to} className="min-w-0 rounded-md hover:text-brand focus-visible:ring-2 focus-visible:ring-ring">
+    <Link
+      to={to}
+      className="min-w-0 rounded-md hover:text-brand focus-visible:ring-2 focus-visible:ring-ring"
+    >
       <Eyebrow className="truncate">{label}</Eyebrow>
       <div
         className={cn(
@@ -246,7 +249,9 @@ function Cell({
       >
         {value}
       </div>
-      {caption ? <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{caption}</div> : null}
+      {caption ? (
+        <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{caption}</div>
+      ) : null}
     </Link>
   );
 }

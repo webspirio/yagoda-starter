@@ -1067,6 +1067,29 @@ describe("ReceptionPage — today's receipts open the receipt, which carries the
 
     expect(await screen.findByText('Receipt for i2')).toBeInTheDocument();
   });
+
+  it('opening a receipt from the popover never submits a ready intake form', async () => {
+    const user = userEvent.setup();
+    previewMock.mockReturnValue(SETTLED);
+    intakesMock.mockImplementation((filter: { shiftId?: string }) =>
+      filter.shiftId
+        ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })])
+        : page<Intake>([]),
+    );
+    renderReception();
+
+    // A fully fillable form, so a stray submit would really post.
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    expect(await screen.findByRole('button', { name: 'Accept 120.40 kg' })).toBeEnabled();
+
+    await user.click(screen.getByRole('button', { name: /Today/ }));
+    const popover = document.querySelector('[data-slot="popover-content"]');
+    await user.click(within(popover as HTMLElement).getByText('200.00 ₴'));
+
+    expect(await screen.findByText('Receipt for i2')).toBeInTheDocument();
+    expect(createMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('ReceptionPage — the client-side sanity hints', () => {

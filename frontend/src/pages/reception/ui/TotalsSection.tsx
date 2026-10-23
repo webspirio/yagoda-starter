@@ -19,7 +19,7 @@ import {
 import { suggestedPaid, totalToPay } from '../lib/suggestedPaid';
 
 /**
- * «4 · Розрахунок» — the SAME action as «Прийняти» now also hands over cash
+ * «Розрахунок» — the SAME action as «Прийняти» now also hands over cash
  * (§2.1 ⑥, §3.1, §3.6): the operator sees what accrues today, what carries
  * in from a previous visit, and types (or picks with a chip) what actually
  * leaves the drawer. Every figure but the typed «Видано готівкою» is the
