@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { i18n } from '@/shared/lib/i18n';
 import type { CostOfDay } from '@/entities/cost-of-day';
@@ -302,5 +302,25 @@ describe('ExpensesStrip', () => {
   it('says so when no expenses have been entered', () => {
     renderPanel({}, []);
     expect(screen.getByText('Витрат за цей день ще не заводили.')).toBeInTheDocument();
+  });
+
+  it('lists each line as a row of a table: label, amount, actions', () => {
+    renderPanel();
+
+    const table = screen.getByRole('table');
+    const row = within(table).getByRole('row', { name: /пальне/ });
+    const cells = within(row).getAllByRole('cell');
+    expect(cells[0]).toHaveTextContent('пальне');
+    expect(cells[1]).toHaveTextContent('1 000,00 ₴');
+    expect(within(cells[2]).getByRole('button', { name: 'Змінити «пальне»' })).toBeInTheDocument();
+  });
+
+  it('puts the add form in the last row of the same table', () => {
+    renderPanel();
+
+    const rows = within(screen.getByRole('table')).getAllByRole('row');
+    const last = rows[rows.length - 1];
+    expect(within(last).getByPlaceholderText('Підпис витрати')).toBeInTheDocument();
+    expect(within(last).getByRole('button', { name: 'Додати витрату' })).toBeInTheDocument();
   });
 });

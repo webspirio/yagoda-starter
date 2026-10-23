@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Eyebrow } from '@/shared/ui/eyebrow';
+import { Table, TableBody, TableCell, TableRow } from '@/shared/ui/table';
 import { TextInput } from '@/shared/ui/text-input';
 import { DecimalInput } from '@/shared/ui/decimal-input';
 import { useDecimalField } from '@/shared/ui/use-decimal-field';
@@ -40,7 +41,7 @@ function FormatError({ id }: { id: string }) {
 }
 
 /**
- * §8.3's «Витрати дня» as a strip above the table — «Права (ВИТРАТИ) — єдине
+ * §8.3's «Витрати дня» as a small table above the cost table — «Права (ВИТРАТИ) — єдине
  * місце вводу». Everything writable on this screen is in this component; the
  * basket, the rate and the недостача are read in the table now.
  *
@@ -134,121 +135,154 @@ export function ExpensesStrip({
     }
   }
 
-  return (
-    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg px-4 py-3 ring-1 ring-[var(--plum)]/40">
-      <Eyebrow className="text-[var(--plum)]">{t('costOfDay.expenses.title')}</Eyebrow>
+  // A table, not a strip of pills: the lines read as a column of amounts the
+  // way the cost table below reads its own, and the add form is simply the
+  // last row — so a long day's list grows downwards instead of wrapping into
+  // the total.
+  const amountCell = 'w-36 text-right';
+  const actionsCell = 'w-40 text-right';
 
-      {expenses.length === 0 ? (
-        <p className="text-sm text-muted-foreground">{t('costOfDay.expenses.empty')}</p>
-      ) : (
-        expenses.map((line) =>
-          editing === line.id ? (
-            <div key={line.id} className="flex flex-wrap items-center gap-2">
+  return (
+    <div className="max-w-2xl overflow-hidden rounded-lg ring-1 ring-[var(--plum)]/40">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 pt-3 pb-2">
+        <Eyebrow className="text-[var(--plum)]">{t('costOfDay.expenses.title')}</Eyebrow>
+        <span className="font-mono text-sm font-semibold tabular-nums text-[var(--plum)]">
+          {day.expenses_per_kg === null
+            ? t('costOfDay.expenses.totalNoRate', {
+                amount: formatUah(day.expenses_amount, locale),
+              })
+            : t('costOfDay.expenses.total', {
+                amount: formatUah(day.expenses_amount, locale),
+                perKg: formatDecimal(day.expenses_per_kg, locale),
+              })}
+        </span>
+      </div>
+
+      <Table className="[&_td]:px-3 [&_td]:py-1.5">
+        <TableBody>
+          {expenses.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={3} className="text-sm text-muted-foreground">
+                {t('costOfDay.expenses.empty')}
+              </TableCell>
+            </TableRow>
+          ) : (
+            expenses.map((line) =>
+              editing === line.id ? (
+                <TableRow key={line.id}>
+                  <TableCell>
+                    <TextInput
+                      value={draftLabel}
+                      onChange={(e) => setDraftLabel(e.target.value)}
+                      aria-label={t('costOfDay.expenses.labelField')}
+                      className="h-8 text-xs"
+                    />
+                  </TableCell>
+                  <TableCell className={amountCell}>
+                    <DecimalInput
+                      value={draftAmount}
+                      onChange={(e) => setDraftAmount(e.target.value)}
+                      {...editAmount.inputProps}
+                      aria-label={t('costOfDay.expenses.amountField')}
+                      className="h-8 text-right font-mono text-xs"
+                    />
+                  </TableCell>
+                  <TableCell className={actionsCell}>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => void saveEdit(line)}
+                        disabled={
+                          !draftLabel.trim() || editAmount.parsed === null || update.isPending
+                        }
+                      >
+                        <Check className="size-3.5" />
+                        {t('costOfDay.expenses.save')}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7"
+                        aria-label={t('costOfDay.expenses.cancel')}
+                        onClick={() => setEditing(null)}
+                      >
+                        <X className="size-3.5" />
+                      </Button>
+                    </div>
+                    {editAmount.error ? <FormatError id="expense-edit-amount-error" /> : null}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                <TableRow key={line.id}>
+                  <TableCell className="text-sm">{line.label}</TableCell>
+                  <TableCell
+                    className={`${amountCell} font-mono text-sm tabular-nums text-[var(--plum)]`}
+                  >
+                    {formatUah(line.amount, locale)}
+                  </TableCell>
+                  <TableCell className={actionsCell}>
+                    <div className="print-hide flex items-center justify-end gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 text-muted-foreground"
+                        aria-label={t('costOfDay.expenses.edit', { label: line.label })}
+                        onClick={() => startEdit(line)}
+                      >
+                        <Pencil className="size-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-7 text-muted-foreground"
+                        aria-label={t('costOfDay.expenses.remove', { label: line.label })}
+                        onClick={() => void removeLine(line)}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ),
+            )
+          )}
+
+          <TableRow className="print-hide hover:bg-transparent">
+            <TableCell>
               <TextInput
-                value={draftLabel}
-                onChange={(e) => setDraftLabel(e.target.value)}
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder={t('costOfDay.expenses.labelField')}
                 aria-label={t('costOfDay.expenses.labelField')}
-                className="h-8 min-w-24 text-xs"
+                className="h-8 text-xs"
               />
+            </TableCell>
+            <TableCell className={amountCell}>
               <DecimalInput
-                value={draftAmount}
-                onChange={(e) => setDraftAmount(e.target.value)}
-                {...editAmount.inputProps}
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                {...addAmount.inputProps}
+                placeholder={t('costOfDay.expenses.amountField')}
                 aria-label={t('costOfDay.expenses.amountField')}
-                className="h-8 w-24 text-right font-mono text-xs"
+                className="h-8 text-right font-mono text-xs"
               />
+              {addAmount.error ? <FormatError id="expense-amount-error" /> : null}
+            </TableCell>
+            <TableCell className={actionsCell}>
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={() => void saveEdit(line)}
-                disabled={!draftLabel.trim() || editAmount.parsed === null || update.isPending}
+                onClick={() => void add()}
+                disabled={!label.trim() || addAmount.parsed === null || create.isPending}
               >
-                <Check className="size-3.5" />
-                {t('costOfDay.expenses.save')}
+                <Plus className="size-3.5" />
+                {t('costOfDay.expenses.addLine')}
               </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                aria-label={t('costOfDay.expenses.cancel')}
-                onClick={() => setEditing(null)}
-              >
-                <X className="size-3.5" />
-              </Button>
-              {editAmount.error ? <FormatError id="expense-edit-amount-error" /> : null}
-            </div>
-          ) : (
-            <div
-              key={line.id}
-              className="flex items-center gap-1 rounded-full bg-muted/50 py-0.5 pl-3 pr-1"
-            >
-              <span className="text-sm">{line.label}</span>
-              <span className="font-mono text-sm tabular-nums text-[var(--plum)]">
-                {formatUah(line.amount, locale)}
-              </span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="print-hide size-7 text-muted-foreground"
-                aria-label={t('costOfDay.expenses.edit', { label: line.label })}
-                onClick={() => startEdit(line)}
-              >
-                <Pencil className="size-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="print-hide size-7 text-muted-foreground"
-                aria-label={t('costOfDay.expenses.remove', { label: line.label })}
-                onClick={() => void removeLine(line)}
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
-            </div>
-          ),
-        )
-      )}
-
-      <div className="print-hide flex min-w-0 flex-1 flex-wrap items-center gap-2">
-        <div className="flex min-w-0 flex-1 basis-[28rem] items-center gap-2">
-        <TextInput
-          value={label}
-          onChange={(e) => setLabel(e.target.value)}
-          placeholder={t('costOfDay.expenses.labelField')}
-          aria-label={t('costOfDay.expenses.labelField')}
-          className="h-8 min-w-28 flex-1 text-xs"
-        />
-        <DecimalInput
-          value={amount}
-          onChange={(e) => setAmount(e.target.value)}
-          {...addAmount.inputProps}
-          placeholder={t('costOfDay.expenses.amountField')}
-          aria-label={t('costOfDay.expenses.amountField')}
-          className="h-8 w-24 shrink-0 text-right font-mono text-xs"
-        />
-        <Button
-          variant="secondary"
-          size="sm"
-          className="shrink-0"
-          onClick={() => void add()}
-          disabled={!label.trim() || addAmount.parsed === null || create.isPending}
-        >
-          <Plus className="size-3.5" />
-          {t('costOfDay.expenses.addLine')}
-        </Button>
-        </div>
-        {addAmount.error ? <FormatError id="expense-amount-error" /> : null}
-      </div>
-
-      <span className="ml-auto font-mono text-sm font-semibold tabular-nums text-[var(--plum)]">
-        {day.expenses_per_kg === null
-          ? t('costOfDay.expenses.totalNoRate', {
-              amount: formatUah(day.expenses_amount, locale),
-            })
-          : t('costOfDay.expenses.total', {
-              amount: formatUah(day.expenses_amount, locale),
-              perKg: formatDecimal(day.expenses_per_kg, locale),
-            })}
-      </span>
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
     </div>
   );
 }
