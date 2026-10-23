@@ -1,5 +1,5 @@
 import { useState, type ChangeEvent } from 'react';
-import { AlertTriangle, Minus, Package, Plus, Trash2 } from 'lucide-react';
+import { AlertTriangle, Layers, Minus, Package, Plus, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   useFieldArray,
@@ -287,8 +287,10 @@ export function LineEditor({
   return (
     <div className="px-4 pb-4">
       <div className="flex flex-col gap-3 rounded-lg border border-dashed border-border p-3">
-        {/* Row 1 — weighing, in §2.4's order: the gross, the pallet taken off
-            first, then the tare. Брутто stays the widest, largest field. */}
+        {/* Row 1 — weighing: Брутто, then everything taken off it in
+            §2.4's order — the pallet first, then the tare — as rows of ONE
+            column. Every row is the same 40 px: a name on the left, the amount
+            in a fixed-width box, the weight it takes off, a remove slot. */}
         <div className="flex flex-wrap items-start gap-3">
           <Field
             size="large"
@@ -309,7 +311,7 @@ export function LineEditor({
                   {...grossField.inputProps}
                   disabled={disabled}
                   placeholder="0,00"
-                  className="h-12 pr-12 font-mono text-2xl font-semibold"
+                  className="h-10 pr-12 font-mono text-xl font-semibold"
                 />
                 <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-sm text-muted-foreground">
                   {t('reception.weight.unit')}
@@ -318,49 +320,69 @@ export function LineEditor({
             )}
           </Field>
 
-          {revealPallet ? (
-            <Field
-              size="large"
-              name={`items.${index}.pallet_kg`}
-              label={t('reception.weight.pallet')}
-              error={palletError ?? undefined}
-              className="w-[96px]"
-            >
-              {(a11y) => (
-                <DecimalInput
-                  {...a11y}
-                  value={pallet}
-                  onChange={(e) =>
-                    setValue(`items.${index}.pallet_kg`, e.target.value, { shouldDirty: true })
-                  }
-                  {...palletField.inputProps}
-                  disabled={disabled}
-                  className="h-10 font-mono"
-                />
-              )}
-            </Field>
-          ) : (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="mt-6 text-muted-foreground"
-              disabled={disabled}
-              onClick={() => setShowPallet(true)}
-            >
-              <Plus className="size-3.5" />
-              {t('reception.weight.pallet')}
-            </Button>
-          )}
-
-          {/* The tare column: extra rows («Інша тара», in the footer) stack
-              under the first and push the block down rather than widen it
-              (spec §4). */}
+          {/* «Інша тара» and «Піддон» (in the footer) add rows here; they
+              stack and push the block down rather than widen it (spec §4). */}
           <div className="min-w-0 basis-full sm:min-w-[260px] sm:basis-0 sm:flex-[2.4]">
             <div className="mb-1.5 text-sm font-medium text-muted-foreground">
               {t('reception.weight.tare')}
             </div>
             <div className="flex flex-col gap-1.5">
+              {revealPallet ? (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <label
+                      htmlFor={`items.${index}.pallet_kg`}
+                      className="flex h-10 min-w-0 flex-1 items-center rounded-xl border border-input bg-muted/30 px-3.5 text-base"
+                    >
+                      {t('reception.weight.pallet')}
+                    </label>
+                    <div className="relative w-32 shrink-0">
+                      <DecimalInput
+                        id={`items.${index}.pallet_kg`}
+                        aria-invalid={palletError ? true : undefined}
+                        aria-describedby={
+                          palletError ? `items.${index}.pallet_kg-error` : undefined
+                        }
+                        value={pallet}
+                        onChange={(e) =>
+                          setValue(`items.${index}.pallet_kg`, e.target.value, {
+                            shouldDirty: true,
+                          })
+                        }
+                        {...palletField.inputProps}
+                        disabled={disabled}
+                        className="h-10 rounded-lg pr-9 text-center font-mono font-semibold"
+                      />
+                      <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 font-mono text-sm text-muted-foreground">
+                        {t('reception.weight.unit')}
+                      </span>
+                    </div>
+                    <span className="hidden w-14 shrink-0 sm:block" aria-hidden="true" />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t('reception.weight.removePallet')}
+                      disabled={disabled}
+                      onClick={() => {
+                        setValue(`items.${index}.pallet_kg`, '0.00', { shouldDirty: true });
+                        setShowPallet(false);
+                      }}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                  {palletError ? (
+                    <p
+                      id={`items.${index}.pallet_kg-error`}
+                      role="alert"
+                      className="mt-1.5 text-sm leading-snug text-destructive"
+                    >
+                      {t(palletError)}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
               {tare.fields.map((row, rowIndex) => {
                 const rowTareType = tareTypes.find(
                   (type) => type.id === tareRows[rowIndex]?.tare_type_id,
@@ -385,7 +407,7 @@ export function LineEditor({
                         ))}
                       </SelectField>
                     </div>
-                    <div className="flex h-10 items-center gap-1 rounded-lg border border-border bg-background p-1">
+                    <div className="flex h-10 w-32 shrink-0 items-center gap-1 rounded-lg border border-border bg-background p-1">
                       <Button
                         type="button"
                         variant="ghost"
@@ -402,7 +424,7 @@ export function LineEditor({
                         inputMode="numeric"
                         autoComplete="off"
                         disabled={disabled}
-                        className="w-10 text-center font-mono font-semibold"
+                        className="w-full min-w-0 flex-1 text-center font-mono font-semibold"
                         {...unitsField(rowIndex)}
                       />
                       <Button
@@ -416,11 +438,9 @@ export function LineEditor({
                         <Plus className="size-3.5" />
                       </Button>
                     </div>
-                    {rowTareType ? (
-                      <span className="hidden w-14 shrink-0 text-right font-mono text-sm whitespace-nowrap text-muted-foreground sm:block">
-                        {formatKg(mul(rowTareType.weight_kg, rowUnits), locale)}
-                      </span>
-                    ) : null}
+                    <span className="hidden w-14 shrink-0 text-right font-mono text-sm whitespace-nowrap text-muted-foreground sm:block">
+                      {rowTareType ? formatKg(mul(rowTareType.weight_kg, rowUnits), locale) : null}
+                    </span>
                     {tare.fields.length > 1 ? (
                       <Button
                         type="button"
@@ -432,6 +452,10 @@ export function LineEditor({
                       >
                         <Trash2 className="size-3.5" />
                       </Button>
+                    ) : revealPallet ? (
+                      // Holds the remove column so a lone tare row lines up
+                      // with the pallet row's own remove button above it.
+                      <span className="size-8 shrink-0" aria-hidden="true" />
                     ) : null}
                   </div>
                 );
@@ -636,6 +660,19 @@ export function LineEditor({
             <Package className="size-3.5" />
             {t('reception.weight.otherTare')}
           </Button>
+          {revealPallet ? null : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="shrink-0"
+              disabled={disabled}
+              onClick={() => setShowPallet(true)}
+            >
+              <Layers className="size-3.5" />
+              {t('reception.weight.pallet')}
+            </Button>
+          )}
           {/* «Ще позиція» always leaves an empty draft behind, and an empty
               draft cannot preview (`isPreviewable` wants every line complete)
               — with no way back the operator is stuck staring at a dark submit

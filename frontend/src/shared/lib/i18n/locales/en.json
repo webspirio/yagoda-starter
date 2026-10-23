@@ -936,6 +936,7 @@
       "fewer": "One fewer {{n}}",
       "more": "One more {{n}}",
       "removeTare": "Remove tare row",
+      "removePallet": "Remove pallet",
       "otherTare": "Other tare"
     },
     "grade": {
