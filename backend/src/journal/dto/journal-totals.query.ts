@@ -1,4 +1,5 @@
 import {
+  IsISO8601,
   IsOptional,
   IsUUID,
   Matches,
@@ -28,10 +29,14 @@ class NotBeforeFrom implements ValidatorConstraintInterface {
  *  same bounds `GET /intakes` and `GET /payouts` filter the journal's tables by.
  *  `collection_point_id` is IGNORED for an operator, as on those lists. */
 export class JournalTotalsQueryDto {
+  // `strict` rejects a date that is not on the calendar — `2026-02-30` would
+  // otherwise reach `business_date BETWEEN` and come back as a 500.
   @Matches(BUSINESS_DATE, { message: 'from must be YYYY-MM-DD' })
+  @IsISO8601({ strict: true }, { message: 'from must be a calendar date' })
   from: string;
 
   @Matches(BUSINESS_DATE, { message: 'to must be YYYY-MM-DD' })
+  @IsISO8601({ strict: true }, { message: 'to must be a calendar date' })
   @Validate(NotBeforeFrom)
   to: string;
 

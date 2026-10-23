@@ -31,6 +31,15 @@ describe('JournalTotalsQueryDto', () => {
     expect(parse({ from: '2026-10-1', to: '2026-10-31' })).not.toHaveLength(0);
   });
 
+  it('refuses a well-formed date that is not on the calendar — Postgres would answer it with a 500', () => {
+    expect(parse({ from: '2026-02-30', to: '2026-03-01' }).map((e) => e.property)).toEqual([
+      'from',
+    ]);
+    expect(parse({ from: '2026-02-01', to: '2026-02-29' }).map((e) => e.property)).toEqual(['to']);
+    // A leap day is on the calendar.
+    expect(parse({ from: '2028-02-29', to: '2028-03-01' })).toHaveLength(0);
+  });
+
   it('refuses an inverted range', () => {
     const errors = parse({ from: '2026-10-31', to: '2026-10-01' });
     expect(errors.map((e) => e.property)).toEqual(['to']);
