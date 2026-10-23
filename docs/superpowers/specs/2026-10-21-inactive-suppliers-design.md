@@ -52,7 +52,8 @@ crates out at one point under a supplier homed at another cannot occur.
   supplier; listing one would offer a guaranteed error.
 - **No change to who may be paid.** An owed inactive supplier stays unpayable, as the backend
   already rules; whether that is the right policy is §7's open question.
-- **`SupplierPicker` (reception) and «Борги» are untouched** — see §7.
+- **`SupplierPicker` (reception) is untouched** — see §7. «Борги» gets the card's treatment
+  in review: «Видати без ягоди» is disabled on an inactive row, which the backend would refuse.
 - No new «Стан» column, no reactivation shortcut. Reactivating stays the existing switch in
   the edit dialog, reachable from every row of the list.
 
@@ -167,9 +168,8 @@ Added to `docs/superpowers/2026-09-05-foundation-slice-follow-ups.md`:
 - **Can an owed inactive supplier be paid?** Today no: the backend refuses the payout
   (`SUPPLIER_INACTIVE`) and the UI copy says «спершу активуйте», so the workflow is
   activate → pay → deactivate. A question for the client, not a defect.
-- **«Борги» offers «Виплатити» on an inactive row** (`DebtsPage.tsx:179`, the row already
-  carries a «неактивний» badge) — a guaranteed `SUPPLIER_INACTIVE`. Same treatment as the
-  card's (§6.3 of the #228 spec) once the policy above is settled.
+  If the answer becomes yes, the card's payout actions and «Борги»'s «Видати без ягоди»
+  (disabled on an inactive row — built in review, no longer a follow-up) re-enable together.
 - **Optional:** warn in the edit dialog when deactivating someone who still holds crates or
   is owed money.
 

@@ -18,7 +18,8 @@
 - `include_zero=false` behaviour of `/crate-balances` is unchanged; the response shape is unchanged.
 - `/supplier-totals` stays unpaged; search, the three sorts and operator scoping are unchanged. `status` defaults to `active`; any other value than `active|inactive|all` is a 400.
 - An absent or unknown `?status=` in the suppliers page URL reads as `active`; `active` is written to the URL as nothing (no param).
-- The issue dialog stays active-only; `SupplierPicker` and «Борги» are not touched.
+- The issue dialog stays active-only; `SupplierPicker` and «Борги» are not touched. (Review later
+  gave «Борги» the card's treatment — see the spec's §5.)
 - Work on the branch `feat/228-inactive-suppliers` in the main checkout (already created), not a worktree.
 - Run `npm run verify:full` once at the end (Task 8), not per commit. Its rows that need a daemon or a database may be SKIPPED locally — say which, never «all green».
 

@@ -1650,9 +1650,8 @@ Spec: `docs/superpowers/specs/2026-10-21-inactive-suppliers-design.md` §7.
 - **Can an owed inactive supplier be paid?** Today no: the backend refuses the payout
   (`SUPPLIER_INACTIVE`, `create-payout.command.ts`) and the UI copy says «спершу активуйте»,
   so the workflow is activate → pay → deactivate. A question for the client, not a defect.
-- **«Борги» offers «Виплатити» on an inactive row** (`DebtsPage.tsx`, the row already carries
-  a «неактивний» badge) — a guaranteed `SUPPLIER_INACTIVE`. Give it the card's treatment
-  (#228 spec §6.3) once the policy above is settled.
+  If the answer becomes yes, two screens re-enable together: the card's payout actions and
+  «Борги»'s «Видати без ягоди», disabled on an inactive row since #270's review.
 - **Optional:** warn in the supplier edit dialog when deactivating someone who still holds
   crates or is owed money.
 - **A search with no match reads as an empty list** (`SuppliersPage.tsx`). Under «Неактивні»
