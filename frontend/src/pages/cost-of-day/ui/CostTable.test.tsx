@@ -6,8 +6,7 @@ import type { CostOfDay, CostOfDayProduct } from '@/entities/cost-of-day';
 import { CostTable } from './CostTable';
 
 // Ukrainian copy on purpose — `test-setup.ts` defaults the suite to 'en', so
-// switch for this file only and switch back so it never leaks (same convention
-// as `BerryTable.test.tsx`).
+// switch for this file only and switch back so it never leaks (same convention).
 beforeAll(async () => {
   await i18n.changeLanguage('uk');
 });

@@ -33,7 +33,7 @@ import type { CostOfDay } from '@/entities/cost-of-day';
 function FormatError({ id }: { id: string }) {
   const { t } = useTranslation();
   return (
-    <p id={id} role="alert" className="mt-1.5 w-full text-xs leading-snug text-destructive">
+    <p id={id} role="alert" className="mt-1.5 basis-full text-xs leading-snug text-destructive">
       {t('errors.decimalFormat')}
     </p>
   );
@@ -188,7 +188,7 @@ export function ExpensesStrip({
               <Button
                 variant="ghost"
                 size="icon"
-                className="print-hide size-6 text-muted-foreground"
+                className="print-hide size-7 text-muted-foreground"
                 aria-label={t('costOfDay.expenses.edit', { label: line.label })}
                 onClick={() => startEdit(line)}
               >
@@ -197,7 +197,7 @@ export function ExpensesStrip({
               <Button
                 variant="ghost"
                 size="icon"
-                className="print-hide size-6 text-muted-foreground"
+                className="print-hide size-7 text-muted-foreground"
                 aria-label={t('costOfDay.expenses.remove', { label: line.label })}
                 onClick={() => void removeLine(line)}
               >
@@ -208,13 +208,14 @@ export function ExpensesStrip({
         )
       )}
 
-      <div className="print-hide flex flex-wrap items-center gap-2">
+      <div className="print-hide flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        <div className="flex min-w-0 flex-1 basis-[28rem] items-center gap-2">
         <TextInput
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           placeholder={t('costOfDay.expenses.labelField')}
           aria-label={t('costOfDay.expenses.labelField')}
-          className="h-8 min-w-28 text-xs"
+          className="h-8 min-w-28 flex-1 text-xs"
         />
         <DecimalInput
           value={amount}
@@ -222,17 +223,19 @@ export function ExpensesStrip({
           {...addAmount.inputProps}
           placeholder={t('costOfDay.expenses.amountField')}
           aria-label={t('costOfDay.expenses.amountField')}
-          className="h-8 w-24 text-right font-mono text-xs"
+          className="h-8 w-24 shrink-0 text-right font-mono text-xs"
         />
         <Button
           variant="secondary"
           size="sm"
+          className="shrink-0"
           onClick={() => void add()}
           disabled={!label.trim() || addAmount.parsed === null || create.isPending}
         >
           <Plus className="size-3.5" />
           {t('costOfDay.expenses.addLine')}
         </Button>
+        </div>
         {addAmount.error ? <FormatError id="expense-amount-error" /> : null}
       </div>
 

@@ -25,7 +25,7 @@ vi.mock('@/entities/day-expense', () => ({
 
 // Every assertion below is the Ukrainian copy the component's own t() calls
 // produce, but `test-setup.ts` defaults the active i18n language to 'en' for
-// the whole suite (see `BerryTable.test.tsx` for the same convention). Set it
+// the whole suite. Set it
 // here for this file only, and reset it afterwards so it never leaks into a
 // later file's "runs in ENGLISH" assumption.
 beforeAll(async () => {

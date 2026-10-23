@@ -36,6 +36,14 @@ describe('StatusChips', () => {
     expect(screen.getByRole('button', { name: 'Звірено' })).toBeInTheDocument();
   });
 
+  it('the checks chip points at the disclosure it opens', () => {
+    renderChips();
+    expect(screen.getByRole('button', { name: 'Звірено' })).toHaveAttribute(
+      'aria-controls',
+      'cost-checks',
+    );
+  });
+
   it('open shift is neutral, never amber', () => {
     const { container } = renderChips({ provisional: true });
     expect(screen.getByText('Зміна ще відкрита — цифри рухаються')).toBeInTheDocument();

@@ -60,14 +60,18 @@ export function StatusChips({
       {day.checks === null ? (
         <Badge variant="outline">{t('costOfDay.status.checksPending')}</Badge>
       ) : day.checks.shares_ok && day.checks.total_ok ? (
-        <button type="button" onClick={onChecksClick} className="rounded-4xl">
+        <button type="button" onClick={onChecksClick} aria-controls="cost-checks"
+          className="rounded-4xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           <Badge variant="outline" className="border-[var(--leaf)] text-[var(--leaf)]">
             <CheckCircle2 aria-hidden />
             {t('costOfDay.status.checked')}
           </Badge>
         </button>
       ) : (
-        <button type="button" onClick={onChecksClick} className="rounded-4xl">
+        <button type="button" onClick={onChecksClick} aria-controls="cost-checks"
+          className="rounded-4xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
           <Badge variant="destructive">
             <XCircle aria-hidden />
             {t('costOfDay.status.mismatch')}

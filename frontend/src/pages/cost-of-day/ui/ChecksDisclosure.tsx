@@ -11,8 +11,8 @@ import type { CostOfDay } from '@/entities/cost-of-day';
  *
  * A native `<details>`: `open` follows the prop (the page opens it when a
  * check fails or the chip is clicked) and the user's own toggles are synced
- * back through `onOpenChange`. In print the body is shown whether or not the
- * element is open. `null` when there is no звірка to show.
+ * back through `onOpenChange`. In print it opens itself on `beforeprint`
+ * and restores the user's state on `afterprint`. `null` when there is no звірка to show.
  */
 export function ChecksDisclosure({
   day,

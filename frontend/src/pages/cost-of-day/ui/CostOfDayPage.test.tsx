@@ -105,7 +105,7 @@ beforeEach(() => {
 
 describe('CostOfDayPage', () => {
   it('drops a half-typed expense when the shift underneath it changes', async () => {
-    // ExpensesPanel keeps `label`/`amount`/`editing` in its own useState, and
+    // ExpensesStrip keeps `label`/`amount`/`editing` in its own useState, and
     // the page re-RENDERS rather than remounts when the owner steps to another
     // date whose queries are already cached (gcTime is 24h, so `isPending`
     // never goes true and the pending branch never unmounts the tree). Without

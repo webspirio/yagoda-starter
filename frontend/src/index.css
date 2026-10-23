@@ -387,6 +387,7 @@
   .printable [class*='bg-[var(--leaf)]'],
   .printable [class*='bg-[var(--amber)]'],
   .printable [class*='bg-[var(--plum)]'],
+  .printable [class*='bg-[var(--sky)]'],
   .printable [data-slot='badge'] {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
