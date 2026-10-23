@@ -6,7 +6,7 @@ import { CostOfDayPage } from './CostOfDayPage';
 
 // Every assertion below is the Ukrainian copy the page's own t() calls
 // produce, but `test-setup.ts` defaults the active i18n language to 'en' for
-// the whole suite (see `BerryTable.test.tsx` for the same convention). Set it
+// the whole suite (same convention as every sibling test file). Set it
 // here for this file only, and reset it afterwards so it never leaks into a
 // later file's "runs in ENGLISH" assumption.
 beforeAll(async () => {
@@ -56,6 +56,17 @@ const day = {
   shortfall_per_kg: '1.94',
   expenses_per_kg: '4.45',
   total_check: '135700.00',
+  weighed: {
+    intake_kg: '800.00',
+    shortfall_kg: '10.00',
+    accrued: '128000.00',
+    shortfall: '1600.00',
+    price_was: '160.00',
+  },
+  full_cost: '133460.00',
+  price_cost_avg: '168.94',
+  unweighed: { intake_kg: '0.00', accrued: '0.00' },
+  checks: { shares_ok: true, total_ok: true } as { shares_ok: boolean; total_ok: boolean } | null,
   top_ups_included: true as const,
   top_ups_latest_at: null,
   products: [
@@ -67,11 +78,15 @@ const day = {
       reweigh_net_kg: '790.00',
       shortfall: '1600.00',
       shortfall_kg: '10.00',
+      shortfall_share: '1660.00',
+      expenses_share: '3800.00',
       basket_share: '5460.00',
+      full_cost: '133460.00',
       price_was: '160.00',
       price_cost: '166.39',
       price_by_our_weight: '162.03',
       complete: true,
+      grades: [],
     },
   ],
 };
@@ -90,7 +105,7 @@ beforeEach(() => {
 
 describe('CostOfDayPage', () => {
   it('drops a half-typed expense when the shift underneath it changes', async () => {
-    // ExpensesPanel keeps `label`/`amount`/`editing` in its own useState, and
+    // ExpensesStrip keeps `label`/`amount`/`editing` in its own useState, and
     // the page re-RENDERS rather than remounts when the owner steps to another
     // date whose queries are already cached (gcTime is 24h, so `isPending`
     // never goes true and the pending branch never unmounts the tree). Without
@@ -111,13 +126,41 @@ describe('CostOfDayPage', () => {
     expect(screen.getByPlaceholderText('Підпис витрати')).toHaveValue('');
   });
 
-  it('renders the day — both halves and the final table', () => {
+  it('renders chips, the strip, the table and the checks in that order', () => {
     render(<CostOfDayPage />);
 
     expect(screen.getByRole('heading', { name: 'Собівартість дня' })).toBeInTheDocument();
-    expect(screen.getByText('Ягода')).toBeInTheDocument();
-    expect(screen.getByText('Витрати за день')).toBeInTheDocument();
-    expect(screen.getByText('Середня ціна після витрат')).toBeInTheDocument();
+    const strip = screen.getByText('Витрати дня');
+    const table = screen.getByText('Товар');
+    // «Звірено» is both a chip and the disclosure's summary; the summary is last.
+    const summaries = screen.getAllByText('Звірено', { exact: false });
+    const checks = summaries[summaries.length - 1];
+    const before = Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(strip.compareDocumentPosition(table) & before).toBeTruthy();
+    expect(table.compareDocumentPosition(checks) & before).toBeTruthy();
+  });
+
+  it('opens the checks when they fail', () => {
+    dayMock.mockReturnValue(ok({ ...day, checks: { shares_ok: true, total_ok: false } }));
+    const { container } = render(<CostOfDayPage />);
+
+    expect(container.querySelector('details#cost-checks')).toHaveAttribute('open');
+    expect(screen.getAllByText('Не сходиться', { exact: false }).length).toBeGreaterThan(0);
+  });
+
+  it('keeps the checks closed when they pass', () => {
+    const { container } = render(<CostOfDayPage />);
+    expect(container.querySelector('details#cost-checks')).not.toHaveAttribute('open');
+  });
+
+  it('prints the disclosure body and the two footnotes', () => {
+    const { container } = render(<CostOfDayPage />);
+
+    // The body is in the DOM even while the <details> is closed, and the
+    // footnotes carry `print-only` — the print stylesheet shows both.
+    expect(container.querySelector('details#cost-checks')).toHaveTextContent('Частки товарів');
+    expect(container.querySelectorAll('ol.print-only')).toHaveLength(1);
+    expect(container.querySelectorAll('ol.print-only li')).toHaveLength(2);
   });
 
   it('marks an open shift as still moving', () => {
@@ -158,18 +201,18 @@ describe('CostOfDayPage', () => {
     expect(screen.getByText('Цього дня на цьому пункті прийомки не було.')).toBeInTheDocument();
   });
 
-  // ExpensesPanel is the application's ONLY write path to `day_expenses`.
+  // The strip is the application's ONLY write path to `day_expenses`.
   // A day with no products still needs it reachable: either nothing has
   // come in yet and the owner still wants to log «пальне 1 000,00», or
   // every intake was voided under §9.3 while the server still counts
   // existing expense lines in expenses_amount/basket/per_kg — money that
   // moves the собівартість must never become invisible and unreachable.
-  it('keeps the expenses panel reachable on an empty day, beside the empty-day message', () => {
+  it('keeps the expenses strip reachable on an empty day, beside the empty-day message', () => {
     dayMock.mockReturnValue(ok({ ...day, products: [] }));
     render(<CostOfDayPage />);
 
     expect(screen.getByText('Цього дня на цьому пункті прийомки не було.')).toBeInTheDocument();
-    expect(screen.getByText('Витрати за день')).toBeInTheDocument();
+    expect(screen.getByText('Витрати дня')).toBeInTheDocument();
   });
 
   it('offers every active point, base included — this screen does not filter by kind', () => {
@@ -186,24 +229,36 @@ describe('CostOfDayPage', () => {
     expect(screen.getByRole('option', { name: 'Склад' })).toBeInTheDocument();
   });
 
-  // FinalPrices casts `day.per_kg as string` and sums `basket_share` into its
-  // «Σ із пулу» check — on a day where nothing was weighed, every share is
-  // null and that sum would print 0,00 ₴, a basket total no kilogram backs.
-  // CostOfDayPage's `per_kg === null` gate is the component's whole safety
-  // contract, and nothing else enforces it — pin it here.
-  it('never mounts FinalPrices when per_kg is null, and shows the awaiting-reweigh panel instead', () => {
+  // On a day where nothing was weighed `per_kg` and every share are null; the
+  // table must dash the result and say so, and the strip must stay usable.
+  it('keeps the strip and dashes the result when nothing is weighed', () => {
     dayMock.mockReturnValue(
       ok({
         ...day,
         per_kg: null,
         shortfall_per_kg: null,
         expenses_per_kg: null,
-        products: day.products.map((p) => ({ ...p, basket_share: null })),
+        weighed: null,
+        full_cost: null,
+        price_cost_avg: null,
+        checks: null,
+        unweighed: { intake_kg: '800.00', accrued: '128000.00' },
+        products: day.products.map((p) => ({
+          ...p,
+          basket_share: null,
+          shortfall_share: null,
+          expenses_share: null,
+          full_cost: null,
+          price_cost: null,
+          reweigh_net_kg: null,
+          complete: false,
+        })),
       }),
     );
-    render(<CostOfDayPage />);
+    const { container } = render(<CostOfDayPage />);
 
-    expect(screen.queryByText('Середня ціна після витрат')).not.toBeInTheDocument();
-    expect(screen.getByText('Очікує переважування')).toBeInTheDocument();
+    expect(screen.getByText('Витрати дня')).toBeInTheDocument();
+    expect(container.querySelector('[data-awaiting]')).not.toBeNull();
+    expect(container.querySelector('details#cost-checks')).toBeNull();
   });
 });

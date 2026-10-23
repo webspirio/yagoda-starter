@@ -119,5 +119,25 @@ describe('shortfall by product (DB)', () => {
     expect(row?.shortfall_kg).toBe('1.40');
     expect(row?.shortfall).toBe('265.19');
     expect(cost.shortfall_amount).toBe('265.19');
+
+    // The breakdown under the row still shows where the base put the berries.
+    expect(row?.grades).toEqual([
+      {
+        product_grade_id: gradeOne.id,
+        product_grade_name: 'Сорт 1',
+        accrued: '62634.00',
+        intake_net_kg: '324.30',
+        reweigh_net_kg: '218.00',
+        price_was: '193.14',
+      },
+      {
+        product_grade_id: gradeTwo.id,
+        product_grade_name: 'Сорт 2',
+        accrued: '50413.00',
+        intake_net_kg: '272.50',
+        reweigh_net_kg: '377.40',
+        price_was: '185.00',
+      },
+    ]);
   });
 });

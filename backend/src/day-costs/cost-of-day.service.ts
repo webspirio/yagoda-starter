@@ -1,8 +1,8 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { ShiftsService } from '../shifts/shifts.service';
-import { productCostRows, ProductCostRow } from './product-cost-rows';
-import { add, allocate, div, isZero, sum } from '../common/money';
+import { productCostRows, ProductCostGrade, ProductCostRow } from './product-cost-rows';
+import { add, allocate, cmp, div, isZero, sub, sum } from '../common/money';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 export interface CostOfDayProduct {
@@ -23,19 +23,50 @@ export interface CostOfDayProduct {
   shortfall: string;
   /** The same недостача in kilograms, clamped per product like `shortfall`. */
   shortfall_kg: string;
-  /** «із пулу» — this product's share of the СПІЛЬНИЙ КОШИК.
+  /** This product's part of the day's НЕДОСТАЧА — `allocate(shortfall_amount,
+   *  weighed kg)[i]` over the `complete` products' `reweigh_net_kg` (spec
+   *  2026-10-23 §3.3). Largest remainder, so Σ `shortfall_share` ===
+   *  `shortfall_amount` exactly. Pooled, not this product's own `shortfall`:
+   *  §8.4 spreads the недостача over every kilogram that arrived.
    *
-   *  ALLOCATED, NOT MULTIPLIED. `allocate` is a largest-remainder split, so
-   *  Σ `basket_share` === `basket` exactly, which is what §8.4's «жодна
-   *  гривня не загубилася» claims and what the screen checks in front of the
-   *  owner. A per-row `mul(per_kg, reweigh_net_kg)` loses 2,94 ₴ of a
-   *  5 460,00 basket on §8.4's own numbers.
+   *  `null` exactly when `basket_share` is. */
+  shortfall_share: string | null;
+  /** This product's part of the day's ВИТРАТИ — `allocate(expenses_amount,
+   *  weighed kg)[i]`, the same weights as `shortfall_share`, so Σ
+   *  `expenses_share` === `expenses_amount` exactly.
+   *
+   *  `null` exactly when `basket_share` is. */
+  expenses_share: string | null;
+  /** «із пулу» — this product's share of the СПІЛЬНИЙ КОШИК, now
+   *  `shortfall_share + expenses_share` (spec 2026-10-23 §3.3), so the row's
+   *  two coloured parts add up to it on screen.
+   *
+   *  ALLOCATED, NOT MULTIPLIED. Each part is a largest-remainder split, so
+   *  Σ `basket_share` === `shortfall_amount + expenses_amount` === `basket`
+   *  exactly, which is what §8.4's «жодна гривня не загубилася» claims and
+   *  what `checks.shares_ok` reports. A per-row `mul(per_kg, reweigh_net_kg)`
+   *  loses 2,94 ₴ of a 5 460,00 basket on §8.4's own numbers. Two splits
+   *  instead of one `allocate(basket, …)` may move a kopiyka between
+   *  products on some days; the sum cannot move.
    *
    *  `null` under the same two conditions as `price_cost`: nothing weighed at
    *  all, or this product is not `complete` (§3.15 — a product that
    *  contributed nothing to the denominator collects nothing from the
    *  numerator). */
   basket_share: string | null;
+  /** «повна вартість» — `accrued − shortfall + basket_share`: what the
+   *  kilograms that actually reached the base cost, with the day's whole
+   *  basket share on top (spec 2026-10-23 §3.4). The недостача comes OUT of
+   *  `accrued` and comes back IN pooled through `shortfall_share`, so Σ
+   *  `full_cost` over the complete products is `weighed.accrued +
+   *  expenses_amount` exactly.
+   *
+   *  A money figure, never a per-kilogram one: `full_cost ÷ reweigh_net_kg`
+   *  sits a kopiyka off `price_cost` (the rounding of «було») and is never
+   *  printed beside собівартість (spec §3.1).
+   *
+   *  `null` exactly when `basket_share` is. */
+  full_cost: string | null;
   /** «було» — the price the day's intake actually paid, per kilogram taken in. */
   price_was: string;
   /** «собівартість» — `price_was` plus the day's per-kilogram basket share.
@@ -52,6 +83,8 @@ export interface CostOfDayProduct {
    *  `false` is what makes the two nulls above a «не перезважено» dash rather
    *  than a zero, so the screen can say which of the two it is. */
   complete: boolean;
+  /** The product's grades, for the expandable breakdown under its row. */
+  grades: ProductCostGrade[];
 }
 
 export interface CostOfDayResponse {
@@ -75,21 +108,83 @@ export interface CostOfDayResponse {
   basket: string;
   /** basket ÷ reweighed_kg — the same figure added to every product's price. `null` when nothing was weighed. */
   per_kg: string | null;
-  /** §8.4's «з них недостача 1,94» — `shortfall_amount ÷ reweighed_kg`.
+  /** §8.4's «з них недостача 1,94» — the недостача half of `per_kg`:
+   *  `allocate(per_kg, [shortfall_amount, expenses_amount])[0]`.
    *  `null` under the same condition as `per_kg`. */
   shortfall_per_kg: string | null;
-  /** §8.4's «з них витрати 4,45» — `expenses_amount ÷ reweighed_kg`.
+  /** §8.4's «з них витрати 4,45» — the витрати half of `per_kg`:
+   *  `allocate(per_kg, [shortfall_amount, expenses_amount])[1]`.
    *
-   *  THIS PAIR IS A BREAKDOWN, NOT AN ADDITION. Each rounds half-up on its
-   *  own, so the two can sit a kopiyka away from `per_kg`; `per_kg` stays
-   *  `basket ÷ reweighed_kg`, because that is the figure actually added to
-   *  every product's price. §8.4's own numbers (1,94 + 4,45 = 6,39) land
-   *  exactly — arithmetic luck, not a guarantee. The screen no longer prints
-   *  this pair (the owner dropped the «з них» hint); it stays on the wire,
-   *  and printed again it must read as a breakdown, never as a sum. */
+   *  THIS PAIR IS AN ADDITION (spec 2026-10-23 §3.2): `shortfall_per_kg +
+   *  expenses_per_kg === per_kg`, always, because `allocate` is a
+   *  largest-remainder split of `per_kg` itself rather than two independent
+   *  quotients. Independent `÷ reweighed_kg` divisions used to miss by a
+   *  kopiyka (19.10 at Гайове: 0,43 + 2,78 = 3,21 against 3,22); the split
+   *  gives 0,43 + 2,79. `per_kg` itself is unchanged — still `basket ÷
+   *  reweighed_kg`, the figure added to every product's price — so the
+   *  screen may print the pair as its two summands. A zero basket splits
+   *  0,00 into 0,00 + 0,00. `null` under the same condition as `per_kg`. */
   expenses_per_kg: string | null;
   /** accrued + expenses_amount — the client's own звірка check. */
   total_check: string;
+  /** The day's TOTAL ROW, over the `complete` products only (spec
+   *  2026-10-23 §3.4, the designer's call), so every column of it adds up on
+   *  its own rows: `intake_kg − reweighed_kg = shortfall_kg` (exactly, unless
+   *  some product came back OVER — its surplus is clamped out of
+   *  `shortfall_kg` per product, §8.2, so the difference then reads less
+   *  than the shortfall), and `price_was` is `accrued ÷ intake_kg` of those
+   *  same rows. A product not weighed in full is reported in `unweighed`,
+   *  never folded in here.
+   *
+   *  - `intake_kg`    — Σ `intake_net_kg` of the complete products.
+   *  - `shortfall_kg` — Σ `shortfall_kg` of the complete products.
+   *  - `accrued`      — Σ `accrued` of the complete products.
+   *  - `shortfall`    — Σ `shortfall` of the complete products; equal to
+   *                     `shortfall_amount`, since an incomplete product books
+   *                     none (§3.15).
+   *  - `price_was`    — `accrued ÷ intake_kg`, the total row's «₴/кг у
+   *                     квитанції».
+   *
+   *  `null` exactly when `per_kg` is: with nothing weighed there is no total
+   *  row to print, only «—». */
+  weighed: {
+    intake_kg: string;
+    shortfall_kg: string;
+    accrued: string;
+    shortfall: string;
+    price_was: string;
+  } | null;
+  /** «повна вартість» of the day — Σ product `full_cost` over the complete
+   *  products, i.e. `weighed.accrued + expenses_amount`. The money figure the
+   *  old «разом» showed, named for what it is. `null` exactly when `per_kg`
+   *  is. */
+  full_cost: string | null;
+  /** The total row's average собівартість — `full_cost ÷ reweighed_kg`,
+   *  §8.6's «сума ÷ вага». An AVERAGE over the day, not any one product's
+   *  `price_cost`, so the screen leaves its Δ cell empty. `null` exactly
+   *  when `per_kg` is. */
+  price_cost_avg: string | null;
+  /** The products NOT weighed in full (`complete === false`), reported
+   *  beside the total row rather than inside it: Σ `intake_net_kg` and Σ
+   *  `accrued` over them. Never `null` — '0.00' / '0.00' when every product
+   *  is complete — because «nothing is left unweighed» is a real zero, not a
+   *  dash. On a day with nothing weighed at all it carries the whole day
+   *  (`unweighed.accrued === accrued`). */
+  unweighed: { intake_kg: string; accrued: string };
+  /** The two звірка facts the screen states in front of the owner, computed
+   *  here so the browser compares nothing:
+   *
+   *  - `shares_ok` — Σ product `basket_share` === `basket` («жодна гривня не
+   *                  загубилася»).
+   *  - `total_ok`  — `full_cost + unweighed.accrued === total_check`: the
+   *                  day's повна вартість plus what is still unweighed
+   *                  accounts for every hryvnia accrued and spent.
+   *
+   *  Both hold by construction; they are reported, not assumed, so a
+   *  regression shows up on the screen instead of in silence. `null` exactly
+   *  when `per_kg` is — before anything is weighed there is nothing to
+   *  reconcile («Звірка — після переважування»). */
+  checks: { shares_ok: boolean; total_ok: boolean } | null;
   /** §3.12 — a late top-up may still move a closed day; the screen marks that with this pair. */
   top_ups_included: true;
   top_ups_latest_at: string | null;
@@ -147,8 +242,46 @@ export class CostOfDayService {
     // §8.6 «Це не нуль» — a day with nothing weighed gets a dash, not '0.00'.
     const weighedNothing = isZero(reweighedKg);
     const perKg = weighedNothing ? null : div(basket, reweighedKg);
-    const shortfallPerKg = weighedNothing ? null : div(shortfallAmount, reweighedKg);
-    const expensesPerKg = weighedNothing ? null : div(expenses, reweighedKg);
+    // Spec 2026-10-23 §3.2 — the two halves are a SPLIT of `per_kg`, so they
+    // add back up to it; two independent `÷ reweighedKg` quotients could
+    // miss by a kopiyka. A zero basket splits 0,00 evenly, i.e. 0,00 + 0,00.
+    const [shortfallPerKg, expensesPerKg] =
+      perKg === null ? [null, null] : allocate(perKg, [shortfallAmount, expenses]);
+
+    const products = this.buildProducts(rows, perKg, shortfallAmount, expenses);
+    const totalCheck = add(accrued, expenses);
+
+    // §3.15 — the total row covers the complete products only; the rest are
+    // reported beside it in `unweighed`.
+    const complete = rows.filter((r) => r.complete);
+    const incomplete = rows.filter((r) => !r.complete);
+    const unweighed = {
+      intake_kg: sum(incomplete.map((r) => r.intake_net_kg)),
+      accrued: sum(incomplete.map((r) => r.accrued)),
+    };
+
+    let weighed: CostOfDayResponse['weighed'] = null;
+    let fullCost: string | null = null;
+    let priceCostAvg: string | null = null;
+    let checks: CostOfDayResponse['checks'] = null;
+    if (perKg !== null) {
+      const weighedAccrued = sum(complete.map((r) => r.accrued));
+      const weighedIntakeKg = sum(complete.map((r) => r.intake_net_kg));
+      weighed = {
+        intake_kg: weighedIntakeKg,
+        shortfall_kg: sum(complete.map((r) => r.shortfall_kg)),
+        accrued: weighedAccrued,
+        shortfall: sum(complete.map((r) => r.shortfall)),
+        price_was: div(weighedAccrued, weighedIntakeKg),
+      };
+      const weighedProducts = products.filter((p) => p.complete);
+      fullCost = sum(weighedProducts.map((p) => p.full_cost as string));
+      priceCostAvg = div(fullCost, reweighedKg);
+      checks = {
+        shares_ok: cmp(sum(weighedProducts.map((p) => p.basket_share as string)), basket) === 0,
+        total_ok: cmp(add(fullCost, unweighed.accrued), totalCheck) === 0,
+      };
+    }
 
     return {
       shift_id: shiftId,
@@ -162,31 +295,42 @@ export class CostOfDayService {
       per_kg: perKg,
       shortfall_per_kg: shortfallPerKg,
       expenses_per_kg: expensesPerKg,
-      total_check: add(accrued, expenses),
+      total_check: totalCheck,
+      weighed,
+      full_cost: fullCost,
+      price_cost_avg: priceCostAvg,
+      unweighed,
+      checks,
       top_ups_included: true,
       top_ups_latest_at: topUpsLatestAt,
-      products: this.buildProducts(rows, perKg, basket),
+      products,
     };
   }
 
   private buildProducts(
     rows: ProductCostRow[],
     perKg: string | null,
-    basket: string,
+    shortfallAmount: string,
+    expenses: string,
   ): CostOfDayProduct[] {
-    // §3.15 — the split runs over the COMPLETE products alone, whose
+    // §3.15 — the splits run over the COMPLETE products alone, whose
     // kilograms are exactly `reweighed_kg`. `perKg === null` means that sum
     // is zero, and `allocate` would otherwise split the basket evenly across
     // weightless rows rather than refusing.
+    //
+    // Spec 2026-10-23 §3.3 — TWO splits over the same weights, one per part
+    // of the basket, so each product's row shows its недостача and витрати
+    // separately and each column sums exactly to its own day total.
     const weighed = rows.filter((r) => r.complete);
-    const shares =
-      perKg === null
-        ? []
-        : allocate(
-            basket,
-            weighed.map((r) => r.reweigh_net_kg as string),
-          );
-    const shareOf = new Map(weighed.map((r, i) => [r.product_id, shares[i]]));
+    const weights = weighed.map((r) => r.reweigh_net_kg as string);
+    const shortfallShares = perKg === null ? [] : allocate(shortfallAmount, weights);
+    const expensesShares = perKg === null ? [] : allocate(expenses, weights);
+    const partsOf = new Map(
+      weighed.map((r, i) => [
+        r.product_id,
+        { shortfall: shortfallShares[i], expenses: expensesShares[i] },
+      ]),
+    );
 
     return rows.map((r) => {
       const priceWas = div(r.accrued, r.intake_net_kg);
@@ -198,6 +342,10 @@ export class CostOfDayService {
       // divisor it was deliberately left out of.
       const priceCost = perKg === null || !r.complete ? null : add(priceWas, perKg);
       const priceByOurWeight = r.reweigh_net_kg === null ? null : div(r.accrued, r.reweigh_net_kg);
+      const parts = partsOf.get(r.product_id);
+      const basketShare = parts ? add(parts.shortfall, parts.expenses) : null;
+      // The недостача leaves `accrued` and returns pooled inside the share.
+      const fullCost = basketShare === null ? null : add(sub(r.accrued, r.shortfall), basketShare);
 
       return {
         product_id: r.product_id,
@@ -207,11 +355,15 @@ export class CostOfDayService {
         reweigh_net_kg: r.reweigh_net_kg,
         shortfall: r.shortfall,
         shortfall_kg: r.shortfall_kg,
-        basket_share: shareOf.get(r.product_id) ?? null,
+        shortfall_share: parts?.shortfall ?? null,
+        expenses_share: parts?.expenses ?? null,
+        basket_share: basketShare,
+        full_cost: fullCost,
         price_was: priceWas,
         price_cost: priceCost,
         price_by_our_weight: priceByOurWeight,
         complete: r.complete,
+        grades: r.grades,
       };
     });
   }

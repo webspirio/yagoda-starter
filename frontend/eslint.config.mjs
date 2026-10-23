@@ -200,6 +200,7 @@ export default tseslint.config(
       'src/shared/lib/form-draft/draftStorage.ts',
       'src/shared/lib/i18n/language-preference.ts',
       'src/shared/lib/point-preference/index.ts',
+      'src/shared/lib/sidebar-preference/index.ts',
       'src/shared/lib/theme/theme-preference.ts',
       'src/test-setup.ts',
       'src/**/*.test.ts',

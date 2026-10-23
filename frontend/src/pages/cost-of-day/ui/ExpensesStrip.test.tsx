@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { i18n } from '@/shared/lib/i18n';
 import type { CostOfDay } from '@/entities/cost-of-day';
 import type { DayExpense } from '@/entities/day-expense';
-import { ExpensesPanel } from './ExpensesPanel';
+import { ExpensesStrip } from './ExpensesStrip';
 
 const { createMock, updateMock, removeMock, toastErrorMock } = vi.hoisted(() => ({
   createMock: vi.fn(),
@@ -25,7 +25,7 @@ vi.mock('@/entities/day-expense', () => ({
 
 // Every assertion below is the Ukrainian copy the component's own t() calls
 // produce, but `test-setup.ts` defaults the active i18n language to 'en' for
-// the whole suite (see `BerryTable.test.tsx` for the same convention). Set it
+// the whole suite. Set it
 // here for this file only, and reset it afterwards so it never leaks into a
 // later file's "runs in ENGLISH" assumption.
 beforeAll(async () => {
@@ -49,6 +49,17 @@ const day: CostOfDay = {
   shortfall_per_kg: '1.94',
   expenses_per_kg: '4.45',
   total_check: '135700.00',
+  weighed: {
+    intake_kg: '865.00',
+    shortfall_kg: '11.00',
+    accrued: '131900.00',
+    shortfall: '1660.00',
+    price_was: '152.49',
+  },
+  full_cost: '135700.00',
+  price_cost_avg: '158.90',
+  unweighed: { intake_kg: '0.00', accrued: '0.00' },
+  checks: { shares_ok: true, total_ok: true },
   top_ups_included: true,
   top_ups_latest_at: null,
   products: [],
@@ -67,7 +78,7 @@ const lines: DayExpense[] = [
 ];
 
 const renderPanel = (over: Partial<CostOfDay> = {}, rows = lines) =>
-  render(<ExpensesPanel day={{ ...day, ...over }} expenses={rows} shiftId="s1" locale="uk" />);
+  render(<ExpensesStrip day={{ ...day, ...over }} expenses={rows} shiftId="s1" locale="uk" />);
 
 beforeEach(() => {
   createMock.mockReset().mockResolvedValue(undefined);
@@ -76,21 +87,14 @@ beforeEach(() => {
   toastErrorMock.mockReset();
 });
 
-describe('ExpensesPanel', () => {
-  it('prints the basket and the rate without the «з них» split', () => {
-    renderPanel();
-
-    expect(screen.getByText('5 460,00 ₴')).toBeInTheDocument();
-    expect(screen.queryByText(/з них/)).not.toBeInTheDocument();
-  });
-
+describe('ExpensesStrip', () => {
   it('adds a line and clears the form only after the write succeeds', async () => {
     const user = userEvent.setup();
     renderPanel();
 
     await user.type(screen.getByPlaceholderText('Підпис витрати'), 'водій');
     await user.type(screen.getByPlaceholderText('₴'), '500');
-    await user.click(screen.getByRole('button', { name: 'Додати' }));
+    await user.click(screen.getByRole('button', { name: 'Додати витрату' }));
 
     await waitFor(() =>
       expect(createMock).toHaveBeenCalledWith({ shiftId: 's1', label: 'водій', amount: '500' }),
@@ -105,7 +109,7 @@ describe('ExpensesPanel', () => {
 
     await user.type(screen.getByPlaceholderText('Підпис витрати'), 'водій');
     await user.type(screen.getByPlaceholderText('₴'), '500');
-    await user.click(screen.getByRole('button', { name: 'Додати' }));
+    await user.click(screen.getByRole('button', { name: 'Додати витрату' }));
 
     // A line that vanishes without a word is worse than one that refuses out
     // loud: the собівартість would then be computed without it, silently.
@@ -126,7 +130,7 @@ describe('ExpensesPanel', () => {
 
     await user.type(screen.getByPlaceholderText('Підпис витрати'), 'водій');
     await user.type(screen.getByPlaceholderText('₴'), '500');
-    await user.click(screen.getByRole('button', { name: 'Додати' }));
+    await user.click(screen.getByRole('button', { name: 'Додати витрату' }));
 
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalled());
     expect(toastErrorMock).toHaveBeenCalledWith('Рядок не додано.', {
@@ -199,8 +203,8 @@ describe('ExpensesPanel', () => {
     // that comes back «щось пішло не так» says nothing about the field.
     await user.type(screen.getByLabelText('₴'), '12.');
 
-    expect(screen.getByRole('button', { name: 'Додати' })).toBeDisabled();
-    await user.click(screen.getByRole('button', { name: 'Додати' }));
+    expect(screen.getByRole('button', { name: 'Додати витрату' })).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Додати витрату' }));
     expect(createMock).not.toHaveBeenCalled();
   });
 
@@ -228,13 +232,13 @@ describe('ExpensesPanel', () => {
     await user.type(screen.getByLabelText('₴'), '12.');
 
     // Mid-keystroke: the button is blocked, the message waits.
-    expect(screen.getByRole('button', { name: 'Додати' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Додати витрату' })).toBeDisabled();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     await user.tab();
 
     expect(screen.getByRole('alert')).toHaveTextContent('Введіть число, напр. 12000 або 980,40');
     expect(screen.getByLabelText('₴')).toHaveAttribute('aria-invalid', 'true');
-    expect(screen.getByRole('button', { name: 'Додати' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Додати витрату' })).toBeDisabled();
   });
 
   it('names the shared format message in the inline editor too (#72)', async () => {
@@ -267,7 +271,7 @@ describe('ExpensesPanel', () => {
     await user.type(screen.getByLabelText('Підпис витрати'), 'водій');
     await user.type(screen.getByLabelText('₴'), '1 500');
     expect(screen.getByLabelText('₴')).toHaveValue('1500');
-    await user.click(screen.getByRole('button', { name: 'Додати' }));
+    await user.click(screen.getByRole('button', { name: 'Додати витрату' }));
 
     await waitFor(() =>
       expect(createMock).toHaveBeenCalledWith({ shiftId: 's1', label: 'водій', amount: '1500' }),
@@ -282,19 +286,41 @@ describe('ExpensesPanel', () => {
     await waitFor(() => expect(removeMock).toHaveBeenCalledWith({ id: 'e1' }));
   });
 
-  it('names only the manual expenses when nothing has been weighed', () => {
-    renderPanel({ per_kg: null, shortfall_per_kg: null, expenses_per_kg: null });
+  it("sums the day's expenses and their rate in plum", () => {
+    renderPanel({ expenses_amount: '1700.00', expenses_per_kg: '2.79' });
 
-    // The engine would read the whole day's weight as a shortfall here; saying
-    // «недостача 17 419,07 ₴» on a day nobody weighed anything would be an
-    // invented number. Name the manual expenses and nothing else.
-    expect(screen.getByText('Очікує переважування')).toBeInTheDocument();
-    expect(screen.getByText('3 800,00 ₴ не розподілено')).toBeInTheDocument();
-    expect(screen.queryByText(/Спільний кошик/i)).not.toBeInTheDocument();
+    expect(screen.getByText('= 1 700,00 ₴ · 2,79 ₴/кг')).toBeInTheDocument();
+  });
+
+  it('drops the rate when nothing was weighed', () => {
+    renderPanel({ expenses_amount: '1700.00', expenses_per_kg: null });
+
+    expect(screen.getByText('= 1 700,00 ₴')).toBeInTheDocument();
+    expect(screen.queryByText(/₴\/кг/)).not.toBeInTheDocument();
   });
 
   it('says so when no expenses have been entered', () => {
     renderPanel({}, []);
     expect(screen.getByText('Витрат за цей день ще не заводили.')).toBeInTheDocument();
+  });
+
+  it('lists each line as a row of a table: label, amount, actions', () => {
+    renderPanel();
+
+    const table = screen.getByRole('table');
+    const row = within(table).getByRole('row', { name: /пальне/ });
+    const cells = within(row).getAllByRole('cell');
+    expect(cells[0]).toHaveTextContent('пальне');
+    expect(cells[1]).toHaveTextContent('1 000,00 ₴');
+    expect(within(cells[2]).getByRole('button', { name: 'Змінити «пальне»' })).toBeInTheDocument();
+  });
+
+  it('puts the add form in the last row of the same table', () => {
+    renderPanel();
+
+    const rows = within(screen.getByRole('table')).getAllByRole('row');
+    const last = rows[rows.length - 1];
+    expect(within(last).getByPlaceholderText('Підпис витрати')).toBeInTheDocument();
+    expect(within(last).getByRole('button', { name: 'Додати витрату' })).toBeInTheDocument();
   });
 });
