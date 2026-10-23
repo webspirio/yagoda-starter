@@ -1014,7 +1014,8 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
 });
 
 describe("ReceptionPage — today's receipts open the receipt, which carries the void", () => {
-  it('has no «Void» of its own on a row', () => {
+  it('has no «Void» of its own on a row', async () => {
+    const user = userEvent.setup();
     intakesMock.mockImplementation((filter: { shiftId?: string }) =>
       filter.shiftId
         ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })])
@@ -1022,6 +1023,11 @@ describe("ReceptionPage — today's receipts open the receipt, which carries the
     );
     renderReception();
 
+    // The rows live in the «Сьогодні» popover — open it, or the query below
+    // would be null whatever the rows contain.
+    await user.click(screen.getByRole('button', { name: /Today/ }));
+    const popover = document.querySelector('[data-slot="popover-content"]');
+    expect(within(popover as HTMLElement).getByText('200.00 ₴')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Void SHP-IN-2' })).toBeNull();
   });
 
