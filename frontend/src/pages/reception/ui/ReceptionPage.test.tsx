@@ -583,7 +583,7 @@ describe('ReceptionPage — before the shift is open', () => {
 });
 
 describe('ReceptionPage — choosing the supplier', () => {
-  it('picks a supplier from the picker, then shows their balance note and last receipts', async () => {
+  it('picks a supplier and shows their last receipts in one line beside the picker', async () => {
     const user = userEvent.setup();
     balanceMock.mockReturnValue({
       data: { supplier_id: 's1', debt: '10944.00' },
@@ -602,14 +602,17 @@ describe('ReceptionPage — choosing the supplier', () => {
     renderReception();
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
-    expect(screen.getByText('Previous balance 10,944.00 ₴')).toBeInTheDocument();
-    // The note that the debt is not a separate payout — it lands in «Total».
-    expect(screen.getByText('added to “Total” below')).toBeInTheDocument();
-    expect(screen.getByText('Intake history')).toBeInTheDocument();
+    // The debt plaque and its note are gone from this section — the balance
+    // is read in «Settlement» only.
+    expect(screen.queryByText(/added to “Total” below/)).toBeNull();
+    // «Recent:» and every item share ONE truncating line.
+    const line = screen.getByText('Recent:').closest('.truncate') as HTMLElement;
+    expect(line).not.toBeNull();
     // Both mocked rows share the fixture's default net weight.
-    expect(screen.getAllByText('120.40 kg')).toHaveLength(2);
-    expect(screen.getByText('820.50 ₴')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Supplier card' })).toHaveAttribute(
+    expect(within(line).getAllByText('120.40 kg')).toHaveLength(2);
+    expect(within(line).getByText('820.50 ₴')).toBeInTheDocument();
+    expect(within(line).getByText('1,290.00 ₴')).toBeInTheDocument();
+    expect(within(line).getByRole('link', { name: 'Supplier card' })).toHaveAttribute(
       'href',
       '/suppliers/s1',
     );
@@ -627,7 +630,6 @@ describe('ReceptionPage — choosing the supplier', () => {
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
     // The credit sits inside the «Settlement» card, below «Total to pay out».
-    // (`SupplierSection` still shows its own plaque until it drops it.)
     const card = screen.getByText('Total to pay out').closest('div.border-t') as HTMLElement;
     expect(within(card).getByText('Overpaid by us 250.00 ₴')).toBeInTheDocument();
     expect(within(card).queryByText(/Previous balance/)).toBeNull();
@@ -645,8 +647,9 @@ describe('ReceptionPage — a one-line receipt', () => {
     renderReception();
 
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
-    // The history panel only renders while a supplier is chosen.
-    expect(screen.getByText('Intake history')).toBeInTheDocument();
+    // The history line only renders while a supplier is chosen (no receipts
+    // are mocked here, so it is the card link that proves it).
+    expect(screen.getByRole('link', { name: 'Supplier card' })).toBeInTheDocument();
     await fillDraft(user);
 
     // Net weight and the amount are the SERVER's, never computed here.

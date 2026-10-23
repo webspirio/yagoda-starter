@@ -1,10 +1,9 @@
 import type { Ref } from 'react';
-import { ChevronRight, HandCoins } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import { Eyebrow } from '@/shared/ui/eyebrow';
 import { cn } from '@/shared/lib/cn';
-import { cmp, formatKg, formatUah, sub } from '@/shared/lib/money';
+import { formatKg, formatUah } from '@/shared/lib/money';
 import { formatShortDate } from '@/shared/lib/date';
 import { type Supplier } from '@/entities/supplier';
 import { useIntakesQuery } from '@/entities/intake';
@@ -14,13 +13,13 @@ import { SupplierPicker, type SupplierPickerHandle } from '@/features/pick-suppl
 const HISTORY = 3;
 
 /**
- * «1 · Постачальник» — the picker, and the two things the operator needs to
- * know about the person before weighing anything: what is still owed to them
- * and what they brought last time.
+ * The picker and, beside it, what the person brought last time — one row,
+ * the history on one truncating line. The balance (debt or credit) is read in
+ * «Розрахунок», not here.
  *
  * Search, pick, and inline creation all live in `SupplierPicker`
  * (`@/features/pick-supplier`); this component is a thin wrapper around it
- * plus the balance strip and the history panel. The parent owns the whole
+ * plus the history line. The parent owns the whole
  * `Supplier` object (not just its id) because the document only carries the
  * id — the picker already had the full row in hand when it was chosen.
  */
@@ -29,7 +28,6 @@ export function SupplierSection({
   ownerMode,
   supplier,
   onChange,
-  debt,
   disabled,
   pickerRef,
   autoFocus,
@@ -38,8 +36,6 @@ export function SupplierSection({
   ownerMode: boolean;
   supplier: Supplier | null;
   onChange: (s: Supplier) => void;
-  /** `/suppliers/:id/balance` — positive = owed to the supplier, negative = paid ahead. */
-  debt: string | null;
   disabled: boolean;
   pickerRef?: Ref<SupplierPickerHandle>;
   /** Autofocus the picker's trigger — the page passes this only while no
@@ -52,81 +48,58 @@ export function SupplierSection({
 
   const history = useIntakesQuery({ supplierId: supplier?.id, limit: HISTORY });
 
+  const rows = history.data?.data ?? [];
+
   return (
-    <div className="p-4">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <Eyebrow>{t('reception.supplier.eyebrow')}</Eyebrow>
+    <div className="flex items-center gap-3 p-4">
+      <div className="min-w-0 max-w-[360px] flex-1">
+        <SupplierPicker
+          ref={pickerRef}
+          pointId={pointId}
+          ownerMode={ownerMode}
+          value={supplier}
+          onChange={onChange}
+          disabled={disabled}
+          autoFocus={autoFocus}
+        />
       </div>
 
-      <SupplierPicker
-        ref={pickerRef}
-        pointId={pointId}
-        ownerMode={ownerMode}
-        value={supplier}
-        onChange={onChange}
-        disabled={disabled}
-        autoFocus={autoFocus}
-      />
-
-      {supplier && debt !== null && cmp(debt, '0') === 1 ? (
-        <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-amber/10 px-3 py-2 text-sm">
-          <span className="flex items-center gap-2">
-            <HandCoins className="size-4 shrink-0 text-amber" />
-            {t('reception.supplier.debt', { uah: formatUah(debt, locale) })}
-          </span>
-          <span className="text-xs text-muted-foreground">{t('reception.supplier.debtNote')}</span>
-        </div>
-      ) : null}
-      {supplier && debt !== null && cmp(debt, '0') === -1 ? (
-        <div className="mt-2.5 flex flex-wrap items-center gap-2 rounded-lg bg-leaf/10 px-3 py-2 text-sm">
-          <HandCoins className="size-4 shrink-0 text-leaf" />
-          <span>
-            {t('reception.supplier.credit', { uah: formatUah(sub('0', debt), locale) })}
-          </span>
-        </div>
-      ) : null}
-
       {supplier ? (
-        <div className="mt-2.5 rounded-lg bg-muted/40 px-3 py-2.5">
-          <div className="flex items-center justify-between gap-2">
-            <Eyebrow>{t('reception.supplier.history')}</Eyebrow>
-            <Link
-              to={`/suppliers/${supplier.id}`}
-              className="flex items-center gap-0.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
-            >
-              {t('reception.supplier.card')}
-              <ChevronRight className="size-3.5" />
-            </Link>
-          </div>
-          {(history.data?.data ?? []).length === 0 ? (
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              {t('reception.supplier.historyEmpty')}
-            </p>
+        <div className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {rows.length === 0 ? (
+            t('reception.supplier.historyEmpty')
           ) : (
-            <ul className="mt-2 flex flex-col gap-1">
-              {(history.data?.data ?? []).map((row) => (
-                <li
-                  key={row.id}
-                  className={cn(
-                    'flex items-center gap-2 text-xs',
-                    row.voided_at !== null && 'text-muted-foreground line-through',
-                  )}
-                >
-                  <span className="shrink-0 text-muted-foreground">
-                    {formatShortDate(row.business_date, locale)}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">
-                    {row.voided_at !== null
-                      ? t('reception.today.voided')
-                      : formatKg(row.net_kg, locale)}
-                  </span>
-                  <span className="shrink-0 font-mono font-medium">
-                    {formatUah(row.amount, locale)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <span>{t('reception.supplier.recent')}</span>
+              <ul className="inline">
+                {rows.map((row) => (
+                  <li
+                    key={row.id}
+                    className={cn(
+                      'ml-2 inline',
+                      row.voided_at !== null && 'line-through',
+                    )}
+                  >
+                    {formatShortDate(row.business_date, locale)} {'·'}{' '}
+                    {row.voided_at !== null ? (
+                      <span>{t('reception.today.voided')}</span>
+                    ) : (
+                      <span>{formatKg(row.net_kg, locale)}</span>
+                    )}{' '}
+                    {'·'} <span className="font-mono">{formatUah(row.amount, locale)}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
+          {' '}
+          <Link
+            to={`/suppliers/${supplier.id}`}
+            className="ml-2 inline-flex items-center gap-0.5 transition-colors hover:text-foreground"
+          >
+            {t('reception.supplier.card')}
+            <ChevronRight className="size-3.5" />
+          </Link>
         </div>
       ) : null}
     </div>

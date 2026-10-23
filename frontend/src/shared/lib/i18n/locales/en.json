@@ -916,11 +916,8 @@
       "action": "Set today's prices"
     },
     "supplier": {
-      "eyebrow": "1 · Supplier",
-      "debt": "Previous balance {{uah}}",
-      "debtNote": "added to “Total” below",
       "credit": "Overpaid by us {{uah}}",
-      "history": "Intake history",
+      "recent": "Recent:",
       "card": "Supplier card",
       "historyEmpty": "No intakes yet — this will be the first."
     },

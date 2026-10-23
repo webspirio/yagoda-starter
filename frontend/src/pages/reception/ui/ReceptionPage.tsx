@@ -496,7 +496,6 @@ export function ReceptionPage() {
                   setPaidTouched(false);
                   setSupplierPick((n) => n + 1);
                 }}
-                debt={debt}
                 disabled={!shiftOpen}
               />
               <LineEditor
