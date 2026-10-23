@@ -527,22 +527,12 @@ export function ReceptionPage() {
                 onAdd={() => lines.append(emptyLine(defaultTareTypeId))}
                 onRemove={(index) => lines.remove(index)}
               />
-              {/* Keyed by the supplier pick: a new pick remounts it, so the
-                  pre-fill follows the ceiling again until the operator types. */}
-              <ReturnedCratesField
-                key={`${values.supplier_id}:${supplierPick}`}
-                supplierId={values.supplier_id || null}
-                pointId={bodyPointId ?? undefined}
-                crateTareUnits={crateTareUnits(values.items, tareTypes.data ?? [])}
-                value={values.returned_crates}
-                onChange={(v) => setValue('returned_crates', v, { shouldDirty: true })}
-                disabled={!shiftOpen}
-              />
               <TotalsSection
                 accrued={accrued}
                 netKg={netKg}
                 lineCount={settled?.items.length ?? lines.fields.length}
                 debt={debt}
+                credit={debt !== null && cmp(debt, '0') === -1 ? sub('0', debt) : null}
                 cash={cash}
                 cashUnavailable={pointCash.isError}
                 paid={paidShown}
@@ -557,6 +547,19 @@ export function ReceptionPage() {
                 formErrorKey={formErrorKey}
                 formErrorParams={formErrorParams}
                 showDraftHint={draftIndex > 0 && !draftReady}
+                // Keyed by the supplier pick: a new pick remounts it, so the
+                // pre-fill follows the ceiling again until the operator types.
+                crateReturn={
+                  <ReturnedCratesField
+                    key={`${values.supplier_id}:${supplierPick}`}
+                    supplierId={values.supplier_id || null}
+                    pointId={bodyPointId ?? undefined}
+                    crateTareUnits={crateTareUnits(values.items, tareTypes.data ?? [])}
+                    value={values.returned_crates}
+                    onChange={(v) => setValue('returned_crates', v, { shouldDirty: true })}
+                    disabled={!shiftOpen}
+                  />
+                }
               />
             </Card>
           </form>

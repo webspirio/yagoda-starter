@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/button';
@@ -33,6 +34,7 @@ export function TotalsSection({
   netKg,
   lineCount,
   debt,
+  credit,
   cash,
   cashUnavailable,
   paid,
@@ -44,6 +46,7 @@ export function TotalsSection({
   formErrorKey,
   formErrorParams,
   showDraftHint,
+  crateReturn,
 }: {
   /** `null` unless the preview has SETTLED on the form as it stands now. */
   accrued: string | null;
@@ -51,6 +54,9 @@ export function TotalsSection({
   lineCount: number;
   /** Supplier balance — only a POSITIVE one is carried into the total. */
   debt: string | null;
+  /** The POSITIVE amount of a negative balance (we overpaid), else `null`.
+   *  Shown below «Разом», never added to it (§3.5/§3.8). */
+  credit: string | null;
   /** `GET /point-cash/:id`'s `.cash` — the drawer for berries. `null` means
    *  UNKNOWN (still loading OR errored), never an empty drawer. */
   cash: string | null;
@@ -74,6 +80,8 @@ export function TotalsSection({
    *  finishing it or using `LineEditor`'s «Прибрати позицію» escape hatch,
    *  rather than leaving a dark submit button unexplained. */
   showDraftHint: boolean;
+  /** The crate-return field, rendered after the cash note, before the hint. */
+  crateReturn?: ReactNode;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
@@ -144,135 +152,132 @@ export function TotalsSection({
           : t('reception.submitKg', { kg: formatKg(netKg, locale) });
 
   return (
-    <div className="border-t border-border p-4">
-      <Eyebrow className="mb-2">{t('reception.totals.eyebrow')}</Eyebrow>
+    <div className="flex flex-col gap-2 border-t border-border p-4">
+      <Eyebrow>{t('reception.totals.eyebrow')}</Eyebrow>
 
-      <div className="grid gap-4 sm:grid-cols-[minmax(0,1.15fr)_minmax(220px,0.85fr)]">
-        <div className="flex flex-col gap-1.5">
-          <div className="flex items-baseline justify-between gap-3 text-sm">
-            <span className="text-muted-foreground">
-              {t('reception.totals.accruedToday')}
-              {lineCount > 1 ? t('reception.totals.linesSuffix', { count: lineCount }) : ''}
-            </span>
-            <span className="font-mono">
-              {accrued === null ? (
-                <span className="text-muted-foreground">{isPreviewing ? '…' : '—'}</span>
-              ) : (
-                formatUah(accrued, locale)
-              )}
-            </span>
-          </div>
-
-          {cmp(carried, '0') === 1 ? (
-            <div className="flex items-center justify-between gap-3 rounded-lg bg-amber/10 px-3 py-2 text-sm">
-              <span className="text-muted-foreground">{t('reception.totals.debt')}</span>
-              <span className="font-mono">+ {formatUah(carried, locale)}</span>
-            </div>
-          ) : null}
-
-          <div className="my-1 border-t border-foreground/20" />
-
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <Eyebrow>{t('reception.totals.total')}</Eyebrow>
-            <span className="font-mono text-[34px] leading-none font-semibold tracking-tight">
-              {total === null ? (
-                <span className="text-base text-muted-foreground">{isPreviewing ? '…' : '—'}</span>
-              ) : (
-                formatUah(total, locale)
-              )}
-            </span>
-          </div>
-
-          <Field
-            name="paid_amount"
-            label={t('reception.totals.paid')}
-            error={paidError ?? formatError}
-            hint={fieldHint}
-            hintTone={overCap && !cashUnavailable ? 'warning' : undefined}
-            className="mt-2"
-          >
-            {(a11y) => (
-              <>
-                <div className="relative">
-                  <DecimalInput
-                    {...a11y}
-                    className="h-12 pr-9 font-mono text-xl font-semibold"
-                    value={paid}
-                    onChange={(e) => onPaidChange(e.target.value)}
-                    {...paidField.inputProps}
-                  />
-                  <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-sm text-muted-foreground">
-                    ₴
-                  </span>
-                </div>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  <Button type="button" variant="outline" size="sm" onClick={() => settle(cap ?? '0')}>
-                    {t('reception.totals.all')}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={cap === null || cmp(cap, '100') === -1}
-                    onClick={() => settle(floorToHundreds(cap ?? '0'))}
-                  >
-                    {t('reception.totals.toHundreds')}
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => settle('0')}>
-                    {t('reception.totals.allToBalance')}
-                  </Button>
-                </div>
-              </>
-            )}
-          </Field>
-        </div>
-
-        <div
-          className={cn(
-            'flex flex-col justify-center rounded-lg px-4 py-3',
-            total === null ? 'bg-muted/50' : owed ? 'bg-amber/10' : 'bg-leaf/10',
-          )}
-        >
-          {total === null ? (
-            // M1: neither «Розраховано повністю» nor a remainder claims
-            // anything about a total that has not settled yet.
-            <>
-              <Eyebrow>{t('reception.totals.total')}</Eyebrow>
-              <div className="mt-1 font-mono text-2xl font-semibold text-muted-foreground">—</div>
-            </>
+      <div className="flex items-baseline justify-between gap-3 text-sm">
+        <span className="text-muted-foreground">
+          {t('reception.totals.accruedToday')}
+          {lineCount > 1 ? t('reception.totals.linesSuffix', { count: lineCount }) : ''}
+        </span>
+        <span className="font-mono">
+          {accrued === null ? (
+            <span className="text-muted-foreground">{isPreviewing ? '…' : '—'}</span>
           ) : (
-            <>
-              <Eyebrow>{owed ? t('reception.totals.remainder') : t('reception.totals.settled')}</Eyebrow>
-              <div
-                className={cn('mt-1 font-mono text-2xl font-semibold', owed ? 'text-amber' : 'text-leaf')}
-              >
-                {owed && remainder !== null ? formatUah(remainder, locale) : formatUah('0.00', locale)}
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                {owed ? t('reception.totals.remainderHint') : t('reception.totals.settledHint')}
-              </div>
-            </>
+            formatUah(accrued, locale)
           )}
+        </span>
+      </div>
+
+      {cmp(carried, '0') === 1 ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg bg-amber/10 px-3 py-1.5 text-sm">
+          <span className="text-muted-foreground">{t('reception.totals.debt')}</span>
+          <span className="font-mono">+ {formatUah(carried, locale)}</span>
         </div>
+      ) : null}
+
+      <div className="border-t border-foreground/20" />
+
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <Eyebrow>{t('reception.totals.total')}</Eyebrow>
+        <span className="font-mono text-3xl leading-none font-semibold tracking-tight">
+          {total === null ? (
+            <span className="text-base text-muted-foreground">{isPreviewing ? '…' : '—'}</span>
+          ) : (
+            formatUah(total, locale)
+          )}
+        </span>
+      </div>
+
+      {credit !== null ? (
+        // §3.5/§3.8: a negative balance is never added to «Разом» — it is
+        // shown below it, in green, as information.
+        <p className="text-xs text-leaf">
+          {t('reception.supplier.credit', { uah: formatUah(credit, locale) })}
+        </p>
+      ) : null}
+
+      <Field
+        name="paid_amount"
+        label={t('reception.totals.paid')}
+        error={paidError ?? formatError}
+        hint={fieldHint}
+        hintTone={overCap && !cashUnavailable ? 'warning' : undefined}
+      >
+        {(a11y) => (
+          <>
+            <div className="relative">
+              <DecimalInput
+                {...a11y}
+                className="h-11 pr-9 font-mono text-xl font-semibold"
+                value={paid}
+                onChange={(e) => onPaidChange(e.target.value)}
+                {...paidField.inputProps}
+              />
+              <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-sm text-muted-foreground">
+                ₴
+              </span>
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              <Button type="button" variant="outline" size="sm" onClick={() => settle(cap ?? '0')}>
+                {t('reception.totals.all')}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={cap === null || cmp(cap, '100') === -1}
+                onClick={() => settle(floorToHundreds(cap ?? '0'))}
+              >
+                {t('reception.totals.toHundreds')}
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => settle('0')}>
+                {t('reception.totals.allToBalance')}
+              </Button>
+            </div>
+          </>
+        )}
+      </Field>
+
+      <div
+        data-testid="remainder-row"
+        className={cn(
+          'rounded-lg px-3 py-1.5 text-sm',
+          total === null
+            ? 'bg-muted/50 text-muted-foreground'
+            : owed
+              ? 'bg-amber/10 text-amber'
+              : 'bg-leaf/10 text-leaf',
+        )}
+      >
+        {total === null
+          ? // M1: neither «Розраховано повністю» nor a remainder claims
+            // anything about a total that has not settled yet.
+            '—'
+          : owed && remainder !== null
+            ? t('reception.totals.remainderLine', { uah: formatUah(remainder, locale) })
+            : t('reception.totals.settled')}
       </div>
 
       {limitedByCash ? (
-        <p className="mt-3 rounded-lg bg-amber/10 px-3 py-2 text-xs leading-relaxed text-amber">
+        <p className="rounded-lg bg-amber/10 px-3 py-1.5 text-xs leading-relaxed text-amber">
           {t('reception.totals.cashNote', { uah: formatUah(drawer, locale) })}
         </p>
       ) : null}
 
+      {crateReturn}
+
       {showDraftHint ? (
-        <p className="mt-3 text-xs text-muted-foreground">{t('reception.lines.draftHint')}</p>
+        <p className="text-xs text-muted-foreground">{t('reception.lines.draftHint')}</p>
       ) : null}
 
       {formErrorKey ? (
-        <p role="alert" className="mt-3 text-sm text-destructive">
+        <p role="alert" className="text-sm text-destructive">
           {t(formErrorKey, formErrorParams)}
         </p>
       ) : null}
 
-      <Button type="submit" className="mt-4 h-14 w-full text-base" disabled={disabled || isSubmitting}>
+      <Button type="submit" className="h-12 w-full text-base" disabled={disabled || isSubmitting}>
         <Check className="size-5" />
         {label}
       </Button>

@@ -1001,7 +1001,7 @@
       "retry": "Try again"
     },
     "totals": {
-      "eyebrow": "4 · Settlement",
+      "eyebrow": "Settlement",
       "accruedToday": "Accrued today",
       "linesSuffix_one": " · {{count}} line",
       "linesSuffix_other": " · {{count}} lines",
@@ -1015,10 +1015,8 @@
       "overCash": "Cannot pay out more than is in the berry drawer — using {{uah}}",
       "cashNote": "Only {{uah}} is in the berry drawer — nothing more to pay out right now. The difference is added to the supplier's balance; a transfer from the owner restocks it.",
       "cashUnavailable": "The berry cash drawer could not be read — the server will check the amount when the receipt is recorded",
-      "remainder": "Owed by us",
       "settled": "Settled in full",
-      "remainderHint": "Added to the supplier's balance — dated today",
-      "settledHint": "Nothing is left hanging on the balance"
+      "remainderLine": "Owed by us {{uah}} · added today's date"
     },
     "submit": "Accept",
     "submitKg": "Accept {{kg}}",

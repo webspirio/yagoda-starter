@@ -26,6 +26,7 @@ function Harness({
       netKg="39.00"
       lineCount={1}
       debt="37.37"
+      credit={null}
       cash="1616.10"
       cashUnavailable={false}
       paidError={null}
@@ -51,6 +52,26 @@ describe('TotalsSection — the total and the carried-in balance', () => {
     // The amber row that carries the balance in, labelled with the same
     // «Previous balance» copy the supplier section uses.
     expect(screen.getByText('+ 37.37 ₴')).toBeInTheDocument();
+  });
+
+  it('shows a credit below «Разом» and leaves «Разом» equal to the accrual', () => {
+    render(<Harness accrued="100.00" debt="-50.00" credit="50.00" cash="9000.00" />);
+    expect(screen.getByText('Total to pay out').parentElement).toHaveTextContent('100.00 ₴');
+    const total = screen.getByText('Total to pay out');
+    const credit = screen.getByText('Overpaid by us 50.00 ₴');
+    expect(
+      total.compareDocumentPosition(credit) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.queryByText('Previous balance')).toBeNull();
+  });
+
+  it('renders the crate return slot between the cash note and the submit', () => {
+    render(<Harness crateReturn={<div>crate-slot</div>} />);
+    const note = screen.getByText(/Only 1,616.10 ₴ is in the berry drawer/);
+    const slot = screen.getByText('crate-slot');
+    const submit = screen.getByRole('button', { name: /Accept/ });
+    expect(note.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(slot.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 
@@ -92,24 +113,22 @@ describe('TotalsSection — the remainder panel', () => {
     expect(
       screen.getByText(/Only 1,616.10 ₴ is in the berry drawer/),
     ).toBeInTheDocument();
-    expect(screen.getByText('Owed by us')).toBeInTheDocument();
-    expect(screen.getByText('3,881.27 ₴')).toBeInTheDocument();
+    expect(screen.getByText(/Owed by us 3,881.27 ₴/)).toBeInTheDocument();
   });
 
   it('reads «Settled in full» once the whole total is paid out', () => {
     render(<Harness paid="5497.37" />);
     expect(screen.getByText('Settled in full')).toBeInTheDocument();
-    expect(screen.queryByText('Owed by us')).toBeNull();
+    expect(screen.queryByText(/Owed by us/)).toBeNull();
   });
 
   it('shows a neutral dash instead of a false «Settled in full» before anything has settled (M1)', () => {
     render(<Harness accrued={null} netKg={null} />);
     expect(screen.queryByText('Settled in full')).toBeNull();
-    expect(screen.queryByText('Owed by us')).toBeNull();
-    // The right panel now echoes the SAME «Total to pay out» eyebrow the left
-    // column shows, instead of claiming settlement over a total that isn't
-    // there yet.
-    expect(screen.getAllByText('Total to pay out')).toHaveLength(2);
+    expect(screen.queryByText(/Owed by us/)).toBeNull();
+    // The one-line row shows a bare dash instead of claiming settlement over
+    // a total that isn't there yet.
+    expect(screen.getByTestId('remainder-row')).toHaveTextContent('—');
   });
 });
 
@@ -208,6 +227,7 @@ describe('TotalsSection — the cap and the clamp', () => {
         netKg="39.00"
         lineCount={1}
         debt="37.37"
+        credit={null}
         cash="1616.10"
         cashUnavailable={false}
         paid="1616.10"

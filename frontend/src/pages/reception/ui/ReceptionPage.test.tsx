@@ -626,7 +626,11 @@ describe('ReceptionPage — choosing the supplier', () => {
     renderReception();
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
-    expect(screen.getByText('Overpaid by us 250.00 ₴')).toBeInTheDocument();
+    // The credit sits inside the «Settlement» card, below «Total to pay out».
+    // (`SupplierSection` still shows its own plaque until it drops it.)
+    const card = screen.getByText('Total to pay out').closest('div.border-t') as HTMLElement;
+    expect(within(card).getByText('Overpaid by us 250.00 ₴')).toBeInTheDocument();
+    expect(within(card).queryByText(/Previous balance/)).toBeNull();
     expect(screen.queryByText(/Previous balance/)).toBeNull();
   });
 });
