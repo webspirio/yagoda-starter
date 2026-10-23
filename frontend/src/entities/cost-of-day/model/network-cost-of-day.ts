@@ -52,7 +52,7 @@ export interface NetworkCostProduct {
   points: NetworkCostPoint[];
 }
 
-export interface NetworkCostDayPoint {
+interface NetworkCostDayPoint {
   point_id: string;
   point_name: string;
   shift_id: string;
