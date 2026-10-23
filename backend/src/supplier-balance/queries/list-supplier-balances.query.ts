@@ -19,7 +19,9 @@ import type { AuthenticatedUser } from '../../auth/jwt.strategy';
  *
  * Each row also carries its oldest open line's date, and the envelope the oldest of those among
  * the rows owed money (#101) — computed beside `total`, over every visible row rather than the
- * loaded page, so «Найстаріший залишок» stays true past the screen's 100-row `limit`.
+ * loaded page, so «Найстаріший залишок» stays true past the screen's 100-row `limit`. «Всього
+ * винні» is summed there too (#229): across every point a network passes 100 debtors, and a tile
+ * that summed the page would print a partial figure as the headline.
  */
 @Injectable()
 export class ListSupplierBalancesQuery {
@@ -53,13 +55,15 @@ export class ListSupplierBalancesQuery {
 
     // `::int` so the driver hands back a number: `COUNT` is `bigint`, which
     // `pg` returns as a string, and `Number()` is banned in this module.
-    // The tile's date is over rows OWED money only, as «Всього винні» sums only positive debts.
-    const [{ total, oldest_open_date }] = (await manager.query(
+    // Both tiles are over rows OWED money only: a supplier in credit must never shrink the total
+    // owed to suppliers who are actually waiting on cash. `0.00`, not `0`, keeps the sum scale 2.
+    const [{ total, oldest_open_date, total_owed }] = (await manager.query(
       `SELECT COUNT(*)::int AS total,
-              (MIN(b.oldest_open_date) FILTER (WHERE b.debt > 0))::text AS oldest_open_date
+              (MIN(b.oldest_open_date) FILTER (WHERE b.debt > 0))::text AS oldest_open_date,
+              COALESCE(SUM(b.debt) FILTER (WHERE b.debt > 0), 0.00)::text AS total_owed
          FROM (${scoped}) b WHERE ${visible}`,
       [pointId, query.include_zero],
-    )) as { total: number; oldest_open_date: string | null }[];
+    )) as { total: number; oldest_open_date: string | null; total_owed: string }[];
 
     return {
       data: rows.map(toSupplierBalanceRowResponse),
@@ -67,6 +71,7 @@ export class ListSupplierBalancesQuery {
       page: query.page,
       limit: query.limit,
       oldest_open_date,
+      total_owed,
     };
   }
 }

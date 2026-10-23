@@ -11,11 +11,13 @@ import { SelectField } from '@/shared/ui/select-field';
 import { TextInput } from '@/shared/ui/text-input';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
+import { decimalKey, useClientSort } from '@/shared/ui/data-table-sort';
 import { StatGrid } from '@/shared/ui/stat-grid';
 import { StatTile } from '@/shared/ui/stat-tile';
-import { sum, sub, cmp, isNegative, formatUah } from '@/shared/lib/money';
+import { sub, cmp, isNegative, formatUah } from '@/shared/lib/money';
 import { ageInDays, formatShortDate } from '@/shared/lib/date';
-import { useWorkingPoint } from '@/features/point-scope';
+import { cn } from '@/shared/lib/cn';
+import { usePointScope } from '@/entities/user';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import {
   useSupplierBalancesQuery,
@@ -37,28 +39,31 @@ const STALE_AFTER_DAYS = 7;
  * no `collection_point_id` param; the API already scopes an owner to
  * everything). An operator is pinned to their own point and gets no picker.
  *
- * The two tiles read straight off the loaded page: «Всього винні» sums only
- * the POSITIVE balances among the loaded rows (a supplier in credit must
- * never shrink the total owed to suppliers who are actually waiting on
- * cash), and «Постачальників із залишком» is the server's own `total` —
- * the honest count even when the page itself was capped at the 100-row
- * `limit`, which is also when the «на цій сторінці» hint appears.
+ * THE NETWORK IS THE DEFAULT, NOT THE SKLAD (#229). Every other money screen opens on
+ * the point the owner last picked, or the склад (`useWorkingPoint`); this one reads
+ * `?point=` alone (`remembered: false`), because §3.9 makes «Усі точки» the owner's
+ * view here, and a total quietly narrowed to one point reads as «we owe less».
+ *
+ * «Всього винні» and «Постачальників із залишком» are the server's own — the sum of the
+ * POSITIVE balances (a supplier in credit must never shrink the total owed to suppliers
+ * who are actually waiting on cash) and the count, both over every visible row, so
+ * neither stops at the 100-row `limit` (#229).
  *
  * «Найстаріший залишок» (#101) is the server's too: the oldest open line among EVERY row owed
- * money, not the loaded page, so unlike «Всього винні» it needs no partial-page hint. Each row
- * says how many days its own oldest open line has waited; «open» is read off the stored payout
- * allocations, so a partly paid receipt still counts — the same date the supplier card prints as
- * «найстаріший з 12.07 — 23 дні».
+ * money, not the loaded page. Each row says how many days its own oldest open line has waited;
+ * «open» is read off the stored payout allocations, so a partly paid receipt still counts — the
+ * same date the supplier card prints as «найстаріший з 12.07 — 23 дні».
  *
  * The name search is client-side over the loaded rows (spec: no server
- * round trip for a filter over at most 100 rows already in memory).
+ * round trip for a filter over at most 100 rows already in memory), and so is the
+ * column sort (#229): it opens on the server's own order, the biggest balance first.
  */
 export function DebtsPage() {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
   const navigate = useNavigate();
 
-  const { pointId, canPick, setPointId } = useWorkingPoint();
+  const { pointId, canPick, setPointId } = usePointScope({ remembered: false });
   const { data: points } = usePointOptionsQuery();
   const balances = useSupplierBalancesQuery({ pointId });
 
@@ -95,23 +100,40 @@ export function DebtsPage() {
   const noMatch = needle !== '' && filteredRows.length === 0;
 
   const oldestOpen = data?.oldest_open_date ?? null;
-  const totalOwed = sum(rows.filter((r) => cmp(r.debt, '0') === 1).map((r) => r.debt));
+  const totalOwed = data?.total_owed ?? '0.00';
   // No point picked (owner default) is the only time rows can straddle more
   // than one point — a picked point makes the column redundant.
   const showPointColumn = pointId === null;
   const pointName = new Map((points ?? []).map((p) => [p.id, p.name]));
+  const pointOf = (row: SupplierBalanceRow) => pointName.get(row.collection_point_id) ?? null;
 
-  // Beside the name rather than a column of its own: on a phone a fourth column pushed the
-  // balance off the screen, and the age means nothing without the name it belongs to.
-  const ageBadge = (row: SupplierBalanceRow) => {
-    // A credit or a zero row has nothing waiting, whatever the date says.
-    if (row.oldest_open_date === null || cmp(row.debt, '0') !== 1) return null;
-    const days = ageInDays(row.oldest_open_date);
+  // A credit or a zero row has nothing waiting, whatever the date says.
+  const openDays = (row: SupplierBalanceRow) =>
+    row.oldest_open_date === null || cmp(row.debt, '0') !== 1
+      ? null
+      : ageInDays(row.oldest_open_date);
+
+  // What each sortable column orders by — the value, not the rendered cell. No key for a
+  // column the table hides, so a sort on it falls back to the biggest balance first.
+  const sorted = useClientSort(
+    filteredRows,
+    {
+      supplier: supplierName,
+      ...(showPointColumn ? { point: pointOf } : {}),
+      age: openDays,
+      balance: (row) => decimalKey(row.debt),
+    },
+    { key: 'balance', order: 'desc' },
+  );
+
+  const ageBadge = (row: SupplierBalanceRow, className?: string) => {
+    const days = openDays(row);
+    if (days === null || row.oldest_open_date === null) return null;
     const since = t('debts.ageSince', { date: formatShortDate(row.oldest_open_date, locale) });
     return (
       <Badge
         variant={days > STALE_AFTER_DAYS ? 'destructive' : 'secondary'}
-        className="font-mono tabular-nums"
+        className={cn('font-mono tabular-nums', className)}
         title={since}
       >
         {t('debts.days', { count: days })}
@@ -124,6 +146,7 @@ export function DebtsPage() {
   const supplierColumn: Column<SupplierBalanceRow> = {
     id: 'supplier',
     header: t('debts.col.supplier'),
+    sortable: true,
     cell: (row) => (
       <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
         <Link
@@ -137,7 +160,17 @@ export function DebtsPage() {
           {supplierName(row)}
         </Link>
         {!row.is_active ? <Badge variant="secondary">{t('debts.inactive')}</Badge> : null}
-        {ageBadge(row)}
+        {/* A column of its own from `sm` up (sortable by how long the balance has waited);
+            on a phone a fourth column pushed the balance off the screen, so the age rides
+            beside the name there. */}
+        {ageBadge(row, 'sm:hidden')}
+        {/* The point column is hidden on a phone, yet a balance is paid only where it was
+            run up (§3.9) — so the point rides under the name there instead (#229). */}
+        {showPointColumn ? (
+          <span className="basis-full text-xs font-normal text-muted-foreground sm:hidden">
+            {pointOf(row) ?? '—'}
+          </span>
+        ) : null}
       </span>
     ),
   };
@@ -146,7 +179,16 @@ export function DebtsPage() {
     id: 'point',
     header: t('debts.col.point'),
     hideBelow: 'sm',
-    cell: (row) => pointName.get(row.collection_point_id) ?? '—',
+    cell: (row) => pointOf(row) ?? '—',
+    sortable: true,
+  };
+
+  const ageColumn: Column<SupplierBalanceRow> = {
+    id: 'age',
+    header: t('debts.col.age'),
+    hideBelow: 'sm',
+    sortable: true,
+    cell: (row) => ageBadge(row),
   };
 
   const balanceColumn: Column<SupplierBalanceRow> = {
@@ -154,6 +196,7 @@ export function DebtsPage() {
     header: t('debts.col.balance'),
     align: 'right',
     className: 'font-mono tabular-nums',
+    sortable: true,
     cell: (row) =>
       isNegative(row.debt) ? (
         <span className="text-[var(--leaf)]">
@@ -190,6 +233,7 @@ export function DebtsPage() {
   const columns: Column<SupplierBalanceRow>[] = [
     supplierColumn,
     ...(showPointColumn ? [pointColumn] : []),
+    ageColumn,
     balanceColumn,
     actionColumn,
   ];
@@ -206,7 +250,6 @@ export function DebtsPage() {
               label={t('debts.tiles.totalOwed')}
               value={formatUah(totalOwed, locale)}
               tone="amber"
-              hint={isTruncated(data) ? t('debts.tiles.totalOwedHint') : undefined}
             />
             <StatTile
               label={t('debts.tiles.oldest')}
@@ -248,9 +291,20 @@ export function DebtsPage() {
           </div>
         }
         columns={columns}
-        rows={filteredRows}
+        rows={sorted.rows}
         rowKey={(row) => row.supplier_id}
         onRowClick={(row) => navigate(`/suppliers/${row.supplier_id}`)}
+        sort={sorted.sort}
+        onSortChange={sorted.onSortChange}
+        footer={
+          // The server caps a read at 100: past that the sort orders only the loaded rows. A
+          // search that found nobody says so in its own empty state.
+          isTruncated(data) && !noMatch ? (
+            <p className="text-xs text-muted-foreground">
+              {t('debts.truncated', { shown: rows.length, total })}
+            </p>
+          ) : undefined
+        }
         isEmpty={!isPending && !isError && filteredRows.length === 0}
         empty={
           noMatch ? (

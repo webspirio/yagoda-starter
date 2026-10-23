@@ -63,7 +63,7 @@ describe('ListSupplierBalancesQuery', () => {
       query.mockReset();
       query
         .mockResolvedValueOnce([row])
-        .mockResolvedValueOnce([{ total: 7, oldest_open_date: '2026-07-01' }]);
+        .mockResolvedValueOnce([{ total: 7, oldest_open_date: '2026-07-01', total_owed: '1250.00' }]);
     });
 
     it('returns the standard envelope — rows mapped field by field, total and the oldest open date from a second count', async () => {
@@ -73,8 +73,19 @@ describe('ListSupplierBalancesQuery', () => {
         page: 1,
         limit: 20,
         oldest_open_date: '2026-07-01',
+        total_owed: '1250.00',
       });
       expect(query).toHaveBeenCalledTimes(2);
+    });
+
+    it('sums «Всього винні» over EVERY visible row owed money, not the loaded page (#229)', async () => {
+      await service.list(oksana, listQuery());
+
+      // Positive debts only, as the tile always summed; `0.00` (scale 2) when nobody is owed.
+      expect(countSql()).toMatch(
+        /COALESCE\(SUM\(b\.debt\) FILTER \(WHERE b\.debt > 0\), 0\.00\)::text AS total_owed/,
+      );
+      expect(countSql()).not.toMatch(/LIMIT/);
     });
 
     it("reads each row's oldest open line from LIVE allocations, top-ups under their parent's date (#101)", async () => {
