@@ -47,54 +47,54 @@ export function LinesTable({
         <table className="w-full min-w-[560px] text-xs">
           <caption className="sr-only">{t('reception.lines.title')}</caption>
           <thead>
-            <tr className="text-[10px] font-medium tracking-[0.12em] text-muted-foreground uppercase">
-              <th scope="col" className="px-2 pb-1 text-left">
+            <tr className="text-[10px] leading-4 font-medium tracking-[0.12em] whitespace-nowrap text-muted-foreground uppercase">
+              <th scope="col" className="px-2 pb-0.5 text-left">
                 {t('reception.lines.col.grade')}
               </th>
-              <th scope="col" className="px-2 pb-1 text-right">
+              <th scope="col" className="px-2 pb-0.5 text-right">
                 {t('reception.lines.col.gross')}
               </th>
-              <th scope="col" className="px-2 pb-1 text-right">
+              <th scope="col" className="px-2 pb-0.5 text-right">
                 {t('reception.lines.col.pallet')}
               </th>
-              <th scope="col" className="px-2 pb-1 text-right">
+              <th scope="col" className="px-2 pb-0.5 text-right">
                 {t('reception.lines.col.tare')}
               </th>
-              <th scope="col" className="px-2 pb-1 text-right">
+              <th scope="col" className="px-2 pb-0.5 text-right">
                 {t('reception.lines.col.net')}
               </th>
-              <th scope="col" className="px-2 pb-1 text-right">
+              <th scope="col" className="px-2 pb-0.5 text-right">
                 {t('reception.lines.col.price')}
               </th>
-              <th scope="col" className="px-2 pb-1 text-right">
+              <th scope="col" className="px-2 pb-0.5 text-right">
                 {t('reception.lines.col.amount')}
               </th>
-              <th scope="col" className="w-8 pb-1">
+              <th scope="col" className="w-8 pb-0.5">
                 <span className="sr-only">{t('reception.lines.remove')}</span>
               </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
             {rows.map((row, index) => (
-              <tr key={row.key} className="font-mono">
-                <td className="px-2 py-0.5 font-sans">{row.gradeLabel}</td>
-                <td className="px-2 py-0.5 text-right">
+              <tr key={row.key} className="h-[26px] font-mono leading-tight">
+                <td className="px-2 py-0 font-sans">{row.gradeLabel}</td>
+                <td className="px-2 py-0 text-right">
                   {row.item ? formatDecimal(row.item.gross_kg, locale) : <Pending />}
                 </td>
-                <td className="px-2 py-0.5 text-right text-muted-foreground">
+                <td className="px-2 py-0 text-right text-muted-foreground">
                   {row.item ? formatDecimal(row.item.pallet_kg, locale) : <Pending />}
                 </td>
-                <td className="px-2 py-0.5 text-right text-muted-foreground">
+                <td className="px-2 py-0 text-right text-muted-foreground">
                   {row.item ? (
                     row.item.tare.reduce((n, tareRow) => n + tareRow.units, 0)
                   ) : (
                     <Pending />
                   )}
                 </td>
-                <td className="px-2 py-0.5 text-right font-semibold">
+                <td className="px-2 py-0 text-right font-semibold">
                   {row.item ? formatDecimal(row.item.net_kg, locale) : <Pending />}
                 </td>
-                <td className="px-2 py-0.5 text-right">
+                <td className="px-2 py-0 text-right">
                   {row.item ? (
                     <>
                       {formatDecimal(row.item.price, locale)}
@@ -108,10 +108,10 @@ export function LinesTable({
                     <Pending />
                   )}
                 </td>
-                <td className="px-2 py-0.5 text-right font-semibold">
+                <td className="px-2 py-0 text-right font-semibold">
                   {row.item ? formatDecimal(row.item.amount, locale) : <Pending />}
                 </td>
-                <td className="py-0.5 text-right">
+                <td className="py-0 text-right">
                   <Button
                     type="button"
                     variant="ghost"
