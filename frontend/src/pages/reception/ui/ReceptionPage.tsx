@@ -41,9 +41,7 @@ import { LinesTable, type CommittedLine } from './LinesTable';
 import { TotalsSection } from './TotalsSection';
 import { ReturnedCratesField } from './ReturnedCratesField';
 import { ConfirmRefundDialog } from './ConfirmRefundDialog';
-import { TodayReceipts } from './TodayReceipts';
-import { PointStatePanel } from './PointStatePanel';
-import { ShiftBanner } from './ShiftBanner';
+import { PointStrip } from './PointStrip';
 
 /** §3 — a UI cap that matches the paper book (4 committed + the draft). */
 const MAX_LINES = 5;
@@ -150,7 +148,7 @@ export function ReceptionPage() {
   // The drawer for berries — only read once a shift is open, same gate the
   // preview itself uses; `pointId` (not `bodyPointId`) because an operator's
   // OWN point still has cash to read even though their token, not this id,
-  // is what the intake body sends. `PointStatePanel` reads this SAME query
+  // is what the intake body sends. `PointStrip` reads this SAME query
   // key ungated, so the shared cache may end up populated even while this
   // gate is closed — harmless, since every consumer of `cash` below is
   // itself disabled while the shift is closed.
@@ -342,7 +340,7 @@ export function ReceptionPage() {
   };
 
   const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? '';
-  // «Наділ» for `PointStatePanel`'s crates block — read off the same
+  // «Наділ» for `PointStrip`'s crates cell — read off the same
   // `usePointOptionsQuery()` list `pages/crates` resolves it from, rather
   // than a second network read for one field.
   const targetCrates = (points ?? []).find((p) => p.id === pointId)?.target_crates ?? null;
@@ -407,20 +405,27 @@ export function ReceptionPage() {
       />
     ) : (
       <>
-        {/* A failed read and «no shift» are the same `null` in the data, and an
-            «Open shift» button on the first one lets an operator open a shift
-            that is already open. */}
-        {shift.isError ? (
-          <p role="alert" className="mb-5 text-sm text-destructive">
-            {t('common.somethingWentWrong')}
-          </p>
-        ) : !shift.isPending && !shiftOpen ? (
-          <ShiftBanner
-            canOpen={me?.role === 'point_operator'}
-            isOpening={openShift.isPending}
-            onOpen={handleOpenShift}
-          />
-        ) : null}
+        {/* A failed read and «no shift» are the same `null` in the data; the
+            strip tells them apart, so an «Open shift» button never shows
+            on the first one. */}
+        <PointStrip
+          pointId={pointId}
+          shift={
+            shift.isError
+              ? { status: 'error' }
+              : shift.isPending
+                ? { status: 'pending' }
+                : shiftOpen && shift.data
+                  ? { status: 'open', shift: shift.data }
+                  : { status: 'none' }
+          }
+          isOwner={isOwner}
+          canOpen={me?.role === 'point_operator'}
+          isOpening={openShift.isPending}
+          onOpenShift={handleOpenShift}
+          targetCrates={targetCrates}
+          onOpenReceipt={openReceipt}
+        />
 
         {/* An open shift that is NOT today's (#114). A SIBLING of the intake
             form, never a child: its count dialog is portaled but stays a REACT
@@ -556,15 +561,6 @@ export function ReceptionPage() {
             </Card>
           </form>
 
-          <div className="flex flex-col gap-4">
-            <PointStatePanel
-              pointId={pointId}
-              shiftId={shift.data?.id}
-              isOwner={isOwner}
-              targetCrates={targetCrates}
-            />
-            <TodayReceipts shiftId={shift.data?.id} onOpen={openReceipt} />
-          </div>
         </div>
       </>
     );

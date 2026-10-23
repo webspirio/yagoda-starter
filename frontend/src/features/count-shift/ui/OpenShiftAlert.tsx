@@ -38,7 +38,7 @@ import { CountDrawerDialog } from './CountDrawerDialog';
  * action is worse than one.
  *
  * §10.3 — only the operator closes a shift, so the owner gets the same
- * warning with no button, exactly as `ShiftBanner` does for opening one.
+ * warning with no button, exactly as `PointStrip` does for opening one.
  */
 export function OpenShiftAlert({
   pointId,

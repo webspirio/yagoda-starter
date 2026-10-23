@@ -1,15 +1,12 @@
 import { Receipt } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { Badge } from '@/shared/ui/badge';
-import { Card } from '@/shared/ui/card';
-import { Eyebrow } from '@/shared/ui/eyebrow';
 import { cn } from '@/shared/lib/cn';
 import { formatTime } from '@/shared/lib/date';
-import { cmp, formatKg, formatUah, sum } from '@/shared/lib/money';
+import { cmp, formatKg, formatUah } from '@/shared/lib/money';
 import { useIntakesQuery } from '@/entities/intake';
 
 /**
- * The right column: every receipt of the CURRENT shift, newest first, each one
+ * The «Сьогодні» popover's body: every receipt of the CURRENT shift, newest first, each one
  * a way back into its own printable copy. Reads the same `intakes` journal the
  * day screen does — a saved receipt invalidates that prefix, so this list is
  * the confirmation that the document landed.
@@ -33,30 +30,15 @@ export function TodayReceipts({
   const rows = [...(intakes.data?.data ?? [])].sort((a, b) =>
     a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0,
   );
-  // A voided receipt stays LISTED (struck through, below) but is not one of
-  // "today's receipts" any more — the badge and the tonnage count only the
-  // live ones.
-  const liveRows = rows.filter((row) => row.voided_at === null);
-  const liveNetKg = sum(liveRows.map((row) => row.net_kg));
 
   return (
-    <Card className="h-fit p-4">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <Eyebrow className="truncate">{t('reception.today.title')}</Eyebrow>
-        <div className="flex shrink-0 items-center gap-2">
-          <Badge variant="secondary">{liveRows.length}</Badge>
-          <span className="font-mono text-xs tabular-nums text-muted-foreground">
-            {formatKg(liveNetKg, locale)}
-          </span>
-        </div>
-      </div>
-
+    <>
       {rows.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">
           {t('reception.today.empty')}
         </p>
       ) : (
-        <ul className="max-h-[560px] divide-y divide-border overflow-y-auto">
+        <ul className="max-h-[360px] divide-y divide-border overflow-y-auto">
           {rows.map((row) => {
             // The server's open figure (allocations), not amount − paid_amount:
             // older money can close a receipt nothing was handed over with.
@@ -102,6 +84,6 @@ export function TodayReceipts({
           })}
         </ul>
       )}
-    </Card>
+    </>
   );
 }

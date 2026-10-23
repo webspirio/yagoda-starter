@@ -83,9 +83,9 @@ vi.mock('@/entities/point-cash', () => ({
     pointCashMock(pointId, asOf, enabled),
 }));
 
-// `PointStatePanel`'s own three reads — this file's job is the FORM and the
+// `PointStrip`'s own three reads — this file's job is the FORM and the
 // header actions, so these are static "not fetched yet" stand-ins rather
-// than another set of per-test hoisted mocks; `PointStatePanel.test.tsx` is
+// than another set of per-test hoisted mocks; `PointStrip.test.tsx` is
 // where each of the six figures is actually exercised.
 vi.mock('@/entities/cash-count', () => ({
   useCashCountsQuery: () => ({ data: undefined, isPending: true, isError: false }),
@@ -973,7 +973,7 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
     expect(within(liveRow!).getByText('120.40 kg')).toBeInTheDocument();
   });
 
-  it("counts only live receipts in today's badge, though a voided one stays listed", async () => {
+  it("counts only live receipts in today's cell, though a voided one stays listed", async () => {
     intakesMock.mockImplementation((filter: { shiftId?: string }) =>
       filter.shiftId
         ? page<Intake>([
@@ -988,13 +988,21 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
         : page<Intake>([]),
     );
 
+    const user = userEvent.setup();
     renderReception();
 
-    // Scoped to the receipts card itself: `PointStatePanel` reads the SAME
-    // `useIntakesQuery({ shiftId })` for its own «Відкрито за сьогоднішніми
-    // квитанціями» tile, so an amount could print there too.
-    const card = screen.getByText("Today's receipts").closest('[data-slot="card"]');
-    const scoped = within(card as HTMLElement);
+    // Only the live receipt counts in the «Сьогодні» cell, with only its
+    // kilos — the voided one (same 120.40 kg fixture default) does not double
+    // it up.
+    const trigger = screen.getByRole('button', { name: /Today/ });
+    expect(trigger).toHaveTextContent('1 rcpt. · 120.40 kg');
+
+    await user.click(trigger);
+    // Scoped to the popover itself: the strip reads the SAME
+    // `useIntakesQuery({ shiftId })` for its own «відкрито» figure, so an
+    // amount could print there too.
+    const popover = document.querySelector('[data-slot="popover-content"]');
+    const scoped = within(popover as HTMLElement);
 
     // No code any more — the rows are found by their amount, same as the
     // supplier-history test above.
@@ -1002,12 +1010,6 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
     expect(voidedRow).toHaveClass('line-through');
     const liveRow = scoped.getByText('200.00 ₴').closest('button');
     expect(liveRow).not.toHaveClass('line-through');
-
-    const badgeArea = screen.getByText("Today's receipts").parentElement;
-    expect(within(badgeArea!).getByText('1')).toBeInTheDocument();
-    // Only the live receipt's kilos count toward the header tonnage — the
-    // voided one (same 120.40 kg fixture default) does not double it up.
-    expect(within(badgeArea!).getByText('120.40 kg')).toBeInTheDocument();
   });
 });
 
@@ -1032,8 +1034,9 @@ describe("ReceptionPage — today's receipts open the receipt, which carries the
     );
     renderReception();
 
-    const card = screen.getByText("Today's receipts").closest('[data-slot="card"]');
-    await user.click(within(card as HTMLElement).getByText('200.00 ₴'));
+    await user.click(screen.getByRole('button', { name: /Today/ }));
+    const popover = document.querySelector('[data-slot="popover-content"]');
+    await user.click(within(popover as HTMLElement).getByText('200.00 ₴'));
 
     expect(await screen.findByText('Receipt for i2')).toBeInTheDocument();
   });

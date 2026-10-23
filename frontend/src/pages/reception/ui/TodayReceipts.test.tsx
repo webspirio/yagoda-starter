@@ -132,17 +132,12 @@ describe('TodayReceipts — a row reads like the mock', () => {
     expect(screen.queryByText(/remainder/)).not.toBeInTheDocument();
   });
 
-  it('still lists a voided receipt, struck through, without it counting toward the header', () => {
+  it('still lists a voided receipt, struck through', () => {
     intakesMock.mockReturnValue(page([NINA, VOIDED, OLEH]));
     render(<TodayReceipts shiftId="s1" onOpen={vi.fn()} />);
 
     expect(screen.getByText('Petro Kotyk')).toBeInTheDocument();
     expect(screen.getByText('voided')).toBeInTheDocument();
-
-    // Live count badge: 2 (Ніна + Oleh) — the voided row excluded.
-    expect(screen.getByText('2')).toBeInTheDocument();
-    // Live tonnage: 36.90 + 10.10 = 47.00 kg — the voided 20.00 excluded.
-    expect(screen.getByText(formatKg('47.00', 'en'))).toBeInTheDocument();
   });
 
   it('never shows the amber remainder on a voided receipt, even when the amount was never paid', () => {
@@ -169,7 +164,7 @@ describe('TodayReceipts — a row reads like the mock', () => {
   it('scrolls a tall list instead of growing the page', () => {
     intakesMock.mockReturnValue(page([NINA]));
     const { container } = render(<TodayReceipts shiftId="s1" onOpen={vi.fn()} />);
-    expect(container.querySelector('.max-h-\\[560px\\].overflow-y-auto')).toBeInTheDocument();
+    expect(container.querySelector('.max-h-\\[360px\\].overflow-y-auto')).toBeInTheDocument();
   });
 });
 

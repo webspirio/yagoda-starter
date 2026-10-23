@@ -907,8 +907,7 @@
     "shift": {
       "none": "Shift not opened yet",
       "noneOwner": "Shift not opened yet — the operator opens it",
-      "open": "Open shift",
-      "hint": "Nothing can be received until the shift is open."
+      "open": "Open shift"
     },
     "noPoint": "Select a point to receive berries",
     "noPrices": {
@@ -1029,22 +1028,20 @@
     "linesPart_one": "{{count}} line · ",
     "linesPart_other": "{{count}} lines · ",
     "state": {
-      "cashTitle": "Point cash",
-      "cratesTitle": "Crates",
-      "open": "Open",
+      "shiftOpen": "Shift open since {{time}}",
+      "crates": "Crates out with people / allotment",
+      "cratesValue": "{{out}} / {{target}}",
       "openingCash": "Counted this morning",
       "currentCash": "In the berry drawer now",
       "paidOut": "Paid out for berries",
       "openToday": "Open on today's receipts",
-      "allotment": "Allotment",
-      "allotmentValue_one": "{{count}} crate",
-      "allotmentValue_other": "{{count}} crates",
-      "allotmentUnset": "no allotment set for this point yet",
-      "inField": "Out with people",
       "truncatedCaption": "first 100 documents"
     },
     "today": {
       "title": "Today's receipts",
+      "trigger": "Today",
+      "summary": "{{count}} rcpt. · {{kg}}",
+      "open": "open {{uah}}",
       "empty": "Nothing received yet. The first receipt will appear here.",
       "voided": "voided",
       "positions_one": "{{count}} position",

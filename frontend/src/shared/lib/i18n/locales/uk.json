@@ -923,8 +923,7 @@
     "shift": {
       "none": "Зміну не відкрито",
       "noneOwner": "Зміну не відкрито — відкриває приймальник",
-      "open": "Відкрити зміну",
-      "hint": "Поки зміна не відкрита, квитанцію провести не можна."
+      "open": "Відкрити зміну"
     },
     "noPoint": "Оберіть точку, щоб приймати ягоду",
     "noPrices": {
@@ -1057,24 +1056,20 @@
     "linesPart_many": "{{count}} позицій · ",
     "linesPart_other": "{{count}} позицій · ",
     "state": {
-      "cashTitle": "Каса точки",
-      "cratesTitle": "Ящики",
-      "open": "Відкрити",
+      "shiftOpen": "Зміна відкрита о {{time}}",
+      "crates": "Ящики у людей / наділ",
+      "cratesValue": "{{out}} / {{target}}",
       "openingCash": "На ранок порахували",
       "currentCash": "У касі за ягоду зараз",
       "paidOut": "Видано за ягоду",
       "openToday": "Відкрито за сьогоднішніми квитанціями",
-      "allotment": "Наділ",
-      "allotmentValue_one": "{{count}} ящик",
-      "allotmentValue_few": "{{count}} ящики",
-      "allotmentValue_many": "{{count}} ящиків",
-      "allotmentValue_other": "{{count}} ящиків",
-      "allotmentUnset": "наділу цій точці ще не призначали",
-      "inField": "У людей",
       "truncatedCaption": "перші 100 документів"
     },
     "today": {
       "title": "Сьогоднішні квитанції",
+      "trigger": "Сьогодні",
+      "summary": "{{count}} квит. · {{kg}}",
+      "open": "відкрито {{uah}}",
       "empty": "Ще нічого не прийнято. Перша квитанція зʼявиться тут.",
       "voided": "анульовано",
       "positions_one": "{{count}} позиція",
