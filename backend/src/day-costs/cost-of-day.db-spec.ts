@@ -165,6 +165,35 @@ describe('CostOfDayService.forShift (DB)', () => {
     expect(raspberryOut?.basket_share).not.toBeNull();
     expect(blackberryOut?.basket_share).not.toBeNull();
     expect(sum([raspberryOut!.basket_share!, blackberryOut!.basket_share!])).toBe(out.basket);
+
+    // Spec 2026-10-23 — the one-table fields, read back from real rows.
+    // На кілограм split into its two halves, which add back up to 6,39.
+    expect(out.shortfall_per_kg).toBe('1.94');
+    expect(out.expenses_per_kg).toBe('4.45');
+    // Each share split into недостача and витрати; повна вартість per product.
+    expect(raspberryOut).toMatchObject({
+      shortfall_share: '1535.60',
+      expenses_share: '3515.22',
+      basket_share: '5050.82',
+      full_cost: '131450.82',
+    });
+    expect(blackberryOut).toMatchObject({
+      shortfall_share: '124.40',
+      expenses_share: '284.78',
+      basket_share: '409.18',
+      full_cost: '4249.18',
+    });
+    expect(out.full_cost).toBe('135700.00');
+    expect(out.price_cost_avg).toBe('158.90');
+    expect(out.weighed).toEqual({
+      intake_kg: '865.00',
+      shortfall_kg: '11.00',
+      accrued: '131900.00',
+      shortfall: '1660.00',
+      price_was: '152.49',
+    });
+    expect(out.unweighed).toEqual({ intake_kg: '0.00', accrued: '0.00' });
+    expect(out.checks).toEqual({ shares_ok: true, total_ok: true });
   });
 
   /**
@@ -245,6 +274,13 @@ describe('CostOfDayService.forShift (DB)', () => {
     // §3.15 — contributed no kilograms to the denominator, so it collects no
     // share of the basket either: `null`, not a zero.
     expect(product?.basket_share).toBeNull();
+    expect(product?.full_cost).toBeNull();
+    // Nothing weighed in full: no total row, no звірка — the whole day is
+    // reported as unweighed.
+    expect(out.weighed).toBeNull();
+    expect(out.full_cost).toBeNull();
+    expect(out.checks).toBeNull();
+    expect(out.unweighed).toEqual({ intake_kg: '200.00', accrued: '18000.00' });
 
     // §3.9 — and the screen can say the day is not finished.
     expect(out.closed_at).toBeNull();
