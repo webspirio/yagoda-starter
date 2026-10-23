@@ -552,7 +552,7 @@ export function LineEditor({
             : null}
         </div>
 
-        <div className="mt-1 flex flex-wrap items-center gap-3">
+        <div className="mt-1 flex flex-wrap items-center gap-3 xl:flex-nowrap">
           {/* «Інша тара» lives here, not under the tare rows, so row 1 stays
               one control tall; in DOM order it still follows the tare and
               precedes «Прибрати позицію» / «Ще позиція» (spec §5.2). */}
@@ -560,7 +560,7 @@ export function LineEditor({
             type="button"
             variant="ghost"
             size="sm"
-            className="-ml-2"
+            className="-ml-2 shrink-0"
             disabled={disabled || !freeTareType}
             onClick={() =>
               freeTareType && tare.append({ tare_type_id: freeTareType.id, units: '1' })
@@ -579,7 +579,7 @@ export function LineEditor({
               type="button"
               variant="ghost"
               size="sm"
-              className="text-muted-foreground"
+              className="shrink-0 text-muted-foreground"
               disabled={disabled}
               onClick={onRemoveDraft}
             >
@@ -587,7 +587,7 @@ export function LineEditor({
               {t('reception.lines.remove')}
             </Button>
           ) : null}
-          <div className="flex flex-1 items-center justify-end gap-3">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
             {/* At five lines the cap hint is said out loud; below it the
                 multi-grade hint rides on the button's title. The hint truncates
                 (whole sentence on hover) and claims no width of its own, so
@@ -596,7 +596,7 @@ export function LineEditor({
             {atCap ? (
               <span
                 title={t('reception.lines.capHint')}
-                className="min-w-0 flex-1 basis-0 truncate text-right text-xs text-muted-foreground"
+                className="min-w-0 flex-1 truncate text-right text-xs text-muted-foreground"
               >
                 {t('reception.lines.capHint')}
               </span>
@@ -608,6 +608,7 @@ export function LineEditor({
               title={atCap ? t('reception.lines.capHint') : t('reception.lines.hint')}
               disabled={!canAdd}
               onClick={onAdd}
+              className="shrink-0"
             >
               <Plus className="size-4" />
               {t('reception.lines.add')}
