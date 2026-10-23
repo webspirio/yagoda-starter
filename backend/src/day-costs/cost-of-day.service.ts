@@ -235,7 +235,7 @@ export class CostOfDayService {
     // a late top-up belongs to the day the berries were weighed in, not the
     // day someone renegotiated the price. This is a deliberate divergence
     // from that Note, not an oversight. (The allocation itself now lives in
-    // `productCostRows`, which both this service and `NetworkAverageService`
+    // `productCostRows`, which both this service and `NetworkCostOfDayService` (through `forShift`)
     // call.)
     const latestRows = (await this.dataSource.query(
       `SELECT MAX(ti.created_at) AS latest
