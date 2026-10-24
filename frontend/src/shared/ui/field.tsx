@@ -73,6 +73,11 @@ interface FieldProps {
   /** `'warning'` renders the hint amber instead of muted — a note the operator
    *  should actually notice (e.g. a clamp), not routine helper text. */
   hintTone?: 'muted' | 'warning';
+  /** A short figure at the far end of the label's row — reception's «+3,00»
+   *  beside «Ціна, ₴/кг». It joins the control's description, so whatever it
+   *  says on screen it should also say to a screen reader (an `sr-only`
+   *  sentence beside an `aria-hidden` figure does both). */
+  labelAside?: ReactNode;
   /** i18n key of a validation error (resolved here). Rendered under the hint. */
   error?: string;
   /** Interpolation values for `error`, for a message that names a figure. */
@@ -99,6 +104,7 @@ export function Field({
   required,
   hint,
   hintTone = 'muted',
+  labelAside,
   error,
   errorParams,
   children,
@@ -111,8 +117,11 @@ export function Field({
   const labelId = `${name}-label`;
   const hintId = `${name}-hint`;
   const errorId = `${name}-error`;
+  const asideId = `${name}-aside`;
   const describedBy =
-    [hint ? hintId : null, error ? errorId : null].filter(Boolean).join(' ') || undefined;
+    [labelAside ? asideId : null, hint ? hintId : null, error ? errorId : null]
+      .filter(Boolean)
+      .join(' ') || undefined;
 
   return (
     <div className={className}>
@@ -125,21 +134,25 @@ export function Field({
         // exact-text label query. Wrapping div carries the block layout/type
         // styling so both render on one line exactly as before.
         <div
-          className={
+          className={cn(
             large
               ? 'mb-1.5 text-sm font-medium text-muted-foreground'
-              : 'mb-[7px] text-[11px] font-bold uppercase tracking-wider text-muted-foreground'
-          }
-        >
-          <label id={labelId} htmlFor={name}>
-            {label}
-          </label>
-          {/* aria-hidden: `aria-required` carries this to AT without reading "*". */}
-          {required && (
-            <span aria-hidden="true" className="text-brand">
-              {' *'}
-            </span>
+              : 'mb-[7px] text-[11px] font-bold uppercase tracking-wider text-muted-foreground',
+            labelAside ? 'flex items-baseline justify-between gap-2' : undefined,
           )}
+        >
+          <span>
+            <label id={labelId} htmlFor={name}>
+              {label}
+            </label>
+            {/* aria-hidden: `aria-required` carries this to AT without reading "*". */}
+            {required && (
+              <span aria-hidden="true" className="text-brand">
+                {' *'}
+              </span>
+            )}
+          </span>
+          {labelAside ? <span id={asideId}>{labelAside}</span> : null}
         </div>
       )}
       {children({

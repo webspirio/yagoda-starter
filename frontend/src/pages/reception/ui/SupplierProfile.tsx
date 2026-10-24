@@ -26,19 +26,22 @@ const HISTORY = 3;
  * reception spec, §2 anti-goals) — and it carries the доплати the client
  * wants kept away from the operator.
  */
-export function SupplierProfile({ supplier }: { supplier: Supplier }) {
+export function SupplierProfile({ supplier }: { supplier: Supplier | null }) {
   const { t } = useTranslation();
   return (
     <Popover>
       <PopoverTrigger
+        // Always on the row, so picking a supplier never shifts it; with no
+        // supplier there is nothing to show yet (client, 24.10).
+        disabled={supplier === null}
         aria-label={t('reception.supplier.profile.open')}
         title={t('reception.supplier.profile.open')}
-        className="flex size-12 shrink-0 items-center justify-center rounded-lg border border-input bg-background text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-muted data-[state=open]:text-foreground"
+        className="flex size-12 shrink-0 items-center justify-center rounded-lg border border-input bg-background text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-muted data-[state=open]:text-foreground"
       >
         <IdCard className="size-5" />
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[380px] max-w-[calc(100vw-2rem)] p-0">
-        <ProfileBody supplier={supplier} />
+        {supplier ? <ProfileBody supplier={supplier} /> : null}
       </PopoverContent>
     </Popover>
   );

@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ChevronsUpDown, Plus, TriangleAlert, UserRound } from 'lucide-react';
+import { ChevronsUpDown, Plus, UserRound } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/button';
 import { TextInput } from '@/shared/ui/text-input';
@@ -16,7 +16,6 @@ import { cmp, formatUah } from '@/shared/lib/money';
 import { useDebouncedValue } from '@/shared/lib/useDebouncedValue';
 import {
   KindBadge,
-  kindHintKey,
   supplierName,
   useSupplierBalancesQuery,
   useSuppliersQuery,
@@ -187,8 +186,6 @@ export const SupplierPicker = forwardRef<
     }
   };
 
-  const hint = value ? kindHintKey(value.kind) : null;
-
   const renderRow = (s: Supplier, index: number) => {
     const debt = owed.get(s.id);
     return (
@@ -267,13 +264,6 @@ export const SupplierPicker = forwardRef<
         )}
         <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
       </button>
-
-      {hint ? (
-        <p className="mt-1.5 flex items-start gap-1.5 text-sm font-medium text-destructive">
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-          <span>{t(hint)}</span>
-        </p>
-      ) : null}
 
       {open ? (
         <div

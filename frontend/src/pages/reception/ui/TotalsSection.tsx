@@ -15,6 +15,7 @@ import {
   sub,
 } from '@/shared/lib/money';
 import { suggestedPaid, totalToPay } from '../lib/suggestedPaid';
+import { ENTRY_FIELD } from '../lib/entryFields';
 
 /**
  * «Розрахунок» — the SAME action as «Прийняти» now also hands over cash
@@ -173,7 +174,7 @@ export function TotalsSection({
     // «Разом»), what is handed over now (the field and its chips), then what
     // that leaves and the button. Body text is 14–16 px throughout — the
     // operator reads this card at arm's length while counting cash.
-    <section aria-label={t('reception.totals.eyebrow')} className="flex flex-col gap-4 p-4">
+    <section aria-label={t('reception.totals.eyebrow')} className="flex flex-1 flex-col gap-4 p-4">
       <div className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between gap-3 text-base">
           <span className="text-muted-foreground">
@@ -199,7 +200,9 @@ export function TotalsSection({
                 + {formatUah(carried, locale)}
               </span>
             ) : (
-              <span className="font-mono font-medium">− {formatUah(sub('0', carried), locale)}</span>
+              <span className="font-mono font-medium">
+                − {formatUah(sub('0', carried), locale)}
+              </span>
             )}
           </div>
         ) : null}
@@ -219,12 +222,18 @@ export function TotalsSection({
         </div>
 
         <div className="flex items-center justify-between gap-x-3">
-          <label htmlFor="paid_amount" id="paid_amount-label" className="shrink-0 text-base font-semibold whitespace-nowrap">
+          <label
+            htmlFor="paid_amount"
+            id="paid_amount-label"
+            className="shrink-0 text-base font-semibold whitespace-nowrap"
+          >
             {t('reception.totals.paid')}
           </label>
           <div className="flex min-w-0 items-baseline font-mono text-3xl leading-none font-semibold tracking-tight">
             <DecimalInput
               id="paid_amount"
+              // The last stop of Enter's walk: here Enter is the submit (§2.1 ⑦).
+              {...ENTRY_FIELD}
               variant="ghost"
               aria-labelledby="paid_amount-label"
               aria-invalid={paidErrorText || overCap ? true : undefined}
@@ -361,10 +370,11 @@ export function TotalsSection({
       ) : null}
 
       {/* The label carries the payout sum, so it wraps inside the button
-          rather than running past the ~355 px card — never truncated. */}
+          rather than running past the ~355 px card — never truncated. Pinned
+          to the card's foot: the card is as tall as the lines card beside it. */}
       <Button
         type="submit"
-        className="h-auto min-h-12 w-full py-2 text-center text-base leading-tight font-semibold whitespace-normal"
+        className="mt-auto h-auto min-h-12 w-full py-2 text-center text-base leading-tight font-semibold whitespace-normal"
         disabled={disabled || isSubmitting || overCap}
       >
         <Check className="size-5" />
