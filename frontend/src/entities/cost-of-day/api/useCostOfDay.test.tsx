@@ -79,4 +79,45 @@ describe('useCostOfDayQuery', () => {
 
     expect(mock.history.get.map((r) => r.params)).toEqual([{ split: 'own' }, { split: 'value' }]);
   });
+
+  it('keeps the shift’s figures on screen while another split loads — review, focus 5', async () => {
+    mock.onGet('/shifts/s1/cost-of-day').reply(200, day);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const shared = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result, rerender } = renderHook(
+      ({ split }: { split: 'weight' | 'own' }) => useCostOfDayQuery('s1', split),
+      { wrapper: shared, initialProps: { split: 'weight' } },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    mock.onGet('/shifts/s1/cost-of-day').reply(() => new Promise(() => {}));
+    rerender({ split: 'own' });
+
+    // Never pending — a pending read swaps the sheet for a spinner and unmounts
+    // the expenses strip with its half-typed line.
+    expect(result.current.isPending).toBe(false);
+    expect(result.current.isPlaceholderData).toBe(true);
+    expect(result.current.data).toEqual(day);
+  });
+
+  it('never shows another shift’s figures as a placeholder', async () => {
+    mock.onGet('/shifts/s1/cost-of-day').reply(200, day);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const shared = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result, rerender } = renderHook(
+      ({ shiftId }: { shiftId: string }) => useCostOfDayQuery(shiftId, 'weight'),
+      { wrapper: shared, initialProps: { shiftId: 's1' } },
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    mock.onGet('/shifts/s2/cost-of-day').reply(() => new Promise(() => {}));
+    rerender({ shiftId: 's2' });
+
+    expect(result.current.isPending).toBe(true);
+    expect(result.current.data).toBeUndefined();
+  });
 });

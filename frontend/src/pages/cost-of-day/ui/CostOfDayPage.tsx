@@ -246,7 +246,13 @@ export function CostOfDayPage() {
           {t('costOfDay.noShift', { date: formatShortDate(date, locale), point: pointName })}
         </p>
       ) : (
-        <div className="printable print-landscape rounded-xl border border-line2 bg-card p-5">
+        // While a split not loaded yet is on its way the sheet still shows the
+        // previous split's figures (`useCostOfDayQuery`'s placeholder) — dimmed
+        // and busy, never swapped for a spinner that would unmount the strip.
+        <div
+          aria-busy={cost.isPlaceholderData}
+          className={`printable print-landscape rounded-xl border border-line2 bg-card p-5 transition-opacity ${cost.isPlaceholderData ? 'opacity-60' : ''}`}
+        >
           <SheetHeading date={date} pointName={pointName} split={split} locale={locale} />
           {/* §2.3 — a split by money with no money to split by answered by weight. */}
           {day.split_applied === day.split ? null : (

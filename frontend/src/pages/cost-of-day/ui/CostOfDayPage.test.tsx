@@ -548,6 +548,21 @@ describe('CostOfDayPage — «Розподіл кошика» (spec 2026-10-24 �
     );
   });
 
+  it('marks the old split’s figures as busy while the new split loads, keeping the draft', async () => {
+    const user = userEvent.setup();
+    const { rerender, container } = render(<CostOfDayPage />);
+
+    await user.type(screen.getByPlaceholderText('Підпис витрати'), 'пальне');
+    await user.click(screen.getByRole('button', { name: 'По сумі закупки' }));
+    splitParamMock.mockReturnValue('value');
+    // `useCostOfDayQuery` keeps this shift's figures as a placeholder (its own test).
+    dayMock.mockReturnValue({ ...ok(day), isPlaceholderData: true });
+    rerender(<CostOfDayPage />);
+
+    expect(screen.getByPlaceholderText('Підпис витрати')).toHaveValue('пальне');
+    expect(container.querySelector('.printable')).toHaveAttribute('aria-busy', 'true');
+  });
+
   it('keeps a half-typed expense when only the split changes', async () => {
     const user = userEvent.setup();
     const { rerender } = render(<CostOfDayPage />);

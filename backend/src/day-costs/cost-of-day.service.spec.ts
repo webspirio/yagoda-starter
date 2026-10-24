@@ -832,6 +832,9 @@ describe('§8.5 split strategies (spec 2026-10-24)', () => {
 
   it.each(SPREADING)('%s: nothing weighed dashes everything', async (split) => {
     const out = await svcWithNoReweigh.forShift(owner, 's-1', split);
+    // Not a fallback: nothing weighed is not «нараховано 0 ₴» — the screen would
+    // otherwise claim the day's money is zero (browser check, 2026-10-24).
+    expect(out.split_applied).toBe(split);
     for (const p of out.products) {
       expect(p.shortfall_per_kg).toBeNull();
       expect(p.expenses_per_kg).toBeNull();

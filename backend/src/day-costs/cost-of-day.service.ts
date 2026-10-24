@@ -314,9 +314,12 @@ export class CostOfDayService {
     const complete = rows.filter((r) => r.complete);
     // Spec 2026-10-24 §2.3 — a split by money needs money to split by. A day
     // whose weighed products accrued nothing falls back to `weight` rather
-    // than letting `allocate` split evenly across zero weights.
+    // than letting `allocate` split evenly across zero weights. Only once
+    // something IS weighed: with nothing on the scale every share is «—»
+    // anyway, and «нараховано 0 ₴» would be a false thing to say.
     const weighedAccrued = sum(complete.map((r) => r.accrued));
-    const applied: CostSplit = split !== 'weight' && isZero(weighedAccrued) ? 'weight' : split;
+    const applied: CostSplit =
+      split !== 'weight' && perKg !== null && isZero(weighedAccrued) ? 'weight' : split;
     const products = this.buildProducts(rows, applied, {
       perKg,
       shortfallPerKg,
