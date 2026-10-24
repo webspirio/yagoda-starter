@@ -24,6 +24,7 @@ import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
+import { listenOnLoopback } from './listen-on-loopback';
 
 describe('catalog pipeline (HTTP)', () => {
   let app: INestApplication;
@@ -49,7 +50,7 @@ describe('catalog pipeline (HTTP)', () => {
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
     app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
-    await app.init();
+    await listenOnLoopback(app);
   }, 30_000);
 
   afterAll(async () => {

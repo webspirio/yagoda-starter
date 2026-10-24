@@ -19,6 +19,7 @@ import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
 import { stockPoint } from '../testing/crate-stock-fixture';
+import { listenOnLoopback } from '../testing/listen-on-loopback';
 
 const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -83,7 +84,8 @@ describe('payout cash race: two suppliers, one drawer (HTTP, Postgres)', () => {
     // it — and `close()` waits out every idle keep-alive socket `racingAgent` holds, Node's
     // `keepAliveTimeout` of 5s apiece, which once cost this file 18s of a 20s run. One
     // listening server is also what lets the racing pair reuse the sockets the warm-up opened.
-    await app.listen(0, '127.0.0.1');
+    // On 127.0.0.1 too — see `listenOnLoopback` for why a wildcard listen is a flake on macOS.
+    await listenOnLoopback(app);
 
     const users = app.get(UsersService);
     const credentials = app.get(CredentialsService);

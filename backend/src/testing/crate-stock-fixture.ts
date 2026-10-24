@@ -15,6 +15,7 @@ import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
 import { onHandSql } from '../crates/crate-balance.service';
+import { listenOnLoopback } from './listen-on-loopback';
 
 /** Crate-stock fixtures: a point with an operator and an open shift, and the transfers that put
  *  empties there. Written for the 2026-09-30 on-hand invariant; since the 23.10.2026 call (§6.9)
@@ -28,7 +29,7 @@ export async function bootApp(): Promise<{ app: INestApplication; ds: DataSource
   const app = moduleRef.createNestApplication();
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
-  await app.init();
+  await listenOnLoopback(app);
   const { user: owner } = await app.get(UsersService).createWithIdentity(
     {
       provider: LOCAL_PROVIDER,

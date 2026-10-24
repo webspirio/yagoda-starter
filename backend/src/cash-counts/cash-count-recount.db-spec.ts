@@ -16,6 +16,7 @@ import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
+import { listenOnLoopback } from '../testing/listen-on-loopback';
 
 /**
  * `POST /cash-counts` — R2's midday recount, over real HTTP through the whole
@@ -68,7 +69,7 @@ describe('POST /cash-counts — midday recount (HTTP)', () => {
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
     app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
-    await app.init();
+    await listenOnLoopback(app);
     ds = app.get(DataSource);
 
     const users = app.get(UsersService);

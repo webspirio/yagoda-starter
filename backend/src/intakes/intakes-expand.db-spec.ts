@@ -17,6 +17,7 @@ import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
+import { listenOnLoopback } from '../testing/listen-on-loopback';
 
 const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -40,7 +41,7 @@ beforeAll(async () => {
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
-  await app.init();
+  await listenOnLoopback(app);
 
   const users = app.get(UsersService);
   const credentials = app.get(CredentialsService);

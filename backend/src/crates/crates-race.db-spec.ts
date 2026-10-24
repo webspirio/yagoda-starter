@@ -17,6 +17,7 @@ import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
 import { stockPoint } from '../testing/crate-stock-fixture';
+import { listenOnLoopback } from '../testing/listen-on-loopback';
 
 /**
  * UNVERIFIED AT WRITE TIME — no Postgres was reachable in this environment;
@@ -60,7 +61,7 @@ describe('crates concurrency (HTTP)', () => {
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
     app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
-    await app.init();
+    await listenOnLoopback(app);
     ds = app.get(DataSource);
 
     const users = app.get(UsersService);

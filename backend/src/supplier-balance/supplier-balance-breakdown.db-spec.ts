@@ -21,6 +21,7 @@ import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
 import { add, sub } from '../common/money';
+import { listenOnLoopback } from '../testing/listen-on-loopback';
 
 /**
  * `GET /suppliers/:id/balance` over real HTTP against a real Postgres — the
@@ -71,7 +72,7 @@ describe('supplier balance breakdown (HTTP)', () => {
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
     app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
-    await app.init();
+    await listenOnLoopback(app);
     ds = app.get(DataSource);
 
     const users = app.get(UsersService);

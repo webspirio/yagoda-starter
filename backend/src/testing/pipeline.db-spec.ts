@@ -35,6 +35,7 @@ import { UsersService } from '../users/users.service';
 import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
+import { listenOnLoopback } from './listen-on-loopback';
 
 /**
  * The one HTTP-layer test (design review item I3): drives the real Nest
@@ -97,7 +98,7 @@ describe('auth + me pipeline (HTTP)', () => {
     );
     app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 
-    await app.init();
+    await listenOnLoopback(app);
   }, 30_000);
 
   afterAll(async () => {
@@ -459,7 +460,7 @@ describe('suppliers + grade prices (HTTP)', () => {
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
     app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
-    await app.init();
+    await listenOnLoopback(app);
 
     const jwt = app.get(JwtService);
     const users = app.get(UsersService);

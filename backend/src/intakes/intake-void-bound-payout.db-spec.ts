@@ -25,6 +25,7 @@ import { PointCashService } from '../point-cash/point-cash.service';
 import { timezoneConfig } from '../config/timezone.config';
 import { sub } from '../common/money';
 import { allocationViolations } from '../testing/allocation-invariants';
+import { listenOnLoopback } from '../testing/listen-on-loopback';
 
 /**
  * Old debt 1000, receipt R 500, payout P 1500 issued with R (it covered R and the
@@ -55,7 +56,7 @@ describe('intake void with a bound payout (HTTP, Postgres)', () => {
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
     app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
-    await app.init();
+    await listenOnLoopback(app);
     ds = app.get(DataSource);
 
     const users = app.get(UsersService);

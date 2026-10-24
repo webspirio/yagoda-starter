@@ -4,6 +4,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { MEDIA_MAX_BYTES } from './media.constants';
 import type { UploadedImage } from './media.service';
+import { listenOnLoopback } from '../testing/listen-on-loopback';
 
 /** THE ONLY TEST IN THIS REPO THAT DRIVES A REAL MULTIPART REQUEST THROUGH FileInterceptor.
  *
@@ -37,7 +38,7 @@ describe('FileInterceptor over the overridden multer', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ controllers: [ProbeController] }).compile();
     app = moduleRef.createNestApplication();
-    await app.init();
+    await listenOnLoopback(app);
   });
 
   afterAll(async () => {

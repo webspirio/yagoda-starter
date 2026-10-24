@@ -21,6 +21,7 @@ import { UserRole } from '../users/user-role.enum';
 import { allocationViolations } from '../testing/allocation-invariants';
 import { sum } from '../common/money';
 import { stockPoint } from '../testing/crate-stock-fixture';
+import { listenOnLoopback } from '../testing/listen-on-loopback';
 
 const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -41,7 +42,7 @@ beforeAll(async () => {
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
-  await app.init();
+  await listenOnLoopback(app);
   ds = app.get(DataSource);
 
   const users = app.get(UsersService);
