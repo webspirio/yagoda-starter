@@ -13,11 +13,9 @@ import {
   type LucideIcon,
   MapPin,
   Menu,
-  Network,
   Package,
   PanelLeftClose,
   PanelLeftOpen,
-  Printer,
   Scale,
   Settings,
   UserCog,
@@ -55,8 +53,9 @@ interface NavGroup {
   items: NavItem[];
 }
 
-// Mirrors the mock's grouped navigation. Items without a `to` are screens the
-// migration has not wired yet — shown (for parity) but disabled until they land.
+// Mirrors the mock's grouped navigation. An item without a `to` is a screen not
+// wired yet — shown but disabled («Скоро»). None is left today: «Середня ціна по
+// мережі» and «Аркуш керівника» became «Усі точки» on «Собівартість дня» (23.10).
 const NAV_GROUPS: NavGroup[] = [
   {
     labelKey: 'nav.group.onPoint',
@@ -83,8 +82,6 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { labelKey: 'nav.cost', icon: Calculator, to: '/cost-of-day' },
       { labelKey: 'nav.reweigh', icon: Weight, to: '/reweigh' },
-      { labelKey: 'nav.network', icon: Network },
-      { labelKey: 'nav.sheet', icon: Printer },
       { labelKey: 'nav.transfers', icon: ArrowLeftRight, to: '/transfers', role: 'network_owner' },
       { labelKey: 'nav.points', icon: MapPin, to: '/points' },
       { labelKey: 'nav.users', icon: UserCog, to: '/users' },
@@ -168,7 +165,10 @@ export function AppLayout() {
       >
         <Link
           to="/"
-          className={cn('flex items-center gap-2 px-5 pb-2 pt-5', collapsed && 'md:justify-center md:px-0')}
+          className={cn(
+            'flex items-center gap-2 px-5 pb-2 pt-5',
+            collapsed && 'md:justify-center md:px-0',
+          )}
         >
           <Cherry size={22} className="shrink-0 text-primary" />
           <div className={cn('min-w-0', collapsed && 'md:hidden')}>
@@ -203,7 +203,9 @@ export function AppLayout() {
                             'flex cursor-default items-center gap-2.5 rounded-md px-3 py-2 text-sm text-sidebar-foreground/35',
                             collapsed && 'md:justify-center md:px-0',
                           )}
-                          title={collapsed ? `${t(item.labelKey)} · ${t('shell.soon')}` : t('shell.soon')}
+                          title={
+                            collapsed ? `${t(item.labelKey)} · ${t('shell.soon')}` : t('shell.soon')
+                          }
                         >
                           <Icon size={16} className="shrink-0" />
                           <span className={label}>{t(item.labelKey)}</span>

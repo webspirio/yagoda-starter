@@ -1485,14 +1485,14 @@ describe('documents pipeline (HTTP)', () => {
         .expect(404);
     });
 
-    it('refuses the operator the cost-of-day and network-average reports — §8.4, §8.6', async () => {
+    it('refuses the operator the cost-of-day reports, one point and all points — §8.4, §8.6', async () => {
       await request(app.getHttpServer())
         .get(`/shifts/${ghostShift}/cost-of-day`)
         .set(bearer(operatorToken))
         .expect(403);
 
       await request(app.getHttpServer())
-        .get('/reports/network-average?date=2026-08-04')
+        .get('/reports/cost-of-day?date=2026-08-04')
         .set(bearer(operatorToken))
         .expect(403);
     });

@@ -79,8 +79,6 @@
     "files|frontend/src/shared/ui/progress.tsx|frontend/src/shared/ui/progress.tsx",
     "files|frontend/src/shared/ui/radio-group.tsx|frontend/src/shared/ui/radio-group.tsx",
     "files|frontend/src/shared/ui/select.tsx|frontend/src/shared/ui/select.tsx",
-    "types|backend/src/day-costs/network-average.service.ts|NetworkAveragePointRow",
-    "types|backend/src/day-costs/network-average.service.ts|NetworkAverageProduct",
     "types|backend/src/day-costs/top-up-allocation.ts|ReceiptLineForAllocation",
     "types|backend/src/grade-prices/grade-price.mapper.ts|SheetRow",
     "types|backend/src/intakes/intake-lines.ts|BuiltLine",
