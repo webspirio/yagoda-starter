@@ -162,6 +162,20 @@ describe('PayoutReceiptDialog', () => {
     expect(screen.queryByRole('button', { name: 'Void' })).not.toBeInTheDocument();
   });
 
+  it('says the document can be voided here only when «Void» is shown (A4)', () => {
+    setUp({ me: OPERATOR_OTHER });
+    const { unmount } = render(<PayoutReceiptDialog payoutId="payout-1" open onClose={vi.fn()} />);
+    expect(screen.getByText('Printable payout receipt.')).toBeInTheDocument();
+    unmount();
+
+    setUp({ me: OWNER });
+    render(<PayoutReceiptDialog payoutId="payout-1" open onClose={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Void' })).toBeInTheDocument();
+    expect(
+      screen.getByText('Printable payout receipt — you can void the document here.'),
+    ).toBeInTheDocument();
+  });
+
   it('opens the void dialog with the payout amount, shift state and reopened receipts', async () => {
     setUp({ payout: buildPayout({ shift_closed: true }), me: OWNER });
     render(<PayoutReceiptDialog payoutId="payout-1" open onClose={vi.fn()} />);

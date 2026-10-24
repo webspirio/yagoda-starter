@@ -3,9 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { Printer } from 'lucide-react';
 import { PageHeader } from '@/shared/ui/page-header';
 import { SelectField } from '@/shared/ui/select-field';
+import { HeaderSlot } from '@/shared/ui/header-slot';
 import { DateStepper } from '@/shared/ui/date-stepper';
 import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
+import { TraceScope } from '@/shared/ui/trace';
 import { useUrlParam } from '@/shared/lib/url-state';
 import {
   todayIso,
@@ -17,13 +19,21 @@ import {
 import { useWorkingPoint } from '@/features/point-scope';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useShiftOnDateQuery } from '@/entities/shift';
-import { useCostOfDayQuery } from '@/entities/cost-of-day';
+import { useCostOfDayQuery, useNetworkCostOfDayQuery } from '@/entities/cost-of-day';
 import { useDayExpensesQuery } from '@/entities/day-expense';
-import type { CostOfDay } from '@/entities/cost-of-day';
+import type { CostOfDay, CostSplit } from '@/entities/cost-of-day';
 import { StatusChips } from './StatusChips';
 import { ExpensesStrip } from './ExpensesStrip';
 import { CostTable } from './CostTable';
 import { ChecksDisclosure } from './ChecksDisclosure';
+import { NetworkCostOfDay } from './NetworkCostOfDay';
+import { SplitSwitch } from './SplitSwitch';
+import { useCostSplit } from '../model/useCostSplit';
+
+/** `?point=all` — «Усі точки». Not a uuid, so `usePointScope` drops it and
+ *  no other screen ever reads it; `setPointId` is never called with it, so
+ *  it is never remembered either. */
+const ALL_POINTS = 'all';
 
 /**
  * The day's body below the title row. A component of its own so the checks
@@ -45,22 +55,26 @@ function CostOfDayBody({
     day.checks !== null && !(day.checks.shares_ok && day.checks.total_ok),
   );
 
+  // ONE trace scope over the chips, the expenses strip, the table with its
+  // formula lines and the звірка: a formula's operand may point at any of them
+  // (`shared/ui/trace`). `display: contents`, so the column's gap is untouched.
   return (
     <div className="flex flex-col gap-4">
-      <StatusChips
-        day={day}
-        locale={locale}
-        onChecksClick={() => {
-          setChecksOpen(true);
-          document.getElementById('cost-checks')?.scrollIntoView({ block: 'nearest' });
-        }}
-      />
-      {/* The strip is the ONLY write path to `day_expenses`, and the server
+      <TraceScope>
+        <StatusChips
+          day={day}
+          locale={locale}
+          onChecksClick={() => {
+            setChecksOpen(true);
+            document.getElementById('cost-checks')?.scrollIntoView({ block: 'nearest' });
+          }}
+        />
+        {/* The strip is the ONLY write path to `day_expenses`, and the server
           keeps counting its lines in expenses_amount/basket/per_kg even when
           every intake on the day is voided — so it stays reachable whenever a
           shift exists, not just when there are products. The table alone falls
           back to the empty-day message. */}
-      {/* KEYED ON THE SHIFT, and that key is load-bearing. The strip holds the
+        {/* KEYED ON THE SHIFT, and that key is load-bearing. The strip holds the
           half-typed expense — label, amount, and which line is open for
           editing — in its own state, and stepping to another date only
           RE-RENDERS this tree: the queries for a day already visited come back
@@ -70,19 +84,27 @@ function CostOfDayBody({
           writes them to the wrong business day. A draft belongs to its shift
           and should die with it — the same rule `pages/reweigh` applies by
           clearing its drafts when (date, point) changes. */}
-      <ExpensesStrip
-        key={day.shift_id}
-        day={day}
-        expenses={expenses}
-        shiftId={day.shift_id}
-        locale={locale}
-      />
-      {day.products.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">{t('costOfDay.noIntake')}</p>
-      ) : (
-        <CostTable day={day} locale={locale} />
-      )}
-      <ChecksDisclosure day={day} locale={locale} open={checksOpen} onOpenChange={setChecksOpen} />
+        <ExpensesStrip
+          key={day.shift_id}
+          day={day}
+          expenses={expenses}
+          shiftId={day.shift_id}
+          locale={locale}
+        />
+        {day.products.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            {t('costOfDay.noIntake')}
+          </p>
+        ) : (
+          <CostTable day={day} locale={locale} />
+        )}
+        <ChecksDisclosure
+          day={day}
+          locale={locale}
+          open={checksOpen}
+          onOpenChange={setChecksOpen}
+        />
+      </TraceScope>
     </div>
   );
 }
@@ -107,6 +129,12 @@ function CostOfDayBody({
  * THREE READ STATES, never two. A failed `/collection-points` leaves every
  * downstream query disabled, and reporting that as «зміну не відкривали»
  * states a business fact about a shift nobody managed to read.
+ *
+ * «УСІ ТОЧКИ» is the picker's first option (client, 23.10 — it replaces the
+ * separate «Середня ціна по мережі» page and the «Аркуш керівника», which was
+ * only ever a printout): the same date, every point's day summed by the
+ * server, no expense entry. The single-point reads are switched off while it
+ * is on, and the network read while it is off.
  */
 export function CostOfDayPage() {
   const { t, i18n } = useTranslation();
@@ -116,40 +144,61 @@ export function CostOfDayPage() {
   const pointsQuery = usePointOptionsQuery();
   const points = pointsQuery.data ?? [];
 
+  const [pointParam, setPointParam] = useUrlParam('point');
+  const allPoints = canPick && pointParam === ALL_POINTS;
+
   const [dateParam, setDateParam] = useUrlParam('date');
+  const [split, setSplit] = useCostSplit();
   const today = todayIso();
   const date = isRealIsoDate(dateParam) && dateParam <= today ? dateParam : today;
 
-  const shift = useShiftOnDateQuery(pointId, date);
-  const shiftId = shift.data?.id;
-  const cost = useCostOfDayQuery(shiftId);
+  const shift = useShiftOnDateQuery(allPoints ? null : pointId, date);
+  const shiftId = allPoints ? undefined : shift.data?.id;
+  const cost = useCostOfDayQuery(shiftId, split);
   const expenses = useDayExpensesQuery(shiftId);
+  const network = useNetworkCostOfDayQuery(allPoints ? date : null, split);
 
-  const readsPending =
-    pointsQuery.isPending ||
-    (pointId !== null && shift.isPending) ||
-    (shiftId !== undefined && (cost.isPending || expenses.isPending));
-  const readsFailed = pointsQuery.isError || shift.isError || cost.isError || expenses.isError;
+  const readsPending = allPoints
+    ? pointsQuery.isPending || network.isPending
+    : pointsQuery.isPending ||
+      (pointId !== null && shift.isPending) ||
+      (shiftId !== undefined && (cost.isPending || expenses.isPending));
+  const readsFailed = allPoints
+    ? pointsQuery.isError || network.isError
+    : pointsQuery.isError || shift.isError || cost.isError || expenses.isError;
 
-  const pointName = points.find((p) => p.id === pointId)?.name ?? '—';
+  const pointName = allPoints
+    ? t('costOfDay.network.allPoints')
+    : (points.find((p) => p.id === pointId)?.name ?? '—');
   const day = cost.data;
+  const networkDay = network.data;
 
   const actions = (
     <div className="print-hide flex flex-wrap items-center gap-2">
       {canPick ? (
-        <SelectField
-          aria-label={t('costOfDay.point')}
-          value={pointId ?? ''}
-          onChange={(e) => setPointId(e.target.value || null)}
-          className="w-44"
-        >
-          {points.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </SelectField>
+        <HeaderSlot slot="scope">
+          <SelectField
+            aria-label={t('costOfDay.point')}
+            value={allPoints ? ALL_POINTS : (pointId ?? '')}
+            onChange={(e) =>
+              e.target.value === ALL_POINTS
+                ? setPointParam(ALL_POINTS)
+                : setPointId(e.target.value || null)
+            }
+            className="w-44"
+          >
+            <option value={ALL_POINTS}>{t('costOfDay.network.allPoints')}</option>
+            {points.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </SelectField>
+        </HeaderSlot>
       ) : null}
+      {/* Spec 2026-10-24 §3.1 — a view of the day, never its state: nothing
+          is stored server-side, and the day's sums are the same under all three. */}
+      <SplitSwitch value={split} onChange={setSplit} />
       <DateStepper
         label={formatShortDate(date, locale)}
         onPrev={() => setDateParam(addDaysIso(date, -1))}
@@ -165,7 +214,7 @@ export function CostOfDayPage() {
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5 px-4 py-6">
+    <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5">
       <PageHeader
         eyebrow={t('costOfDay.eyebrow')}
         title={t('costOfDay.title')}
@@ -181,27 +230,36 @@ export function CostOfDayPage() {
         <div className="flex justify-center py-12">
           <Spinner />
         </div>
+      ) : allPoints ? (
+        !networkDay || networkDay.points.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            {t('costOfDay.network.noShifts', { date: formatShortDate(date, locale) })}
+          </p>
+        ) : (
+          <div className="printable print-landscape rounded-xl border border-line2 bg-card p-5">
+            <SheetHeading date={date} pointName={pointName} split={split} locale={locale} />
+            <NetworkCostOfDay day={networkDay} locale={locale} />
+          </div>
+        )
       ) : !day ? (
         <p className="py-8 text-center text-sm text-muted-foreground">
           {t('costOfDay.noShift', { date: formatShortDate(date, locale), point: pointName })}
         </p>
       ) : (
-        <div className="printable print-landscape rounded-xl bg-card p-5 ring-1 ring-foreground/10">
-          <div className="print-only mb-4">
-            <div className="font-display text-lg font-semibold">
-              {t('costOfDay.sheetTitle', {
-                date: formatLongDate(date, locale),
-                point: pointName,
-              })}
-            </div>
-          </div>
-
-          <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border pb-3">
-            <span className="font-display text-lg leading-none font-medium">{pointName}</span>
-            <span className="font-mono text-xs text-muted-foreground">
-              {formatShortDate(date, locale)}
-            </span>
-          </div>
+        // While a split not loaded yet is on its way the sheet still shows the
+        // previous split's figures (`useCostOfDayQuery`'s placeholder) — dimmed
+        // and busy, never swapped for a spinner that would unmount the strip.
+        <div
+          aria-busy={cost.isPlaceholderData}
+          className={`printable print-landscape rounded-xl border border-line2 bg-card p-5 transition-opacity ${cost.isPlaceholderData ? 'opacity-60' : ''}`}
+        >
+          <SheetHeading date={date} pointName={pointName} split={split} locale={locale} />
+          {/* §2.3 — a split by money with no money to split by answered by weight. */}
+          {day.split_applied === day.split ? null : (
+            <p className="print-hide mb-3 text-sm text-muted-foreground">
+              {t('costOfDay.split.fallback')}
+            </p>
+          )}
 
           <CostOfDayBody
             key={day.shift_id}
@@ -211,6 +269,36 @@ export function CostOfDayPage() {
           />
         </div>
       )}
+    </div>
+  );
+}
+
+/** The sheet's title — on PAPER only: on screen the header's point picker and
+ *  date stepper already say both, and a second name-and-date line under them
+ *  was the same words twice (audit 2026-10-24 E11). The same for one point
+ *  and for «Усі точки». It names the split too: the switch is `print-hide`,
+ *  and the same day reads differently under each (spec 2026-10-24 §3.1). */
+function SheetHeading({
+  date,
+  pointName,
+  split,
+  locale,
+}: {
+  date: string;
+  pointName: string;
+  split: CostSplit;
+  locale: string;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div className="print-only mb-4">
+      <div className="font-display text-lg font-semibold">
+        {t('costOfDay.sheetTitle', {
+          date: formatLongDate(date, locale),
+          point: pointName,
+          split: t(`costOfDay.split.${split}`).toLocaleLowerCase(locale),
+        })}
+      </div>
     </div>
   );
 }

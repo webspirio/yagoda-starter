@@ -1,12 +1,10 @@
 import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle2, TriangleAlert } from 'lucide-react';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/shared/ui/dialog';
 import { Button } from '@/shared/ui/button';
-import { Badge } from '@/shared/ui/badge';
 import { LedgerRow } from '@/shared/ui/ledger-row';
 import { formatUah } from '@/shared/lib/money';
-import { discrepancyTone } from '../lib/discrepancyTone';
+import { DiscrepancyBadge } from '@/entities/cash-count';
 
 interface CountResultBodyProps {
   title: ReactNode;
@@ -56,7 +54,6 @@ export function CountResultBody({
 }: CountResultBodyProps) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage;
-  const tone = discrepancy === null ? null : discrepancyTone(discrepancy);
 
   return (
     <>
@@ -75,19 +72,11 @@ export function CountResultBody({
         <LedgerRow label={t('countResult.counted')} value={formatUah(counted, locale)} strong />
       </div>
 
-      {tone !== null ? (
+      {/* Named, never a bare «Розбіжність» pill: «Недостача 90,00 ₴» /
+          «Надлишок 50,00 ₴» / «Зійшлося» (audit 2026-10-24, C7). */}
+      {discrepancy !== null ? (
         <div>
-          <Badge
-            variant="outline"
-            className={tone === 'leaf' ? 'border-leaf/40 text-leaf' : 'border-destructive/40 text-destructive'}
-          >
-            {tone === 'leaf' ? (
-              <CheckCircle2 aria-hidden="true" />
-            ) : (
-              <TriangleAlert aria-hidden="true" />
-            )}
-            {t('countResult.discrepancy')}
-          </Badge>
+          <DiscrepancyBadge difference={discrepancy} />
         </div>
       ) : null}
 

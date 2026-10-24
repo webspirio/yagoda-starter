@@ -9,7 +9,9 @@ const { countsMock, explainMock } = vi.hoisted(() => ({
   explainMock: vi.fn(),
 }));
 
-vi.mock('@/entities/cash-count', () => ({
+// The discrepancy reading (`describeDiscrepancy` & co.) stays REAL — only the read is mocked.
+vi.mock('@/entities/cash-count', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/cash-count')>()),
   useCashCountsQuery: (filter: unknown) => countsMock(filter),
 }));
 
@@ -84,8 +86,36 @@ describe('CashCountHistory', () => {
     countsMock.mockReturnValue(page([count()]));
     render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
 
-    expect(screen.getAllByText('1,500.00 ₴')).toHaveLength(2);
-    expect(screen.getByText('0.00 ₴')).toBeInTheDocument();
+    // Rule 4 — the unit is in the header, the cells are plain figures.
+    expect(screen.getByRole('columnheader', { name: 'Counted, ₴' })).toBeInTheDocument();
+    expect(screen.getAllByText('1,500.00')).toHaveLength(2);
+    // C7 — the difference is named, and said once (not again under «Explanation»).
+    expect(screen.getAllByText('Matched')).toHaveLength(1);
+  });
+
+  it('names a shortage and a surplus by direction and amount', () => {
+    countsMock.mockReturnValue(
+      page([
+        count({ id: 'a', discrepancy: '-90.00', is_open: true }),
+        count({ id: 'b', discrepancy: '50.00', is_open: true }),
+      ]),
+    );
+    render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
+
+    expect(screen.getByText('Short 90.00 ₴')).toHaveClass('text-destructive');
+    expect(screen.getByText('Over 50.00 ₴')).toHaveClass('text-[var(--amber)]');
+  });
+
+  it('says when the history is cut to the latest counts', () => {
+    countsMock.mockReturnValue({
+      data: { data: [count()], total: 140, page: 1, limit: 100 },
+      isPending: false,
+      isError: false,
+    });
+    render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
+    expect(
+      screen.getByText('Showing the latest 1 count — older ones did not fit'),
+    ).toBeInTheDocument();
   });
 
   it('names who counted', () => {
@@ -115,7 +145,9 @@ describe('CashCountHistory', () => {
   });
 
   it('offers «Explain» only to the owner, only on an open discrepancy', () => {
-    countsMock.mockReturnValue(page([count({ is_open: true, explainable: true, discrepancy: '-40.00' })]));
+    countsMock.mockReturnValue(
+      page([count({ is_open: true, explainable: true, discrepancy: '-40.00' })]),
+    );
     const { rerender } = render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
     expect(screen.queryByRole('button', { name: 'Explain' })).toBeNull();
     expect(screen.getByText('Unexplained')).toBeInTheDocument();
@@ -137,7 +169,15 @@ describe('CashCountHistory', () => {
   it('opens the explain dialog scoped to that count’s shift', async () => {
     const user = userEvent.setup();
     countsMock.mockReturnValue(
-      page([count({ id: 'c9', shift_id: 's9', is_open: true, explainable: true, discrepancy: '-40.00' })]),
+      page([
+        count({
+          id: 'c9',
+          shift_id: 's9',
+          is_open: true,
+          explainable: true,
+          discrepancy: '-40.00',
+        }),
+      ]),
     );
     render(<CashCountHistory pointId="p1" isOwner meId="u1" />);
 
@@ -147,7 +187,13 @@ describe('CashCountHistory', () => {
   });
 
   const openClosing = (over: Partial<CashCount> = {}) =>
-    count({ kind: 'closing', counted_amount: '1400.00', discrepancy: '-100.00', is_open: true, ...over });
+    count({
+      kind: 'closing',
+      counted_amount: '1400.00',
+      discrepancy: '-100.00',
+      is_open: true,
+      ...over,
+    });
 
   it('the closer gets «Add my explanation» on an editable row', async () => {
     countsMock.mockReturnValue(page([openClosing({ operator_note_editable: true })]));
@@ -157,7 +203,9 @@ describe('CashCountHistory', () => {
   });
 
   it('once written, the closer edits it and everyone reads it', () => {
-    countsMock.mockReturnValue(page([openClosing({ operator_note: 'віддав решту', operator_note_editable: true })]));
+    countsMock.mockReturnValue(
+      page([openClosing({ operator_note: 'віддав решту', operator_note_editable: true })]),
+    );
     render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
     expect(screen.getByText('Operator: “віддав решту”')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Edit my explanation' })).toBeInTheDocument();
@@ -171,7 +219,9 @@ describe('CashCountHistory', () => {
   });
 
   it('the owner sees the operator’s note AND still has to explain — the note closes nothing', () => {
-    countsMock.mockReturnValue(page([openClosing({ operator_note: 'віддав решту', explainable: true })]));
+    countsMock.mockReturnValue(
+      page([openClosing({ operator_note: 'віддав решту', explainable: true })]),
+    );
     render(<CashCountHistory pointId="p1" isOwner meId="u1" />);
     expect(screen.getByText('Operator: “віддав решту”')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Explain' })).toBeInTheDocument();
@@ -179,7 +229,13 @@ describe('CashCountHistory', () => {
 
   it('after the owner decides, both texts stay readable', () => {
     countsMock.mockReturnValue(
-      page([openClosing({ is_open: false, explanation: 'утримати з зарплати', operator_note: 'віддав решту' })]),
+      page([
+        openClosing({
+          is_open: false,
+          explanation: 'утримати з зарплати',
+          operator_note: 'віддав решту',
+        }),
+      ]),
     );
     render(<CashCountHistory pointId="p1" isOwner meId="u1" />);
     expect(screen.getByText('утримати з зарплати')).toBeInTheDocument();
@@ -188,7 +244,14 @@ describe('CashCountHistory', () => {
 
   it('an operator reads «settled by the owner» — the server withholds the owner’s text from them', () => {
     countsMock.mockReturnValue(
-      page([openClosing({ is_open: false, explanation: null, explained: true, operator_note: 'віддав решту' })]),
+      page([
+        openClosing({
+          is_open: false,
+          explanation: null,
+          explained: true,
+          operator_note: 'віддав решту',
+        }),
+      ]),
     );
     render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
     expect(screen.getByText('Settled by the owner')).toBeInTheDocument();
@@ -202,7 +265,13 @@ describe('CashCountHistory', () => {
     vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(120);
     vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(40);
     countsMock.mockReturnValue(
-      page([openClosing({ is_open: false, explanation: 'утримати з зарплати', operator_note: 'віддав решту' })]),
+      page([
+        openClosing({
+          is_open: false,
+          explanation: 'утримати з зарплати',
+          operator_note: 'віддав решту',
+        }),
+      ]),
     );
     render(<CashCountHistory pointId="p1" isOwner meId="u1" />);
 
@@ -212,12 +281,27 @@ describe('CashCountHistory', () => {
     await user.click(screen.getByRole('button', { name: "Show more: the owner's explanation" }));
     expect(screen.getByText('утримати з зарплати')).not.toHaveClass('line-clamp-2');
     expect(screen.getByText('Operator: “віддав решту”')).toHaveClass('line-clamp-2');
-    expect(screen.getByRole('button', { name: "Show more: the operator's note" })).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: "Show more: the operator's note" }),
+    ).toBeInTheDocument();
   });
 
   it('renders each row its own texts and buttons — an explained opening does not touch the closing', () => {
-    const opening = count({ id: 'o', kind: 'opening', explanation: 'недостача з учора', is_open: false, discrepancy: '-10.00' });
-    const closing = count({ id: 'c', kind: 'closing', explanation: null, is_open: true, explainable: true, discrepancy: '-20.00' });
+    const opening = count({
+      id: 'o',
+      kind: 'opening',
+      explanation: 'недостача з учора',
+      is_open: false,
+      discrepancy: '-10.00',
+    });
+    const closing = count({
+      id: 'c',
+      kind: 'closing',
+      explanation: null,
+      is_open: true,
+      explainable: true,
+      discrepancy: '-20.00',
+    });
     countsMock.mockReturnValue(page([closing, opening]));
     render(<CashCountHistory pointId="p1" isOwner meId="u1" />);
     const [closingRow, openingRow] = screen.getAllByRole('row').slice(1);
@@ -229,7 +313,15 @@ describe('CashCountHistory', () => {
 
   it('a demoted closing (midday with texts) shows them and no button', () => {
     countsMock.mockReturnValue(
-      page([count({ kind: 'midday', discrepancy: '-20.00', explanation: 'утримати', operator_note: 'перший раз', is_open: false })]),
+      page([
+        count({
+          kind: 'midday',
+          discrepancy: '-20.00',
+          explanation: 'утримати',
+          operator_note: 'перший раз',
+          is_open: false,
+        }),
+      ]),
     );
     render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
     expect(screen.getByText('утримати')).toBeInTheDocument();
@@ -239,7 +331,15 @@ describe('CashCountHistory', () => {
 
   it('a demoted closing with only an operator note still shows the note', () => {
     countsMock.mockReturnValue(
-      page([count({ kind: 'midday', discrepancy: '-20.00', explanation: null, operator_note: 'перший раз', is_open: false })]),
+      page([
+        count({
+          kind: 'midday',
+          discrepancy: '-20.00',
+          explanation: null,
+          operator_note: 'перший раз',
+          is_open: false,
+        }),
+      ]),
     );
     render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
     expect(screen.getByText(/перший раз/)).toBeInTheDocument();
@@ -248,7 +348,13 @@ describe('CashCountHistory', () => {
 
   it('an open row the operator cannot explain says who counted it', () => {
     countsMock.mockReturnValue(
-      page([openClosing({ operator_note_editable: false, counted_by_user_id: 'u2', counted_by_name: 'Марія' })]),
+      page([
+        openClosing({
+          operator_note_editable: false,
+          counted_by_user_id: 'u2',
+          counted_by_name: 'Марія',
+        }),
+      ]),
     );
     render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
     expect(screen.getByText(/counted by Марія/)).toBeInTheDocument();
@@ -256,7 +362,15 @@ describe('CashCountHistory', () => {
 
   it('an opening-count incident shows the counter’s note and passes it to the owner’s dialog', async () => {
     countsMock.mockReturnValue(
-      page([count({ kind: 'opening', discrepancy: '-100.00', is_open: true, explainable: true, operator_note: 'віддав решту' })]),
+      page([
+        count({
+          kind: 'opening',
+          discrepancy: '-100.00',
+          is_open: true,
+          explainable: true,
+          operator_note: 'віддав решту',
+        }),
+      ]),
     );
     render(<CashCountHistory pointId="p1" isOwner meId="u1" />);
     expect(screen.getByText('Operator: “віддав решту”')).toBeInTheDocument();

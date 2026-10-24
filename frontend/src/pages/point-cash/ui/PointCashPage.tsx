@@ -1,16 +1,18 @@
 import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { DashboardPage, type StatItem } from '@/shared/ui/templates/dashboard-page';
 import { DateStepper } from '@/shared/ui/date-stepper';
 import { SelectField } from '@/shared/ui/select-field';
+import { HeaderSlot } from '@/shared/ui/header-slot';
 import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { SectionCard } from '@/shared/ui/section-card';
+import { TraceScope, TraceTerm } from '@/shared/ui/trace';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
 import { isTruncated } from '@/shared/api';
 import { useUrlParam } from '@/shared/lib/url-state';
-import { isNegative, formatUah, cmp } from '@/shared/lib/money';
+import { isNegative, formatUah, cmp, sub, sum } from '@/shared/lib/money';
 import {
   todayIso,
   addDaysIso,
@@ -29,9 +31,10 @@ import {
   formatNullableUah,
 } from '@/entities/point-cash';
 import { useIntakesQuery } from '@/entities/intake';
-import { usePayoutsQuery } from '@/entities/payout';
-import { useCashCountsQuery } from '@/entities/cash-count';
+import { useCashCountsQuery, DiscrepancyText } from '@/entities/cash-count';
+import { useTransfersQuery } from '@/entities/transfer';
 import { useShiftOnDateQuery, useCurrentShiftQuery } from '@/entities/shift';
+import { useCostOfDayQuery } from '@/entities/cost-of-day';
 import { SetTargetCashDialog } from '@/features/set-point-target';
 import {
   useOpenShiftMutation,
@@ -65,8 +68,9 @@ type CountTarget = { mode: 'open' } | { mode: 'close'; shiftId: string };
  *    `stats` read `cash` from THE ONE SCOPED ROW this page fetches
  *    (`GET /point-cash?collection_point_id=`); `CashLedger` reads its rows
  *    AND its total from `GET /point-cash/:pointId`'s `breakdown` (#73), one
- *    statement, so the rows add up to the figure under them. Only the two
- *    informational rows still read a bounded page of `intakes`/`payouts`.
+ *    statement, so the rows add up to the figure under them. Only the one
+ *    informational row («Нараховано за день») still reads a bounded page of
+ *    `intakes`.
  * 2. A point with zero cash-counts reads `0.00`, correctly (§7.3 — a
  *    point's first count IS its opening balance) — but says so in words
  *    (`neverCounted`) so it does not read as a regression.
@@ -154,18 +158,28 @@ export function PointCashPage() {
   // they cannot disagree. Kept out of `isError`: a failed breakdown degrades
   // the ledger card only, never the stats above it.
   const pointCashOne = usePointCashForPointQuery(pointId, date);
-  // The ledger's two INFORMATIONAL rows (accrued, paid for past days), each
-  // capped at `limit: 100` and caveated under its row when it was. Receipts
-  // are read from the day the shift began — a shift left open since an
-  // earlier day files them under that day (#114). Both hooks disable
-  // themselves when the filter names no scope (hence the empty object rather
-  // than a bare date range), `useCashCountsQuery` likewise.
+  // The ledger's one INFORMATIONAL row (accrued), capped at `limit: 100` and
+  // caveated under its row when it was. Receipts are read from the day the
+  // shift began — a shift left open since an earlier day files them under
+  // that day (#114). The hook disables itself when the filter names no scope
+  // (hence the empty object rather than a bare date range),
+  // `useCashCountsQuery` likewise. (No payouts read: «Видано за минулі дні»,
+  // the only row that needed one, is gone — audit 2026-10-24, C1.)
   const shiftDate = shiftDateOf(pointCashOne.data?.breakdown, date);
   const intakes = useIntakesQuery(
     pointId ? { pointId, from: shiftDate, to: date, limit: 100 } : {},
   );
-  const payouts = usePayoutsQuery({ pointId: pointId ?? undefined, to: date, limit: 100 });
   const cashCounts = useCashCountsQuery({ pointId: pointId ?? undefined });
+  // C4 — money already on the road to this point. The SAME key
+  // `IncomingTransfers` reads (`enabled` stays out of the key), so it costs no
+  // second request. A transfer's `sent` is a state of NOW, not of `date`, so
+  // only today's shortfall hint names it.
+  const inTransit = useTransfersQuery({
+    pointId: pointId ?? undefined,
+    status: 'sent',
+    enabled: pointId !== null,
+  });
+  const inTransitCash = inTransit.data ? sum(inTransit.data.data.map((tr) => tr.cash)) : null;
   // R4 — «Зміна і перерахунок каси». `useShiftOnDateQuery` already gates
   // itself on `pointId !== null` (`shiftOnDateQueryOptions`), same as every
   // other read on this page. The panel's own counts read is scoped to the
@@ -199,6 +213,15 @@ export function PointCashPage() {
   // reads above). Kept out of the page-wide `isError`, like the shift read:
   // a failed journal degrades the day's tiles, feed and reconciliation only.
   const day = useDayDocuments(date, shift.data?.id);
+  // Top-ups review, item 5 — the owner's доплати on this shift's receipts move
+  // no cash, so «Звірка каси» leaves them out while «Собівартість дня»'s
+  // «Нараховано» counts them; the ledger names the gap on the days it exists.
+  // `GET /shifts/:id/cost-of-day` is owner-only: an operator passes no id, so
+  // the hook stays disabled and never asks (and the operator sees no note —
+  // whether operators see доплати at all is the client's open question).
+  // `top_ups_total` is the same under every split, so the default one is asked.
+  const costOfDay = useCostOfDayQuery(isOwner ? shift.data?.id : undefined, 'weight');
+  const topUps = isOwner ? (costOfDay.data?.top_ups_total ?? null) : null;
   const hasShift = shift.data != null;
   // One gate for the day's figures: a shift, a clean read, both journals in.
   // Tiles and «Звірка каси» must never disagree on it.
@@ -242,8 +265,7 @@ export function PointCashPage() {
   // with an empty page — and the empty page means a stale `?point=`/stored
   // id, not a truncated list. Left out of `isError` it would spin forever.
   const pointMissing = pointCash.data !== undefined && pointRow === null;
-  const isError =
-    pointCash.isError || pointMissing || intakes.isError || payouts.isError || cashCounts.isError;
+  const isError = pointCash.isError || pointMissing || intakes.isError || cashCounts.isError;
 
   // THE ROW NAMES THE POINT, NOT THE PICKER — `pointRow` is the one source
   // guaranteed to describe the figures actually on screen, so it goes
@@ -255,7 +277,6 @@ export function PointCashPage() {
   const hasTarget = pointRow?.target_cash != null;
   // `total` beats what was fetched exactly when a capped page dropped rows.
   const intakesTruncated = isTruncated(intakes.data);
-  const payoutsTruncated = isTruncated(payouts.data);
   // §7.3 — a point with no counts at all reads `0.00`, correctly, but would
   // look like a regression on deploy without saying so in words.
   //
@@ -277,6 +298,18 @@ export function PointCashPage() {
     counts.total === counts.data.length &&
     !counts.data.some((c) => c.business_date <= date);
 
+  // C14 — the owner's «Невирішених розбіжностей: N · {sum}»: the counts still
+  // waiting on the owner's explanation as of `date`. Off the same capped
+  // newest-first page as `neverCounted`, so a cut page says «щонайменше».
+  const openCounts = (counts?.data ?? []).filter((c) => c.is_open && c.business_date <= date);
+  const openCountsTruncated = counts !== undefined && counts.total > counts.data.length;
+  // Shortages and surpluses are summed APART (review 24.10): netted, a −90 and
+  // a +90 read «Зійшлося» in green over two open incidents. Each part keeps
+  // its own sign, so `DiscrepancyText` names it; a zero part is left out.
+  const openShortage = sum(openCounts.map((c) => c.discrepancy).filter((d) => cmp(d, '0') === -1));
+  const openSurplus = sum(openCounts.map((c) => c.discrepancy).filter((d) => cmp(d, '0') === 1));
+  const openParts = [openShortage, openSurplus].filter((d) => cmp(d, '0') !== 0);
+
   // Nothing is shown off a page whose reads failed — including the target,
   // whose «—» would otherwise be a claim made on top of an error.
   const shownRow = isError ? null : pointRow;
@@ -287,32 +320,83 @@ export function PointCashPage() {
   // 0). The raw `cmp` against '0' is what tells those two apart; `null` means
   // no target was ever assigned, same as `shortfallTone`'s own null case.
   const shortfallCmp = shownRow?.shortfall == null ? null : cmp(shownRow.shortfall, '0');
+  // C4 — «з них X уже в дорозі»: only today, only while something is owed
+  // and something is actually on the road.
+  const onTheRoad =
+    isToday && shortfallCmp === 1 && inTransitCash !== null && cmp(inTransitCash, '0') === 1
+      ? inTransitCash
+      : null;
   const stats: StatItem[] | undefined = shownRow
     ? [
         {
           label: t('pointCash.stats.target'),
-          value: formatNullableUah(shownRow.target_cash, locale),
-          hint: shownRow.target_cash == null ? t('pointCash.stats.targetUnset') : undefined,
+          value: (
+            <span data-trace="cash:target">{formatNullableUah(shownRow.target_cash, locale)}</span>
+          ),
+          // Every tile carries a caption, so the four values sit on one line (C14).
+          hint:
+            shownRow.target_cash == null
+              ? t('pointCash.stats.targetUnset')
+              : t('pointCash.stats.targetHint'),
         },
         {
           label: t('pointCash.stats.cash'),
-          value: formatUah(shownRow.cash, locale),
-          tone: isNegative(shownRow.cash) ? 'amber' : 'berry',
+          // The source the ledger's total (`ledger:total`) also lights.
+          value: <span data-trace="cash:total">{formatUah(shownRow.cash, locale)}</span>,
+          // C9 — plain cash is neutral ink; below zero it is amber, the same
+          // tone the ledger's total uses.
+          tone: isNegative(shownRow.cash) ? 'amber' : 'default',
           hint: neverCounted ? t('pointCash.stats.neverCounted') : t('pointCash.stats.cashHint'),
         },
-        {
-          label: t('pointCash.stats.shortfall'),
-          value: formatNullableUah(shownRow.shortfall, locale),
-          tone: shortfall ?? undefined,
-          hint:
-            shortfallCmp === null
-              ? t('pointCash.stats.shortfallUnset')
-              : shortfallCmp === 1
-                ? t('pointCash.stats.shortfallOwed')
-                : shortfallCmp === -1
-                  ? t('pointCash.stats.shortfallOver')
-                  : t('pointCash.stats.shortfallSettled'),
-        },
+        // C5 — a label agrees with its sign: a NEGATIVE shortfall is «Понад
+        // наділ 2 800,00 ₴», never «Не вистачає до наділу −2 800,00 ₴».
+        shortfallCmp === -1 && shownRow.shortfall != null
+          ? {
+              label: t('pointCash.stats.over'),
+              value: (
+                <span data-trace="cash:shortfall">
+                  {formatUah(sub('0', shownRow.shortfall), locale)}
+                </span>
+              ),
+              tone: shortfall ?? undefined,
+              hint: t('pointCash.stats.shortfallOver'),
+            }
+          : {
+              label: t('pointCash.stats.shortfall'),
+              value: (
+                <span data-trace="cash:shortfall">
+                  {formatNullableUah(shownRow.shortfall, locale)}
+                </span>
+              ),
+              tone: shortfall ?? undefined,
+              hint:
+                shortfallCmp === null ? (
+                  t('pointCash.stats.shortfallUnset')
+                ) : shortfallCmp === 1 ? (
+                  onTheRoad !== null ? (
+                    // The figure lights the «У дорозі» cards below it
+                    // (`IncomingTransfers`, `incoming:sent`).
+                    <Trans
+                      t={t}
+                      i18nKey="pointCash.stats.shortfallOnTheRoad"
+                      values={{ uah: formatUah(onTheRoad, locale) }}
+                      components={{
+                        road: (
+                          <TraceTerm
+                            refs="incoming:sent"
+                            tone="amber"
+                            hint={t('pointCash.stats.traceOnTheRoad')}
+                          />
+                        ),
+                      }}
+                    />
+                  ) : (
+                    t('pointCash.stats.shortfallOwed')
+                  )
+                ) : (
+                  t('pointCash.stats.shortfallSettled')
+                ),
+            },
         // R1 — the crates book as its OWN tile (#221), beside the berry cash
         // and never summed with it: the client's «Правка» says berry cash and
         // crate deposits do not lie in one drawer, and `point-cash.service.ts`
@@ -323,7 +407,9 @@ export function PointCashPage() {
           // The old card's footnote, kept: a crate handed out against a
           // signed receipt carries no deposit, so this count can be smaller
           // than the crates out in the field.
-          hint: t('pointCash.crates.hint', {
+          // C12 — the crates book has no date: on a past date the figure is
+          // still today's, and the caption says so.
+          hint: t(isToday ? 'pointCash.crates.hint' : 'pointCash.crates.hintPast', {
             caption:
               shownRow.crate_deposit_units === 0
                 ? t('pointCash.crates.captionZero')
@@ -336,54 +422,56 @@ export function PointCashPage() {
   const actions = (
     <div className="flex flex-wrap items-center gap-2">
       {canPick ? (
-        <SelectField
-          aria-label={t('pointCash.pickPoint')}
-          value={pointId ?? ''}
-          onChange={(e) => setPointId(e.target.value)}
-          className="w-48"
-        >
-          {/* No «Оберіть точку» entry: `useWorkingPoint` always resolves the
-              owner to a point. A deactivated one reached by `?point=` is in
-              neither list below, so it gets its own entry — otherwise the
-              select would show the first active point over its figures.
-              Its name comes from `pointRow`, so it is generic until that
-              read lands — or for good, if it failed. */}
-          {pointId && points && !points.some((p) => p.id === pointId) ? (
-            <option value={pointId}>{pointName || t('common.inactivePoint')}</option>
-          ) : null}
-          {groupedPoints ? (
-            <>
-              {/* R6 — the owner's select lists points with a target first, so
-                  a point still waiting on one does not compete for attention
-                  with the points the owner actually has to fund today. */}
-              <optgroup label={t('pointCash.pick.withTarget')}>
-                {groupedPoints.withTarget.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label={t('pointCash.pick.withoutTarget')}>
-                {groupedPoints.withoutTarget.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </optgroup>
-            </>
-          ) : (
-            // `pointCashAll` has not settled yet (or this render is not the
-            // owner's) — the flat, ungrouped `points` list is what the select
-            // showed before grouping existed, kept here as the one render
-            // that must never come up empty while the grouping read is on
-            // its way.
-            (points ?? []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))
-          )}
-        </SelectField>
+        <HeaderSlot slot="scope">
+          <SelectField
+            aria-label={t('pointCash.pickPoint')}
+            value={pointId ?? ''}
+            onChange={(e) => setPointId(e.target.value)}
+            className="w-48"
+          >
+            {/* No «Оберіть точку» entry: `useWorkingPoint` always resolves the
+                owner to a point. A deactivated one reached by `?point=` is in
+                neither list below, so it gets its own entry — otherwise the
+                select would show the first active point over its figures.
+                Its name comes from `pointRow`, so it is generic until that
+                read lands — or for good, if it failed. */}
+            {pointId && points && !points.some((p) => p.id === pointId) ? (
+              <option value={pointId}>{pointName || t('common.inactivePoint')}</option>
+            ) : null}
+            {groupedPoints ? (
+              <>
+                {/* R6 — the owner's select lists points with a target first, so
+                    a point still waiting on one does not compete for attention
+                    with the points the owner actually has to fund today. */}
+                <optgroup label={t('pointCash.pick.withTarget')}>
+                  {groupedPoints.withTarget.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label={t('pointCash.pick.withoutTarget')}>
+                  {groupedPoints.withoutTarget.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </optgroup>
+              </>
+            ) : (
+              // `pointCashAll` has not settled yet (or this render is not the
+              // owner's) — the flat, ungrouped `points` list is what the select
+              // showed before grouping existed, kept here as the one render
+              // that must never come up empty while the grouping read is on
+              // its way.
+              (points ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))
+            )}
+          </SelectField>
+        </HeaderSlot>
       ) : null}
       <DateStepper
         label={formatShortDate(date, locale)}
@@ -426,7 +514,9 @@ export function PointCashPage() {
   const daySection =
     pointId === null ? null : (
       <div className="mt-5 flex flex-col gap-5">
-        {dayFiguresVisible ? <DayLedger summary={day.summary} truncated={day.truncated} /> : null}
+        {dayFiguresVisible ? (
+          <DayLedger summary={day.summary} truncated={day.truncated} topUps={topUps} />
+        ) : null}
         <SectionCard>
           <Tabs
             value={activityTab}
@@ -453,11 +543,7 @@ export function PointCashPage() {
               />
             </TabsContent>
             <TabsContent value="counts">
-              <CashCountHistory
-                pointId={pointId}
-                isOwner={isOwner}
-                meId={me?.id ?? null}
-              />
+              <CashCountHistory pointId={pointId} isOwner={isOwner} meId={me?.id ?? null} />
             </TabsContent>
           </Tabs>
         </SectionCard>
@@ -529,6 +615,32 @@ export function PointCashPage() {
       <>
         {dayTiles}
         <IncomingTransfers pointId={pointId} canAct={isOperator} />
+        {isOwner && openCounts.length > 0 ? (
+          <div className="mb-5 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+            <span>
+              {t(
+                openCountsTruncated
+                  ? 'pointCash.unexplained.countAtLeast'
+                  : 'pointCash.unexplained.count',
+                { count: openCounts.length },
+              )}
+            </span>
+            {openParts.map((d) => (
+              <span key={d} className="contents">
+                <span aria-hidden="true">·</span>
+                <DiscrepancyText className="font-mono tabular-nums" difference={d} />
+              </span>
+            ))}
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto p-0"
+              onClick={() => setActivityTab('counts')}
+            >
+              {t('pointCash.unexplained.open')}
+            </Button>
+          </div>
+        ) : null}
         <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.8fr)]">
           <CashLedger
             date={date}
@@ -536,10 +648,7 @@ export function PointCashPage() {
             breakdown={pointCashOne.data?.breakdown}
             failed={pointCashOne.isError}
             intakes={intakes.data?.data ?? []}
-            payouts={payouts.data?.data ?? []}
             intakesTruncated={intakesTruncated}
-            payoutsTruncated={payoutsTruncated}
-            target={shownRow.target_cash}
           />
           <div className="flex flex-col gap-5">{shiftPanel}</div>
         </div>
@@ -547,33 +656,38 @@ export function PointCashPage() {
       </>
     );
 
+  // ONE trace scope for the page: the ledgers' terms light the tiles above
+  // them, the shortfall's «у дорозі» lights the transfer cards, and «Звірка
+  // каси» lights the day feed's rows (`TraceScope` is `display: contents`).
   return (
     <>
-      <DashboardPage
-        eyebrow={
-          pointName
-            ? t('pointCash.eyebrow', {
-                point: pointName,
-                date: formatLongDate(date, locale),
-                weekday: formatWeekday(date, locale),
-              })
-            : undefined
-        }
-        title={t('pointCash.title')}
-        description={t('pointCash.description')}
-        actions={actions}
-        stats={stats}
-        statColumns={4}
-      >
-        <OpenShiftAlert
-          pointId={pointId}
-          viewedDate={date}
-          // The same page, another `?date=` — where the panel offers the close.
-          onGoToDate={setDateParam}
-          onClosed={(id) => setResultFor({ mode: 'close', shiftId: id })}
-        />
-        {body}
-      </DashboardPage>
+      <TraceScope>
+        <DashboardPage
+          eyebrow={
+            pointName
+              ? t('pointCash.eyebrow', {
+                  point: pointName,
+                  date: formatLongDate(date, locale),
+                  weekday: formatWeekday(date, locale),
+                })
+              : undefined
+          }
+          title={t('pointCash.title')}
+          description={t('pointCash.description')}
+          actions={actions}
+          stats={stats}
+          statColumns={4}
+        >
+          <OpenShiftAlert
+            pointId={pointId}
+            viewedDate={date}
+            // The same page, another `?date=` — where the panel offers the close.
+            onGoToDate={setDateParam}
+            onClosed={(id) => setResultFor({ mode: 'close', shiftId: id })}
+          />
+          {body}
+        </DashboardPage>
+      </TraceScope>
 
       {isOwner && pointId && shownRow ? (
         <SetTargetCashDialog

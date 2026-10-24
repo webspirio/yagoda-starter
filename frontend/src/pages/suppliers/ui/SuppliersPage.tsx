@@ -11,7 +11,7 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { useDebouncedValue } from '@/shared/lib/useDebouncedValue';
 import { useUrlPatch, useUrlParam } from '@/shared/lib/url-state';
-import { formatKg, formatUah } from '@/shared/lib/money';
+import { formatDecimal } from '@/shared/lib/money';
 import { useSupplierTotalsQuery } from '@/entities/supplier';
 import type { Supplier, SupplierTotalsRow } from '@/entities/supplier';
 import { SupplierFormDialog } from '@/features/edit-supplier';
@@ -80,7 +80,7 @@ export function SuppliersPage() {
             // firing the same navigation twice. The link is what a keyboard
             // reaches; the row is only a bigger target for the mouse.
             onClick={(e) => e.stopPropagation()}
-            className="font-medium text-primary underline-offset-2 hover:underline"
+            className="font-medium text-brand underline-offset-2 hover:underline"
           >
             {listName(s)}
           </Link>
@@ -93,8 +93,9 @@ export function SuppliersPage() {
       header: t('suppliers.col.weight'),
       sortable: true,
       align: 'right',
-      className: 'tabular-nums',
-      cell: (s) => formatKg(s.kg_total, locale),
+      // The unit is in the header (audit rule 4); the figures line up by digit.
+      className: 'font-mono tabular-nums whitespace-nowrap',
+      cell: (s) => formatDecimal(s.kg_total, locale),
     },
     {
       id: 'mainProduct',
@@ -113,8 +114,8 @@ export function SuppliersPage() {
       header: t('suppliers.col.accrued'),
       sortable: true,
       align: 'right',
-      className: 'tabular-nums',
-      cell: (s) => formatUah(s.accrued, locale),
+      className: 'font-mono tabular-nums whitespace-nowrap',
+      cell: (s) => formatDecimal(s.accrued, locale),
     },
     {
       id: 'action',
@@ -159,7 +160,9 @@ export function SuppliersPage() {
         description={t('suppliers.description')}
         actions={<Button onClick={openCreate}>{t('suppliers.new')}</Button>}
         toolbar={
-          <>
+          // One row (audit D7): the search and the status filter sit side by side, wrapping
+          // only on a phone.
+          <div className="flex flex-wrap items-center gap-2">
             <TextInput
               type="search"
               value={search}
@@ -168,19 +171,20 @@ export function SuppliersPage() {
               aria-label={t('suppliers.searchPlaceholder')}
               className="max-w-xs"
             />
-            <SelectField
-              aria-label={t('suppliers.status.label')}
-              value={status}
-              onChange={(e) => patchUrl({ status: statusToUrl(readStatus(e.target.value)) })}
-              className="w-auto"
-            >
-              {(['active', 'inactive', 'all'] as const).map((v) => (
-                <option key={v} value={v}>
-                  {t(`suppliers.status.${v}`)}
-                </option>
-              ))}
-            </SelectField>
-          </>
+            <div className="w-44">
+              <SelectField
+                aria-label={t('suppliers.status.label')}
+                value={status}
+                onChange={(e) => patchUrl({ status: statusToUrl(readStatus(e.target.value)) })}
+              >
+                {(['active', 'inactive', 'all'] as const).map((v) => (
+                  <option key={v} value={v}>
+                    {t(`suppliers.status.${v}`)}
+                  </option>
+                ))}
+              </SelectField>
+            </div>
+          </div>
         }
         columns={columns}
         rows={rows}

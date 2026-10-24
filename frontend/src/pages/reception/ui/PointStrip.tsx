@@ -1,19 +1,18 @@
 import type * as React from 'react';
+import { Fragment } from 'react';
 import { Link } from 'react-router';
 import { ChevronDown } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Eyebrow } from '@/shared/ui/eyebrow';
-import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/popover';
+import { TraceScope, TraceTerm, type TraceTone } from '@/shared/ui/trace';
 import { cn } from '@/shared/lib/cn';
-import { add, cmp, formatKg, formatUah, sum } from '@/shared/lib/money';
+import { add, cmp, formatCount, formatKg, formatUah, sub, sum } from '@/shared/lib/money';
 import { isTruncated } from '@/shared/api';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
-import { useCashCountsQuery } from '@/entities/cash-count';
-import { usePayoutsQuery } from '@/entities/payout';
 import { useIntakesQuery } from '@/entities/intake';
-import { useCrateBalancesQuery } from '@/entities/crate';
+import { useCrateStandingQuery, type CrateStanding } from '@/entities/crate';
 import type { Shift } from '@/entities/shift';
-import { TodayReceipts } from './TodayReceipts';
 
 export type StripShift =
   | { status: 'pending' }
@@ -23,30 +22,38 @@ export type StripShift =
 
 /**
  * One horizontal strip above the intake form: the berry drawer,
- * the crates out with people and today's receipts — what the operator would
+ * the point's crates against its allotment and today's receipts — what the operator would
  * otherwise have to leave the form to look up. The figures come from the SAME
- * reads «Каса точки» and «Ящики» use for themselves: every one is a straight
- * `sum` over the live rows of the same entity reads, never re-derived a
+ * reads «Каса точки» and «Ящики» use for themselves, never re-derived a
  * different way (a second arithmetic path could silently disagree with the
- * first).
+ * first): the drawer and every term under it are `GET /point-cash/:id`'s own
+ * `breakdown` (#73) — «на ранок · + надійшло · − видано · + повернуто», which
+ * adds up to the figure (B4, audit 2026-10-24) — and today's cell is a `sum`
+ * over the live rows of the shift's receipts.
+ *
+ * Today's receipts are listed ONCE, in the card under the form (B6): the cell
+ * here is their summary, and a click takes the operator to that card.
  *
  * The shift's status is NOT here: it sits in the page header, and a day
  * with no open shift replaces the form itself (`ShiftClosedState`).
+ *
+ * Traced (client, 24.10): each term under a meter is a `TraceTerm`; pointing at
+ * one lights the meter's figure it adds up to. The figure lists every term's id,
+ * so no term lights another. (Not the bar's segments: a lit element takes the
+ * highlight's pale fill, which would wash a segment's own colour out.)
  */
 export function PointStrip({
   pointId,
   shift,
   isOwner,
-  targetCrates,
-  onOpenReceipt,
+  onShowToday,
 }: {
   pointId: string;
   shift: StripShift;
   isOwner: boolean;
-  /** `collection_points.target_crates` — `null` means «не задано», never
-   *  zero (see `PointOption`'s own doc for why that distinction matters). */
-  targetCrates: number | null;
-  onOpenReceipt: (intakeId: string) => void;
+  /** Takes the operator to today's receipts card; absent while there is no
+   *  card to go to (no open shift), and then the cell is a plain summary. */
+  onShowToday?: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
@@ -56,18 +63,12 @@ export function PointStrip({
   // «Видано готівкою») — the drawer has a figure whether or not a shift is
   // open today, and this is the one place on the intake screen that says so.
   const cash = usePointCashForPointQuery(pointId);
-  const cashCounts = useCashCountsQuery({ shiftId });
-  const payouts = usePayoutsQuery({ shiftId });
   const intakes = useIntakesQuery({ shiftId });
-  const balances = useCrateBalancesQuery({ pointId, isOwner });
+  // The same read «Ящики» draws its allotment bar from — on the point, with
+  // people, with berries and the allotment, all the server's.
+  const standing = useCrateStandingQuery({ pointId, isOwner });
 
-  const openingBerry = (cashCounts.data?.data ?? []).find(
-    (row) => row.kind === 'opening' && row.book === 'berry',
-  );
-  const paidOut = sum(
-    (payouts.data?.data ?? []).filter((row) => row.voided_at === null).map((row) => row.amount),
-  );
-  // «Відкрито за сьогоднішніми квитанціями» — Σ open_amount over today's LIVE
+  // «Не виплачено за сьогоднішніми квитанціями» — Σ open_amount over today's LIVE
   // receipts: what is still owed for them now, from allocations. Never
   // negative, unlike amount − paid_amount when cash also closed older debt.
   const liveRows = (intakes.data?.data ?? []).filter((row) => row.voided_at === null);
@@ -75,16 +76,9 @@ export function PointStrip({
   const liveNetKg = sum(liveRows.map((row) => row.net_kg));
   // The sums above run over `page.data` — capped at 100 rows, server-side
   // (`Paginated<T>`'s `limit`) — never the whole shift. A busy point can
-  // legitimately clear 100 receipts or payouts before close, and without
-  // this caption the cell would silently read as the day's true total.
-  const paidOutTruncated = isTruncated(payouts.data);
+  // legitimately clear 100 receipts before close, and without this caption
+  // the cell would silently read as the day's true total.
   const todayTruncated = isTruncated(intakes.data);
-  // A row COUNT, never money — see `entities/crate`'s header for why the two
-  // must not mix.
-  const outstanding = (balances.data?.data ?? []).reduce(
-    (total, row) => total + row.outstanding_units,
-    0,
-  );
 
   const openTodayText = t('reception.today.open', { uah: formatUah(openToday, locale) });
   const todaySummary = t('reception.today.summary', {
@@ -96,93 +90,244 @@ export function PointStrip({
   const cratesHref = isOwner ? `/crates?point=${pointId}` : '/crates';
 
   const cashNow = cash.data?.cash ?? null;
-
-  const openingText = openingBerry ? formatUah(openingBerry.counted_amount, locale) : '—';
-  const paidOutText = paidOutTruncated
-    ? `${t('reception.state.paidOut', { uah: formatUah(paidOut, locale) })} · ${t('reception.state.truncatedCaption')}`
-    : t('reception.state.paidOut', { uah: formatUah(paidOut, locale) });
+  // An open day's drawer is its terms; any other day's is a count the
+  // terms do not reach (closed, carried, none), so none are named.
+  const breakdown = cash.data?.breakdown;
+  const terms = breakdown?.kind === 'open' ? breakdown : null;
+  const isNonZero = (value: string | null): value is string =>
+    value !== null && cmp(value, '0') !== 0;
+  const cashTerms: StripTerm[] =
+    terms === null
+      ? []
+      : [
+          {
+            id: CASH_TRACE.opening,
+            key: 'reception.state.openingCash',
+            hint: 'reception.state.trace.opening',
+            uah: terms.opening ?? '0.00',
+          },
+          isNonZero(terms.transfers_in)
+            ? {
+                id: CASH_TRACE.cashIn,
+                key: 'reception.state.cashIn',
+                hint: 'reception.state.trace.cashIn',
+                uah: terms.transfers_in,
+              }
+            : null,
+          {
+            id: CASH_TRACE.paidOut,
+            key: 'reception.state.paidOut',
+            hint: 'reception.state.trace.paidOut',
+            uah: terms.payouts ?? '0.00',
+          },
+          isNonZero(terms.returns)
+            ? {
+                id: CASH_TRACE.returned,
+                key: 'reception.state.returned',
+                hint: 'reception.state.trace.returned',
+                uah: terms.returns,
+              }
+            : null,
+        ]
+          .filter((part) => part !== null)
+          .map((part) => ({
+            id: part.id,
+            hint: part.hint,
+            key: part.key,
+            values: { uah: formatUah(part.uah, locale) },
+          }));
+  // Each term whole on a phone, where the line wraps: never «15 000,00 / ₴» —
+  // a `TraceTerm` never breaks. The « · » sits between the terms, so the line
+  // can wrap there.
+  const cashAside = <StripTerms terms={cashTerms} t={t} />;
+  // What went out of the drawer net of the voids that brought it back.
+  const paidOut = terms === null ? null : sub(terms.payouts ?? '0.00', terms.returns ?? '0.00');
+  const crates = standing.data ?? null;
+  // Grouped, with the typographic «−» of a negative count (empties may go below zero).
+  const n = (value: number) => formatCount(value, locale);
   const cratesAside =
-    targetCrates === null
-      ? t('reception.state.noTarget')
-      : outstanding > targetCrates
-        ? t('reception.state.cratesOver', { count: outstanding - targetCrates })
-        : t('reception.state.cratesLeft', { count: targetCrates - outstanding });
+    crates === null
+      ? ''
+      : t('reception.state.cratesSplit', {
+          onHand: n(crates.on_hand),
+          inField: n(crates.in_field),
+          withBerry: n(crates.with_berry),
+        });
 
   return (
     // One compact row at `xl`: two meters (label over «figure + bar») and
     // today's receipts. The shift's own status lives in the page header.
     // Below `xl` the meters sit two to a row, one to a row on a phone.
-    <section className="mb-4 rounded-xl border border-line2 bg-card">
-      <div className="grid gap-x-6 gap-y-3 px-4 py-2.5 sm:grid-cols-2 xl:flex xl:items-center">
-        <Meter
-          to={pointCashHref}
-          title={t('reception.state.cashTitle')}
-          aside={`${paidOutText} · ${t('reception.state.openingCash', { uah: openingText })}`}
-          value={cashNow === null ? '…' : formatUah(cashNow, locale)}
-          className="xl:flex-[1.4]"
-        >
-          <CashBar cash={cashNow} paidOut={paidOut} />
-        </Meter>
+    <TraceScope>
+      <section className="mb-4 rounded-xl border border-line2 bg-card">
+        <div className="grid gap-x-6 gap-y-3 px-4 py-2.5 sm:grid-cols-2 xl:flex xl:items-center">
+          <Meter
+            to={pointCashHref}
+            title={t('reception.state.cashTitle')}
+            aside={cashAside}
+            asideTitle={cashTerms.map((term) => plain(t(term.key, term.values))).join(' · ')}
+            trace={cashTerms.map((term) => term.id).join(' ')}
+            // Loading reads «…», a failed read «—» — never a zero (rule 8).
+            value={cashNow === null ? (cash.isError ? '—' : '…') : formatUah(cashNow, locale)}
+            className="xl:flex-[1.4]"
+          >
+            <CashBar cash={cashNow} paidOut={paidOut} />
+          </Meter>
 
-        <Meter
-          to={cratesHref}
-          title={t('reception.state.crates')}
-          aside={cratesAside}
-          value={t('reception.state.cratesValue', {
-            out: outstanding,
-            target: targetCrates === null ? '—' : targetCrates,
-          })}
-          className="xl:flex-1"
-        >
-          <CratesBar outstanding={outstanding} target={targetCrates} />
-        </Meter>
+          <Meter
+            to={cratesHref}
+            title={t('reception.state.crates')}
+            aside={crates === null ? '' : <CratesLegend crates={crates} n={n} />}
+            asideTitle={cratesAside}
+            trace={crates === null ? undefined : Object.values(CRATES_TRACE).join(' ')}
+            value={
+              crates === null
+                ? '…'
+                : t('reception.state.cratesValue', {
+                    total: n(crates.total),
+                    // «—» is «не задано», never zero (§6.9 / §8.2).
+                    target: crates.allotment === null ? '—' : n(crates.allotment),
+                  })
+            }
+            className="xl:flex-1"
+          >
+            <CratesBar crates={crates} />
+          </Meter>
 
-        <Popover>
-          <PopoverTrigger className="min-w-0 rounded-md text-left outline-none hover:text-brand focus-visible:ring-2 focus-visible:ring-ring sm:col-span-2 xl:shrink-0 xl:text-right">
-            <span className="flex min-w-0 items-baseline gap-2 leading-4 xl:justify-end">
-              <Eyebrow className="flex shrink-0 items-center gap-1 leading-4 tracking-wide">
-                {t('reception.today.trigger')}
-                <ChevronDown className="size-3" aria-hidden="true" />
-              </Eyebrow>
-              {cmp(openToday, '0') === 1 ? (
-                <span
-                  className="min-w-0 truncate font-mono text-xs font-semibold text-amber"
-                  title={openTodayText}
-                >
-                  {openTodayText}
-                </span>
-              ) : null}
-              {todayTruncated ? (
-                <span
-                  className="min-w-0 truncate text-[10px] text-muted-foreground"
-                  title={t('reception.state.truncatedCaption')}
-                >
-                  {t('reception.state.truncatedCaption')}
-                </span>
-              ) : null}
-            </span>
-            <span
-              className="mt-1 block truncate font-mono text-sm leading-5 font-semibold"
-              title={todaySummary}
-            >
-              {todaySummary}
-            </span>
-          </PopoverTrigger>
-          <PopoverContent className="w-[420px] max-w-[calc(100vw-2rem)]">
-            <Eyebrow className="mb-2 truncate">{t('reception.today.title')}</Eyebrow>
-            <TodayReceipts shiftId={shiftId} onOpen={onOpenReceipt} />
-          </PopoverContent>
-        </Popover>
-      </div>
-    </section>
+          <TodayCell
+            onShowToday={onShowToday}
+            openText={cmp(openToday, '0') === 1 ? openTodayText : null}
+            truncated={todayTruncated}
+            summary={todaySummary}
+          />
+        </div>
+      </section>
+    </TraceScope>
+  );
+}
+
+/** The meters' trace ids — scope-local to the strip. */
+const CASH_TRACE = {
+  opening: 'cash:opening',
+  cashIn: 'cash:in',
+  paidOut: 'cash:paid',
+  returned: 'cash:returned',
+} as const;
+const CRATES_TRACE = {
+  onHand: 'crates:onHand',
+  inField: 'crates:inField',
+  withBerry: 'crates:withBerry',
+} as const;
+
+/** A locale string with its `<n>` tags dropped — the plain text of a term for a
+ *  `title`, which carries no markup. */
+const plain = (text: string) => text.replace(/<\/?n>/g, '');
+
+interface StripTerm {
+  id: string;
+  /** The locale key, whose `<n>…</n>` is the figure. */
+  key: string;
+  hint: string;
+  values: Record<string, string>;
+  tone?: TraceTone;
+}
+
+/** «на ранок 15 000,00 ₴ · − видано 4 200,00 ₴» — each figure a `TraceTerm`. */
+function StripTerms({ terms, t }: { terms: StripTerm[]; t: TFunction }) {
+  return terms.map((term, i) => (
+    <Fragment key={term.id}>
+      {i > 0 ? ' · ' : null}
+      <StripTermText term={term} t={t} />
+    </Fragment>
+  ));
+}
+
+function StripTermText({ term, t }: { term: StripTerm; t: TFunction }) {
+  return (
+    <Trans
+      t={t}
+      i18nKey={term.key}
+      values={term.values}
+      components={{
+        n: (
+          <TraceTerm refs={term.id} tone={term.tone} hint={t(term.hint)}>
+            {null}
+          </TraceTerm>
+        ),
+      }}
+    />
+  );
+}
+
+/**
+ * «Сьогодні» — the day's receipts in one line. A button that takes the
+ * operator to the list (the card under the form) when there is one to go to;
+ * otherwise the same summary as plain text.
+ */
+function TodayCell({
+  onShowToday,
+  openText,
+  truncated,
+  summary,
+}: {
+  onShowToday?: () => void;
+  openText: string | null;
+  truncated: boolean;
+  summary: string;
+}) {
+  const { t } = useTranslation();
+  const body = (
+    <>
+      <span className="flex min-w-0 items-baseline gap-2 leading-4 xl:justify-end">
+        <Eyebrow className="flex shrink-0 items-center gap-1 leading-4 tracking-wide">
+          {t('reception.today.trigger')}
+          {onShowToday ? <ChevronDown className="size-3" aria-hidden="true" /> : null}
+        </Eyebrow>
+        {openText !== null ? (
+          <span
+            className="min-w-0 truncate font-mono text-xs font-semibold text-amber"
+            title={openText}
+          >
+            {openText}
+          </span>
+        ) : null}
+        {truncated ? (
+          <span
+            className="min-w-0 truncate text-[11px] text-muted-foreground"
+            title={t('reception.state.truncatedCaption')}
+          >
+            {t('reception.state.truncatedCaption')}
+          </span>
+        ) : null}
+      </span>
+      <span
+        className="mt-1 block truncate font-mono text-sm leading-5 font-semibold"
+        title={summary}
+      >
+        {summary}
+      </span>
+    </>
+  );
+  const className = 'min-w-0 text-left sm:col-span-2 xl:shrink-0 xl:text-right';
+  return onShowToday ? (
+    <button
+      type="button"
+      onClick={onShowToday}
+      className={cn(
+        className,
+        'rounded-md outline-none hover:text-brand focus-visible:ring-2 focus-visible:ring-ring',
+      )}
+    >
+      {body}
+    </button>
+  ) : (
+    <div className={className}>{body}</div>
   );
 }
 
 /** Below this share of the day's berry money left in the drawer, the bar
  *  turns amber: time to bring cash to the point. */
 const CASH_LOW_SHARE = 0.2;
-/** Above this share of the allotment out with people, the crates bar turns amber. */
-const CRATES_HIGH_SHARE = 0.9;
 
 /**
  * A bar WIDTH, never a figure anyone reads: the two decimals are turned into
@@ -202,14 +347,20 @@ function Meter({
   to,
   title,
   aside,
+  asideTitle,
   value,
+  trace,
   className,
   children,
 }: {
   to: string;
   title: string;
-  aside: string;
+  aside: React.ReactNode;
+  /** The aside as plain text, for its hover title when `aside` is a node. */
+  asideTitle?: string;
   value: string;
+  /** The `data-trace` of the figure — the ids of the terms that add up to it. */
+  trace?: string;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -221,18 +372,24 @@ function Meter({
         className,
       )}
     >
-      <div className="flex min-w-0 items-baseline justify-between gap-3 leading-4">
+      {/* On a phone the note wraps under the title rather than being cut —
+          its terms are what make the figure add up (B4). */}
+      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 leading-4 sm:flex-nowrap">
         <Eyebrow className="shrink-0 leading-4 tracking-wide group-hover:text-brand">
           {title}
         </Eyebrow>
-        <span className="min-w-0 truncate font-mono text-xs text-muted-foreground" title={aside}>
+        <span
+          className="min-w-0 font-mono text-xs text-muted-foreground sm:truncate"
+          title={asideTitle ?? (typeof aside === 'string' ? aside : undefined)}
+        >
           {aside}
         </span>
       </div>
       <div className="mt-1 flex min-w-0 items-center gap-3">
         <span
           title={value}
-          className="shrink-0 font-mono text-lg leading-6 font-semibold tracking-tight"
+          data-trace={trace || undefined}
+          className="shrink-0 rounded-md font-mono text-lg leading-6 font-semibold tracking-tight"
         >
           {value}
         </span>
@@ -243,12 +400,12 @@ function Meter({
 }
 
 function Track({ children, label }: { children?: React.ReactNode; label: string }) {
+  // No label means nothing to show yet (a read still loading): a bare track is
+  // decoration, not an image with no name.
+  const a11y =
+    label === '' ? { 'aria-hidden': true as const } : { role: 'img', 'aria-label': label };
   return (
-    <div
-      role="img"
-      aria-label={label}
-      className="flex h-1.5 min-w-12 flex-1 overflow-hidden rounded-full bg-muted"
-    >
+    <div {...a11y} className="flex h-1.5 min-w-12 flex-1 overflow-hidden rounded-full bg-muted">
       {children}
     </div>
   );
@@ -256,15 +413,15 @@ function Track({ children, label }: { children?: React.ReactNode; label: string 
 
 /** The day's berry money as two parts: what is still in the drawer, then what
  *  went out. Both are printed above it; the bar only shows the proportion. */
-function CashBar({ cash, paidOut }: { cash: string | null; paidOut: string }) {
+function CashBar({ cash, paidOut }: { cash: string | null; paidOut: string | null }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
-  if (cash === null) return <Track label="" />;
+  if (cash === null || paidOut === null) return <Track label="" />;
   const inDrawer = cmp(cash, '0') === 1 ? cash : '0.00';
   const whole = add(inDrawer, paidOut);
   const left = cmp(whole, '0') === 1 ? share(inDrawer, whole) : 0;
   const tone =
-    cmp(inDrawer, '0') !== 1 ? 'bg-destructive' : left < CASH_LOW_SHARE ? 'bg-amber' : 'bg-success';
+    cmp(inDrawer, '0') !== 1 ? 'bg-destructive' : left < CASH_LOW_SHARE ? 'bg-amber' : 'bg-leaf';
   return (
     <Track
       label={t('reception.state.cashBar', {
@@ -278,18 +435,96 @@ function CashBar({ cash, paidOut }: { cash: string | null; paidOut: string }) {
   );
 }
 
-/** Crates out with people against the allotment; no allotment, no scale. */
-function CratesBar({ outstanding, target }: { outstanding: number; target: number | null }) {
+/** The bar's three parts named in its own colours, so each figure reads
+ *  straight off the segment it is. */
+function CratesLegend({ crates, n }: { crates: CrateStanding; n: (value: number) => string }) {
   const { t } = useTranslation();
-  if (target === null) return <Track label={t('reception.state.noTarget')} />;
-  const ratio = target > 0 ? outstanding / target : outstanding > 0 ? 2 : 0;
-  const tone = ratio > 1 ? 'bg-destructive' : ratio > CRATES_HIGH_SHARE ? 'bg-amber' : 'bg-brand';
+  const items = [
+    {
+      id: CRATES_TRACE.onHand,
+      dot: 'bg-[var(--leaf)]',
+      key: 'reception.state.cratesOnHand',
+      hint: 'reception.state.trace.onHand',
+      count: crates.on_hand,
+      tone: 'leaf' as const,
+    },
+    {
+      id: CRATES_TRACE.inField,
+      dot: 'bg-[var(--amber)]',
+      key: 'reception.state.cratesInField',
+      hint: 'reception.state.trace.inField',
+      count: crates.in_field,
+      tone: 'amber' as const,
+    },
+    {
+      id: CRATES_TRACE.withBerry,
+      dot: 'bg-primary',
+      key: 'reception.state.cratesWithBerry',
+      hint: 'reception.state.trace.withBerry',
+      count: crates.with_berry,
+      tone: 'berry' as const,
+    },
+  ];
   return (
-    <Track label={t('reception.state.cratesValue', { out: outstanding, target })}>
-      <div
-        className={cn('h-full transition-[width]', tone)}
-        style={{ width: `${Math.min(1, ratio) * 100}%` }}
-      />
+    <>
+      {items.map((item, i) => (
+        <span key={item.id} className={cn(item.count < 0 && 'text-destructive')}>
+          {i > 0 ? ' · ' : null}
+          <span
+            className={cn('mr-1 inline-block size-2 rounded-[2px] align-middle', item.dot)}
+            aria-hidden="true"
+          />
+          <StripTermText
+            t={t}
+            term={{
+              id: item.id,
+              key: item.key,
+              hint: item.hint,
+              tone: item.tone,
+              values: { count: n(item.count) },
+            }}
+          />
+        </span>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Every crate of the point in ONE bar, the same three parts and colours as
+ * «Ящики»'s allotment bar: on the point (leaf), out with people (amber), under
+ * berries today (berry). The scale is the allotment, so the empty track is
+ * what is missing from it; with no allotment, or more crates than it, the
+ * scale is the point's own total. Widths only — every figure is the server's.
+ */
+function CratesBar({ crates }: { crates: CrateStanding | null }) {
+  const { t } = useTranslation();
+  if (crates === null) return <Track label="" />;
+  const parts = [
+    { key: 'onHand', value: Math.max(0, crates.on_hand), className: 'bg-[var(--leaf)]' },
+    { key: 'inField', value: Math.max(0, crates.in_field), className: 'bg-[var(--amber)]' },
+    { key: 'withBerry', value: Math.max(0, crates.with_berry), className: 'bg-primary' },
+  ];
+  const filled = parts.reduce((total, part) => total + part.value, 0);
+  const scale = Math.max(filled, crates.allotment ?? 0);
+  return (
+    <Track
+      label={t('reception.state.cratesSplit', {
+        onHand: crates.on_hand,
+        inField: crates.in_field,
+        withBerry: crates.with_berry,
+      })}
+    >
+      {scale > 0
+        ? parts.map((part) => (
+            <div
+              key={part.key}
+              data-segment={part.key}
+              className={cn('h-full transition-[width]', part.className)}
+              style={{ width: `${(part.value / scale) * 100}%` }}
+            />
+          ))
+        : null}
     </Track>
   );
 }

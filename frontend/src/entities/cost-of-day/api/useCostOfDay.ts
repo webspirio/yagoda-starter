@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { httpClient } from '@/shared/api';
 import { queryKeys } from '@/shared/api/queryKeys';
 import { STALE } from '@/shared/api/queryClient';
-import type { CostOfDay } from '../model/cost-of-day';
+import type { CostOfDay, CostSplit } from '../model/cost-of-day';
 
 /**
  * §8.4's собівартість for ONE shift — computed live, with no posting moment
@@ -11,13 +11,26 @@ import type { CostOfDay } from '../model/cost-of-day';
  *
  * `enabled` on the shift id: «зміну не відкривали» is a state the page
  * renders, never a request it sends.
+ *
+ * `split` is in the key (spec 2026-10-24 §4), so switching back to a split
+ * already seen is a cache hit, and a write still invalidates every split.
+ *
+ * A split not loaded yet keeps THIS SHIFT's last figures as a placeholder
+ * (`isPlaceholderData`) instead of going pending: a pending read swaps the
+ * sheet for a spinner, which unmounts the expenses strip and drops a
+ * half-typed line. Never another shift's figures — those would sit under a
+ * new date, and a draft typed then would belong to the wrong day.
  */
-export function useCostOfDayQuery(shiftId: string | undefined) {
+export function useCostOfDayQuery(shiftId: string | undefined, split: CostSplit) {
   return useQuery({
-    queryKey: [...queryKeys.costOfDay, shiftId] as const,
+    queryKey: [...queryKeys.costOfDay, shiftId, split] as const,
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[1] === shiftId ? previous : undefined,
     enabled: shiftId !== undefined,
     queryFn: async (): Promise<CostOfDay> => {
-      const { data } = await httpClient.get<CostOfDay>(`/shifts/${shiftId}/cost-of-day`);
+      const { data } = await httpClient.get<CostOfDay>(`/shifts/${shiftId}/cost-of-day`, {
+        params: { split },
+      });
       return data;
     },
     staleTime: STALE.detail,

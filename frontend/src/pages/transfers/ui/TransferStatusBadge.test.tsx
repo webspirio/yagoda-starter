@@ -19,7 +19,7 @@ describe('TransferStatusBadge', () => {
     expect(screen.getByText("Doesn't match")).toBeInTheDocument();
   });
 
-  it('keeps «Doesn\'t match» for a disputed transfer that is still unresolved', () => {
+  it("keeps «Doesn't match» for a disputed transfer that is still unresolved", () => {
     render(<TransferStatusBadge status="disputed" resolvedAt={null} />);
     expect(screen.getByText("Doesn't match")).toBeInTheDocument();
     expect(screen.queryByText('Resolved')).toBeNull();

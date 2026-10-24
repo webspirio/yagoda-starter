@@ -17,6 +17,7 @@ import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
 import { stockPoint } from './crate-stock-fixture';
+import { listenOnLoopback } from './listen-on-loopback';
 
 const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -60,7 +61,7 @@ describe('documents pipeline (HTTP)', () => {
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
     app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
-    await app.init();
+    await listenOnLoopback(app);
 
     const users = app.get(UsersService);
     const credentials = app.get(CredentialsService);
@@ -1485,14 +1486,14 @@ describe('documents pipeline (HTTP)', () => {
         .expect(404);
     });
 
-    it('refuses the operator the cost-of-day and network-average reports — §8.4, §8.6', async () => {
+    it('refuses the operator the cost-of-day reports, one point and all points — §8.4, §8.6', async () => {
       await request(app.getHttpServer())
         .get(`/shifts/${ghostShift}/cost-of-day`)
         .set(bearer(operatorToken))
         .expect(403);
 
       await request(app.getHttpServer())
-        .get('/reports/network-average?date=2026-08-04')
+        .get('/reports/cost-of-day?date=2026-08-04')
         .set(bearer(operatorToken))
         .expect(403);
     });

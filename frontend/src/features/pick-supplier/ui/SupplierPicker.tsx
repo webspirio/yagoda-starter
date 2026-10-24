@@ -7,16 +7,16 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ChevronsUpDown, Plus, TriangleAlert, UserRound } from 'lucide-react';
+import { ChevronsUpDown, Plus, UserRound } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/button';
+import { Eyebrow } from '@/shared/ui/eyebrow';
 import { TextInput } from '@/shared/ui/text-input';
 import { cn } from '@/shared/lib/cn';
 import { cmp, formatUah } from '@/shared/lib/money';
 import { useDebouncedValue } from '@/shared/lib/useDebouncedValue';
 import {
   KindBadge,
-  kindHintKey,
   supplierName,
   useSupplierBalancesQuery,
   useSuppliersQuery,
@@ -187,8 +187,6 @@ export const SupplierPicker = forwardRef<
     }
   };
 
-  const hint = value ? kindHintKey(value.kind) : null;
-
   const renderRow = (s: Supplier, index: number) => {
     const debt = owed.get(s.id);
     return (
@@ -211,14 +209,17 @@ export const SupplierPicker = forwardRef<
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
             <span className="truncate">{supplierName(s)}</span>
-            <KindBadge kind={s.kind} className="shrink-0 text-[10px]" />
+            <KindBadge kind={s.kind} className="shrink-0 text-[11px]" />
           </span>
           <span className="block truncate font-mono text-xs text-muted-foreground">
             {s.phone ?? t('pickSupplier.noPhone')}
           </span>
         </span>
         {debt && cmp(debt, '0') === 1 ? (
-          <span className="shrink-0 font-mono text-xs text-amber">{formatUah(debt, locale)}</span>
+          // Named, not a bare figure (B7): it is the whole balance we owe.
+          <span className="shrink-0 font-mono text-xs whitespace-nowrap text-amber">
+            {t('pickSupplier.balance', { uah: formatUah(debt, locale) })}
+          </span>
         ) : null}
       </li>
     );
@@ -257,7 +258,7 @@ export const SupplierPicker = forwardRef<
             <span className="hidden min-w-0 shrink-[1000] truncate font-mono text-sm text-muted-foreground sm:inline">
               {value.phone ?? t('pickSupplier.noPhone')}
             </span>
-            <KindBadge kind={value.kind} className="shrink-0 text-[10px]" />
+            <KindBadge kind={value.kind} className="shrink-0 text-[11px]" />
           </span>
         ) : (
           <span className="flex items-center gap-2 text-muted-foreground">
@@ -267,13 +268,6 @@ export const SupplierPicker = forwardRef<
         )}
         <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
       </button>
-
-      {hint ? (
-        <p className="mt-1.5 flex items-start gap-1.5 text-sm font-medium text-destructive">
-          <TriangleAlert className="mt-0.5 size-3.5 shrink-0" />
-          <span>{t(hint)}</span>
-        </p>
-      ) : null}
 
       {open ? (
         <div
@@ -313,9 +307,7 @@ export const SupplierPicker = forwardRef<
               <>
                 {home.length ? (
                   <li role="presentation">
-                    <span className="block px-3 pt-2 pb-1 text-[10px] font-medium tracking-[0.12em] text-muted-foreground uppercase">
-                      {t('pickSupplier.ourPoint')}
-                    </span>
+                    <Eyebrow className="px-3 pt-2 pb-1">{t('pickSupplier.ourPoint')}</Eyebrow>
                     <ul role="group" aria-label={t('pickSupplier.ourPoint')}>
                       {home.map((s, i) => renderRow(s, i))}
                     </ul>
@@ -323,9 +315,7 @@ export const SupplierPicker = forwardRef<
                 ) : null}
                 {others.length ? (
                   <li role="presentation">
-                    <span className="block px-3 pt-2 pb-1 text-[10px] font-medium tracking-[0.12em] text-muted-foreground uppercase">
-                      {t('pickSupplier.otherPoints')}
-                    </span>
+                    <Eyebrow className="px-3 pt-2 pb-1">{t('pickSupplier.otherPoints')}</Eyebrow>
                     <ul role="group" aria-label={t('pickSupplier.otherPoints')}>
                       {others.map((s, i) => renderRow(s, home.length + i))}
                     </ul>

@@ -28,15 +28,15 @@ describe('CreateIntakeCommand', () => {
   let payouts: IntakesMocks['payouts'];
   let allocations: IntakesMocks['allocations'];
   let crates: IntakesMocks['crates'];
-  let stock: IntakesMocks['stock'];
   let tare: IntakesMocks['tare'];
   let state: IntakesMocks['state'];
+  let debt: IntakesMocks['debt'];
   let command: CreateIntakeCommand;
 
   beforeEach(() => {
     const mocks = makeIntakesMocks();
     ({ manager, dataSource, shifts, suppliers, prices, audit, payouts, allocations } = mocks);
-    ({ crates, tare, state, stock } = mocks);
+    ({ crates, tare, state, debt } = mocks);
     command = buildIntakes(mocks).create;
   });
 
@@ -52,6 +52,7 @@ describe('CreateIntakeCommand', () => {
     manager.save.mock.calls[0][1] as {
       code: string;
       amount: string;
+      balance_after: string;
       shift_id: string;
       received_by_user_id: string;
       items: { item_order: number; net_kg: string; amount: string; tare: unknown[] }[];
@@ -327,6 +328,29 @@ describe('CreateIntakeCommand', () => {
       ]);
     });
 
+    it('freezes balance_after = debt before + Сума − Виплачено, read under the supplier lock', async () => {
+      // Audit 2026-10-24 A1: the receipt prints this, so a reprint never moves.
+      debt.debtFor.mockResolvedValue('500.00');
+      const res = await command.create(oksana, dto({ paid_amount: '380.00' }) as never);
+      // dto(): one line, 42.00 − 1.50 − 3 × 1.20 = 36.90 kg × 57.00 = 2103.30 → 2103.00 (§2.12).
+      expect(savedIntake()).toMatchObject({ amount: '2103.00', balance_after: '2223.00' });
+      expect(res.balance_after).toBe('2223.00');
+      expect(debt.debtFor).toHaveBeenCalledWith(SUPPLIER, manager);
+      expect(allocations.lockSupplier.mock.invocationCallOrder[0]).toBeLessThan(
+        debt.debtFor.mock.invocationCallOrder[0],
+      );
+      // Read BEFORE the receipt is inserted, so the debt does not yet count it.
+      expect(debt.debtFor.mock.invocationCallOrder[0]).toBeLessThan(
+        manager.save.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('freezes balance_after = debt before + Сума when nothing is handed over', async () => {
+      debt.debtFor.mockResolvedValue('-200.00');
+      await command.create(oksana, dto() as never);
+      expect(savedIntake()).toMatchObject({ balance_after: '1903.00' });
+    });
+
     it('lets a ceiling refusal roll the whole transaction back', async () => {
       payouts.write.mockRejectedValue(new Error('PAYOUT_EXCEEDS_CASH'));
       await expect(command.create(oksana, dto({ paid_amount: '380.00' }) as never)).rejects.toThrow(
@@ -414,17 +438,6 @@ describe('CreateIntakeCommand', () => {
         command.create(oksana, dto({ returned_crates: 3, paid_amount: '100.00' }) as never),
       ).rejects.toThrow('CRATE_CASH_INSUFFICIENT');
       expect(payouts.write).not.toHaveBeenCalled();
-    });
-
-    it('asks the stock guard for crate tare net of the crates returned', async () => {
-      // `dto()` carries 3 crate units.
-      await command.create(oksana, dto({ returned_crates: 1 }) as never);
-      expect(stock.assertOnHand).toHaveBeenCalledWith(expect.anything(), expect.any(String), 2);
-    });
-
-    it('does not ask when the receipt gives back every crate it weighs', async () => {
-      await command.create(oksana, dto({ returned_crates: 3 }) as never);
-      expect(stock.assertOnHand).not.toHaveBeenCalled();
     });
   });
 

@@ -40,7 +40,10 @@ export function allocateTopUps(receipts: ReceiptForAllocation[]): Map<string, st
       receipt.lines.map((l) => l.amount),
     );
     receipt.lines.forEach((line, i) => {
-      byGrade.set(line.product_grade_id, add(byGrade.get(line.product_grade_id) ?? '0.00', parts[i]));
+      byGrade.set(
+        line.product_grade_id,
+        add(byGrade.get(line.product_grade_id) ?? '0.00', parts[i]),
+      );
     });
   }
   return byGrade;

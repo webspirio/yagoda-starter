@@ -82,7 +82,7 @@ export function DateBound({
       {label}
       <TextInput
         type="date"
-        className="h-[34px] w-auto"
+        className="h-8.5 w-auto"
         value={draft}
         min={min}
         max={max}

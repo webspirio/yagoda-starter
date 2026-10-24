@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { TraceScope } from '@/shared/ui/trace';
 import userEvent from '@testing-library/user-event';
 import { i18n } from '@/shared/lib/i18n';
 import { WeighingForm } from './WeighingForm';
@@ -71,10 +72,35 @@ describe('WeighingForm', () => {
     await userEvent.clear(screen.getByLabelText(/crates|кількість ящиків/i));
     await userEvent.type(screen.getByLabelText(/crates|кількість ящиків/i), '10');
 
-    // 120.50 − 20.00 − (10 × 1.20) = 88.50
+    // 120.50 kg − 20.00 kg − (10 pcs × 1.20 kg) = 88.50 kg
     expect(screen.getByTestId('net-kg')).toHaveTextContent('88.50');
     // W4 — and says so, as a formula a calculator re-checks.
-    expect(screen.getByTestId('net-formula')).toHaveTextContent('120.50 − 20.00 − 10 × 1.20 = 88.50');
+    expect(screen.getByTestId('net-formula')).toHaveTextContent('120.50 kg − 20.00 kg − 10 pcs × 1.20 kg = 88.50 kg');
+  });
+
+  // «Звідки це число» (client, 24.10): each operand points at the field it was typed into.
+  it('lights the field each figure of the net formula came from', async () => {
+    render(
+      <TraceScope>
+        <WeighingForm {...base} />
+      </TraceScope>,
+    );
+    const gross = screen.getByLabelText(/gross|вага з ягодою/i);
+    const crates = screen.getByLabelText(/crates|кількість ящиків/i);
+    await userEvent.type(gross, '120.50');
+    await userEvent.clear(crates);
+    await userEvent.type(crates, '10');
+
+    const formula = screen.getByTestId('net-formula');
+    fireEvent.pointerEnter(within(formula).getByText('120.50 kg'));
+    expect(gross).toHaveAttribute('data-trace-hit', 'neutral');
+
+    fireEvent.pointerEnter(within(formula).getByText('10 pcs'));
+    expect(crates).toHaveAttribute('data-trace-hit', 'neutral');
+    expect(gross).not.toHaveAttribute('data-trace-hit');
+
+    fireEvent.pointerEnter(within(formula).getByText('108.50 kg'));
+    expect(screen.getByTestId('net-kg')).toHaveAttribute('data-trace-hit', 'berry');
   });
 
   it('leaves the pallet out of the formula when there is none — W4', async () => {
@@ -82,7 +108,7 @@ describe('WeighingForm', () => {
     await userEvent.type(screen.getByLabelText(/gross|вага з ягодою/i), '18.10');
     await userEvent.clear(screen.getByLabelText(/crates|кількість ящиків/i));
     await userEvent.type(screen.getByLabelText(/crates|кількість ящиків/i), '2');
-    expect(screen.getByTestId('net-formula')).toHaveTextContent('18.10 − 2 × 1.20 = 15.70');
+    expect(screen.getByTestId('net-formula')).toHaveTextContent('18.10 kg − 2 pcs × 1.20 kg = 15.70 kg');
   });
 
   it('defaults the tare type to THE CRATE, not the catalogue’s first entry — W1', async () => {

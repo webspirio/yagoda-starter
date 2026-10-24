@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
@@ -28,6 +28,8 @@ const {
   noteMock,
   suppliersMock,
   reopenMock,
+  transfersMock,
+  costOfDayMock,
 } = vi.hoisted(() => ({
   meMock: vi.fn(),
   pointScopeMock: vi.fn(),
@@ -44,14 +46,21 @@ const {
   noteMock: vi.fn(),
   suppliersMock: vi.fn(),
   reopenMock: vi.fn(),
+  transfersMock: vi.fn(),
+  costOfDayMock: vi.fn(),
+}));
+
+// Top-ups review, item 5 — the owner's «Звірка каси» names the day's доплати,
+// read off «Собівартість дня»; the operator never asks (the id is undefined).
+vi.mock('@/entities/cost-of-day', () => ({
+  useCostOfDayQuery: (shiftId: string | undefined) => costOfDayMock(shiftId),
 }));
 
 // #221 — the day's feed names each row's supplier, the owner can reopen a
 // closed shift, and rows open a receipt: none of it needs a QueryClient here.
 vi.mock('@/entities/supplier', () => ({
   useSuppliersQuery: (search: string, pointId: string | null) => suppliersMock(search, pointId),
-  supplierName: (s: { first_name: string; last_name: string }) =>
-    `${s.first_name} ${s.last_name}`,
+  supplierName: (s: { first_name: string; last_name: string }) => `${s.first_name} ${s.last_name}`,
 }));
 
 vi.mock('../api/shiftActions', () => ({
@@ -115,8 +124,15 @@ vi.mock('@/entities/payout', () => ({
   usePayoutsQuery: (filter: unknown) => payoutsMock(filter),
 }));
 
-vi.mock('@/entities/cash-count', () => ({
+// The discrepancy reading (`describeDiscrepancy` & co.) stays REAL — only the read is mocked.
+vi.mock('@/entities/cash-count', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/cash-count')>()),
   useCashCountsQuery: (filter: unknown) => cashCountsMock(filter),
+}));
+
+// C4 — the page sums the point's `sent` transfers for «з них … уже в дорозі».
+vi.mock('@/entities/transfer', () => ({
+  useTransfersQuery: (filter: unknown) => transfersMock(filter),
 }));
 
 vi.mock('@/entities/shift', () => ({
@@ -135,10 +151,9 @@ vi.mock('@/entities/shift', () => ({
 // with a fixed amount, so a test can drive this page's OWN result-view
 // wiring (`resultFor`) without re-testing the dialog's own form.
 vi.mock('@/features/count-shift', async (importOriginal) => {
-  // `CountResultView` and `discrepancyTone` are the REAL feature exports —
-  // this page renders the actual shared result view (its own suite lives in
-  // `features/count-shift/ui/CountResultView.test.tsx`), and
-  // `ShiftCountPanel`'s own discrepancy pill needs the real tone function.
+  // `CountResultView` is the REAL feature export — this page renders the
+  // actual shared result view (its own suite lives in
+  // `features/count-shift/ui/CountResultView.test.tsx`).
   // Only the mutations and the two dialogs that need a `QueryClient` this
   // suite has no other reason to wire up are stubbed.
   const actual = await importOriginal<typeof import('@/features/count-shift')>();
@@ -311,12 +326,15 @@ function tile(label: string): HTMLElement {
  * pinning the shortfall tone rule means reading this node's own class list.
  */
 function tileValue(label: string, valueText: string): HTMLElement {
-  return within(tile(label)).getByText(valueText);
+  const el = within(tile(label)).getByText(valueText);
+  // The figure sits in its `data-trace` source span; the tone is on the value node.
+  return el.hasAttribute('data-trace') ? (el.parentElement as HTMLElement) : el;
 }
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-09-08T09:00:00') });
   meMock.mockReset().mockReturnValue({ data: OPERATOR });
+  costOfDayMock.mockReset().mockReturnValue({ data: undefined, isPending: true, isError: false });
   pointScopeMock
     .mockReset()
     .mockReturnValue({ pointId: 'p1', canPick: false, setPointId: vi.fn(), isLoading: false });
@@ -359,6 +377,7 @@ beforeEach(() => {
   });
   intakesMock.mockReset().mockReturnValue(list([]));
   payoutsMock.mockReset().mockReturnValue(list([]));
+  transfersMock.mockReset().mockReturnValue(list([]));
   cashCountsMock.mockReset().mockReturnValue(list([cashCount()]));
   shiftMock.mockReset().mockReturnValue({ data: null, isPending: false, isError: false });
   // The same world `shiftMock` describes by default: nothing open anywhere.
@@ -401,22 +420,16 @@ describe('PointCashPage — honesty rule 1: the total is the server’s, not the
   });
 });
 
-describe('PointCashPage — review round 1, finding 4: paidPast truncation', () => {
-  it('shows the caveat when the payouts read is only a partial page', async () => {
-    payoutsMock.mockReturnValue({
-      data: { data: [payout({ amount: '900.00' })], total: 250, page: 1, limit: 100 },
-      isPending: false,
-      isError: false,
-    });
-
+describe("PointCashPage — the accrued row's truncation (C1: no payouts read any more)", () => {
+  it('reads no payouts for the ledger — «paid for past days» is gone', () => {
     renderPointCash();
-
-    // Only `paidPast` still reads the payouts page — the movement rows come
-    // from the server's breakdown (#73), so the caveat appears once.
-    expect(await screen.findAllByText(/older ones may be missing/i)).toHaveLength(1);
+    expect(payoutsMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ to: expect.any(String) }),
+    );
+    expect(screen.queryByText('Paid for past days')).toBeNull();
   });
 
-  it('carries the same caveat to the row fed by intakes', () => {
+  it('carries the caveat to the row fed by intakes', () => {
     const truncated = <T,>(data: T[]) => ({
       data: { data, total: 250, page: 1, limit: 100 },
       isPending: false,
@@ -427,11 +440,6 @@ describe('PointCashPage — review round 1, finding 4: paidPast truncation', () 
     renderPointCash();
 
     expect(screen.getByText(/Showing recent receipts only/)).toBeInTheDocument();
-  });
-
-  it('says nothing when the payouts read came back whole', () => {
-    renderPointCash();
-    expect(screen.queryByText(/older ones may be missing/i)).toBeNull();
   });
 });
 
@@ -546,18 +554,61 @@ describe('PointCashPage — Task 2: header, hints and the amber cash tile', () =
   // NEW branch (Task 2) — a negative shortfall means the drawer holds more
   // than the target calls for, which reads differently from «settled at
   // exactly zero» even though both get the leaf tone.
-  it('hints that the drawer holds more than the target when shortfall is negative', () => {
+  // C5 — a label agrees with its sign: «Over target 50.00», never «Short −50.00».
+  it('names a negative shortfall «Over target» with its magnitude', () => {
     pointCashMock.mockReturnValue(list([pointRow({ shortfall: '-50.00' })]));
     renderPointCash();
-    expect(tile('Short of target')).toHaveTextContent(
-      'there is more in the drawer than the target',
+    expect(screen.queryByText('Short of target')).toBeNull();
+    expect(tile('Over target')).toHaveTextContent('50.00 ₴');
+    expect(tile('Over target')).not.toHaveTextContent('−');
+    expect(tile('Over target')).toHaveTextContent('there is more in the drawer than the target');
+  });
+
+  // C4 — money already on the road is named under the shortfall.
+  it('says how much of the shortfall is already on the road (Σ sent transfers)', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ shortfall: '49500.00' })]));
+    transfersMock.mockReturnValue(
+      list([
+        { id: 't1', cash: '20000.00', status: 'sent' },
+        { id: 't2', cash: '4000.00', status: 'sent' },
+      ]),
     );
+    renderPointCash();
+    expect(transfersMock).toHaveBeenCalledWith({ pointId: 'p1', status: 'sent', enabled: true });
+    expect(tile('Short of target')).toHaveTextContent('24,000.00 ₴ of it already on the road');
+    expect(tile('Short of target')).not.toHaveTextContent('the base has not transferred it yet');
+  });
+
+  it('does not claim money on the road on a past date — «sent» is a state of now', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ shortfall: '49500.00' })]));
+    transfersMock.mockReturnValue(list([{ id: 't1', cash: '20000.00', status: 'sent' }]));
+    renderPointCash('/point-cash?date=2026-09-07');
+    expect(tile('Short of target')).toHaveTextContent('the base has not transferred it yet');
   });
 
   it('hints that the target is covered when shortfall is exactly zero', () => {
     pointCashMock.mockReturnValue(list([pointRow({ shortfall: '0.00' })]));
     renderPointCash();
     expect(tile('Short of target')).toHaveTextContent('the target is covered');
+  });
+
+  // C9 — plain cash is neutral ink, not berry.
+  it('prints non-negative cash in neutral ink', () => {
+    renderPointCash();
+    const cashTile = screen
+      .getAllByText('Berry cash')
+      .map((el) => el.closest('[data-slot="stat-tile"]'))
+      .find((el): el is HTMLElement => el !== null);
+    if (!cashTile) throw new Error('No stat tile labelled "Berry cash"');
+    const figure = cashTile.querySelector('.font-mono') as HTMLElement;
+    expect(figure.className).not.toContain('text-primary');
+    expect(figure.className).toContain('text-foreground');
+  });
+
+  it('captions the target tile too, so the four figures line up', () => {
+    pointCashMock.mockReturnValue(list([pointRow({ target_cash: '5000.00' })]));
+    renderPointCash();
+    expect(tile('Target')).toHaveTextContent('how much cash the point should hold');
   });
 
   it('tones the cash tile amber when the drawer reads negative', () => {
@@ -571,7 +622,9 @@ describe('PointCashPage — Task 2: header, hints and the amber cash tile', () =
       .map((el) => el.closest('[data-slot="stat-tile"]'))
       .find((el): el is HTMLElement => el !== null);
     if (!cashTile) throw new Error('No stat tile labelled "Berry cash"');
-    expect(within(cashTile).getByText('−100.00 ₴').className).toContain('text-[var(--amber)]');
+    expect(within(cashTile).getByText('−100.00 ₴').closest('.font-mono')?.className).toContain(
+      'text-[var(--amber)]',
+    );
   });
 });
 
@@ -776,13 +829,14 @@ describe('PointCashPage — the ledger reads the server breakdown (#73)', () => 
     });
   });
 
-  it('shows the breakdown’s opening row, captioned with the point’s target', () => {
+  // C8 — the target is the tile's to say, not repeated under the opening row.
+  it('shows the breakdown’s opening row without repeating the target', () => {
     pointCashMock.mockImplementation((opts: { asOf?: string } = {}) =>
       'asOf' in opts ? list([pointRow({ target_cash: '5000.00' })]) : list([]),
     );
     renderPointCash();
     expect(screen.getByText('Opening count')).toBeInTheDocument();
-    expect(screen.getByText('target 5,000.00 ₴')).toBeInTheDocument();
+    expect(screen.queryByText('target 5,000.00 ₴')).toBeNull();
   });
 
   it('a failed detail read stays inside the ledger card — the stats still render', () => {
@@ -836,16 +890,26 @@ describe('PointCashPage — R1: the crates book beside the berry book, never a c
     expect(tile('Crate cash')).toHaveTextContent('signed-receipt crates not counted');
   });
 
+  // C12 — the crates book has no date: on a past date it says the figure is today's.
+  it('says the crates figure is as of today on a past date', () => {
+    renderPointCash('/point-cash?date=2026-09-01');
+    expect(tile('Crate cash')).toHaveTextContent('as of today — the crates book has no date');
+  });
+
   it('counts one crate in the singular, and says no deposits rather than «for 0 crates»', () => {
     pointCashMock.mockImplementation((opts: { asOf?: string } = {}) =>
-      'asOf' in opts ? list([pointRow({ crate_deposits: '50.00', crate_deposit_units: 1 })]) : list([]),
+      'asOf' in opts
+        ? list([pointRow({ crate_deposits: '50.00', crate_deposit_units: 1 })])
+        : list([]),
     );
     const { unmount } = renderPointCash();
     expect(tile('Crate cash')).toHaveTextContent('deposits for 1 crate');
     unmount();
 
     pointCashMock.mockImplementation((opts: { asOf?: string } = {}) =>
-      'asOf' in opts ? list([pointRow({ crate_deposits: '0.00', crate_deposit_units: 0 })]) : list([]),
+      'asOf' in opts
+        ? list([pointRow({ crate_deposits: '0.00', crate_deposit_units: 0 })])
+        : list([]),
     );
     renderPointCash();
     expect(tile('Crate cash')).toHaveTextContent('no crate deposits held');
@@ -945,10 +1009,10 @@ describe('PointCashPage — scope and failure states', () => {
       enabled: false,
     });
     expect(intakesMock).toHaveBeenCalledWith({});
-    expect(payoutsMock).toHaveBeenCalledWith({
+    expect(transfersMock).toHaveBeenCalledWith({
       pointId: undefined,
-      to: '2026-09-08',
-      limit: 100,
+      status: 'sent',
+      enabled: false,
     });
     expect(cashCountsMock).toHaveBeenCalledWith({ pointId: undefined });
     expect(pointCashOneMock).toHaveBeenCalledWith(null, '2026-09-08');
@@ -1120,8 +1184,8 @@ describe('PointCashPage — R4: the open/close result view', () => {
     expect(await screen.findByRole('heading', { name: 'Shift opened' })).toBeInTheDocument();
     expect(screen.getByText('2,500.00 ₴')).toBeInTheDocument();
     // Since 09.09 the opening is compared with the last close, so it carries
-    // the same pill a close does (spec 2026-10-08, decision 5).
-    expect(screen.getByText('Discrepancy')).toBeInTheDocument();
+    // the same pill a close does (spec 2026-10-08, decision 5) — named (C7).
+    expect(screen.getByText('Matched')).toBeInTheDocument();
   });
 
   it('dismisses via «Done» rather than hard-popping, without leaking stale content into the next result (minor 14)', async () => {
@@ -1208,7 +1272,7 @@ describe('PointCashPage — R4: the open/close result view', () => {
     await user.click(screen.getByRole('button', { name: 'Close shift' }));
     await user.click(await screen.findByRole('button', { name: 'Confirm close' }));
 
-    const title = `Shift closed. Discrepancy ${formatUah('-50.00', 'en')} — the owner will see it on their own list.`;
+    const title = `Shift closed. Short ${formatUah('50.00', 'en')} — the owner will see it on their own list.`;
     expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
   });
 
@@ -1464,7 +1528,7 @@ describe('PointCashPage — count explanations: the opening note (S4) and a bann
 
     expect(
       await screen.findByRole('heading', {
-        name: `Shift opened. ${formatUah('-20.00', 'en')} off the previous close — the owner will see it in their list.`,
+        name: `Shift opened. Against the previous close — Short ${formatUah('20.00', 'en')}; the owner will see it on their own list.`,
       }),
     ).toBeInTheDocument();
   });
@@ -1614,8 +1678,10 @@ const page = <T,>(data: T[], total = data.length) => ({
  * have come from the day's documents.
  */
 function dayDocs(
-  intakes: ReturnType<typeof page<Intake>> | { data: undefined; isPending: boolean; isError: boolean },
-  payouts: ReturnType<typeof page<Payout>> | { data: undefined; isPending: boolean; isError: boolean },
+  intakes:
+    ReturnType<typeof page<Intake>> | { data: undefined; isPending: boolean; isError: boolean },
+  payouts:
+    ReturnType<typeof page<Payout>> | { data: undefined; isPending: boolean; isError: boolean },
 ) {
   intakesMock.mockImplementation((f: object) => ('shiftId' in f ? intakes : list([])));
   payoutsMock.mockImplementation((f: object) => ('shiftId' in f ? payouts : list([])));
@@ -1639,7 +1705,12 @@ describe('PointCashPage — the day’s tiles and documents (#221)', () => {
     dayDocs(
       page<Intake>([
         intake({ id: 'i1', code: 'KV-0001', amount: '10944.00' }),
-        intake({ id: 'i2', code: 'KV-0002', amount: '1827.00', created_at: '2026-09-08T09:20:00Z' }),
+        intake({
+          id: 'i2',
+          code: 'KV-0002',
+          amount: '1827.00',
+          created_at: '2026-09-08T09:20:00Z',
+        }),
         intake({
           id: 'i3',
           code: 'KV-0003',
@@ -1664,7 +1735,7 @@ describe('PointCashPage — the day’s tiles and documents (#221)', () => {
 
     expect(tile('Berry received')).toHaveTextContent('73.80 kg');
     expect(tile('Berry received')).toHaveTextContent('2 receipts');
-    expect(tile('Accrued')).toHaveTextContent('12,771.00 ₴');
+    expect(tile('Accrued on receipts')).toHaveTextContent('12,771.00 ₴');
     expect(tile('Cash out')).toHaveTextContent('4,000.00 ₴');
     expect(tile('Balances created')).toHaveTextContent('8,771.00 ₴');
     // Still on the feed, struck through.
@@ -1680,9 +1751,11 @@ describe('PointCashPage — the day’s tiles and documents (#221)', () => {
 
     renderPointCash();
 
-    expect(screen.getByText('Showing the first 100 documents — totals are partial')).toBeInTheDocument();
+    expect(
+      screen.getByText('Showing the first 100 documents — totals are partial'),
+    ).toBeInTheDocument();
     // A partial total is still the truth about what was read.
-    expect(tile('Accrued')).toHaveTextContent('100.00 ₴');
+    expect(tile('Accrued on receipts')).toHaveTextContent('100.00 ₴');
   });
 
   it('says nothing about truncation when both journals came back whole', () => {
@@ -1763,18 +1836,20 @@ describe('PointCashPage — the day’s tiles and documents (#221)', () => {
   });
 
   it('keeps the day on screen when a read the day does not need fails (#221 review)', () => {
-    // The ledger's point+date payouts read fails; the shift's own documents
+    // The ledger's point+date intakes read fails; the shift's own documents
     // came back. The cash figures go, the day does not.
-    payoutsMock.mockImplementation((f: object) =>
-      'shiftId' in f
-        ? page<Payout>([payout({ id: 'y1', code: 'VD-0001', amount: '4000.00' })])
-        : { data: undefined, isPending: false, isError: true },
+    const dayIntakes = page<Intake>([
+      intake({ id: 'i1', code: 'KV-0001', amount: '10944.00' }),
+      intake({ id: 'i2', code: 'KV-0002', amount: '1827.00', created_at: '2026-09-08T09:20:00Z' }),
+    ]);
+    intakesMock.mockImplementation((f: object) =>
+      'shiftId' in f ? dayIntakes : { data: undefined, isPending: false, isError: true },
     );
     renderPointCash();
 
     expect(screen.getByRole('alert')).toHaveTextContent('Something went wrong');
     expect(screen.queryByText('Short of target')).toBeNull();
-    expect(tile('Accrued')).toHaveTextContent('12,771.00 ₴');
+    expect(tile('Accrued on receipts')).toHaveTextContent('12,771.00 ₴');
     expect(screen.getByText('Cash reconciliation')).toBeInTheDocument();
     expect(screen.getByText('KV-0001')).toBeInTheDocument();
   });
@@ -1813,8 +1888,12 @@ describe('PointCashPage — the day’s tiles and documents (#221)', () => {
     const ledgerCard = screen.getByText('Cash reconciliation');
     const feed = screen.getByText('Day feed');
     const panel = screen.getByText('Shift and recount');
-    expect(panel.compareDocumentPosition(ledgerCard) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(ledgerCard.compareDocumentPosition(feed) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      panel.compareDocumentPosition(ledgerCard) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      ledgerCard.compareDocumentPosition(feed) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 });
 
@@ -1875,13 +1954,20 @@ describe('PointCashPage — the balances-created tile tone', () => {
   it('stays the default tone when nothing is owed', () => {
     dayDocs(page<Intake>([]), page<Payout>([]));
     renderPointCash();
-    expect(within(tile('Balances created')).getByText('0.00 ₴').className).not.toContain('amber');
+    expect(
+      within(tile('Balances created')).getByText('0.00 ₴').closest('.font-mono')?.className,
+    ).not.toContain('amber');
   });
 
   it('turns amber once a balance is owed', () => {
-    dayDocs(page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '10.00' })]), page<Payout>([]));
+    dayDocs(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '10.00' })]),
+      page<Payout>([]),
+    );
     renderPointCash();
-    expect(within(tile('Balances created')).getByText('10.00 ₴').className).toContain('amber');
+    expect(
+      within(tile('Balances created')).getByText('10.00 ₴').closest('.font-mono')?.className,
+    ).toContain('amber');
   });
 });
 
@@ -1889,17 +1975,55 @@ describe('PointCashPage — «Звірка каси» (#221, from «Каса з�
   const ledger = () =>
     screen.getByText('Cash reconciliation').closest('div.rounded-xl') as HTMLElement;
   const row = (label: string) => {
-    const el = within(ledger()).getByText(label).closest('div');
+    const el = within(ledger()).getByText(label).closest('[data-term]');
     if (!el) throw new Error(`No ledger row "${label}"`);
     return el as HTMLElement;
   };
-  const voided = { voided_at: '2026-09-08T12:00:00Z', voided_by_user_id: 'u1', void_reason: 'typo' };
+  const ofWhich = () => within(ledger()).getByText(/^of which:/);
+  const voided = {
+    voided_at: '2026-09-08T12:00:00Z',
+    voided_by_user_id: 'u1',
+    void_reason: 'typo',
+  };
 
   beforeEach(() => {
     shiftMock.mockReturnValue({ data: openToday, isPending: false, isError: false });
   });
 
-  it('breaks the accrued sum into cash with a receipt, cash without one and the rest owed', () => {
+  // C2 — the visible terms PRODUCE the plaque: accrued − left on balance = out.
+  it('reads as one equation — Шипинки 24.10: 23 986 − 19 986 = 4 000, all of it without berry', () => {
+    dayDocs(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '23986.00' })]),
+      page<Payout>([payout({ id: 'y1', code: 'VD-0001', amount: '4000.00' })]),
+    );
+    renderPointCash();
+
+    expect(row("Accrued on this day's receipts")).toHaveTextContent(
+      /^Accrued on this day's receipts23,986\.00 ₴$/,
+    );
+    expect(row('Left on balance for us')).toHaveTextContent(
+      /^−Left on balance for us19,986\.00 ₴$/,
+    );
+    expect(row('Total cash out')).toHaveTextContent(/^=Total cash out4,000\.00 ₴$/);
+    // The split names only what is there — nothing was paid on the spot.
+    expect(ofWhich()).toHaveTextContent(/^of which: without berry 4,000\.00 ₴$/);
+    // No unsigned «−4 000» / «−0» rows any more.
+    expect(within(ledger()).queryByText(/−\d/)).toBeNull();
+  });
+
+  it('Гайове 24.10: 2 573 − 573 = 2 000, paid on the spot', () => {
+    dayDocs(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '2573.00' })]),
+      page<Payout>([payout({ id: 'y1', code: 'VD-0001', amount: '2000.00', intake_id: 'i1' })]),
+    );
+    renderPointCash();
+
+    expect(row('Left on balance for us')).toHaveTextContent('573.00 ₴');
+    expect(row('Total cash out')).toHaveTextContent('2,000.00 ₴');
+    expect(ofWhich()).toHaveTextContent(/^of which: on the spot with a receipt 2,000\.00 ₴$/);
+  });
+
+  it('splits the total by kind when both kinds were paid', () => {
     dayDocs(
       page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '1000.00' })]),
       page<Payout>([
@@ -1909,23 +2033,24 @@ describe('PointCashPage — «Звірка каси» (#221, from «Каса з�
     );
     renderPointCash();
 
-    expect(row("Accrued for this day's berry")).toHaveTextContent('1,000.00 ₴');
-    expect(row('Paid in cash on the spot')).toHaveTextContent('−600.00 ₴');
-    expect(row('Paid without berry')).toHaveTextContent('−150.00 ₴');
-    expect(row('Left on balance for us')).toHaveTextContent('−250.00 ₴');
+    expect(row('Left on balance for us')).toHaveTextContent('250.00 ₴');
     expect(row('Total cash out')).toHaveTextContent('750.00 ₴');
-  });
-
-  it('hides the without-berry row on a day with no such payout', () => {
-    dayDocs(page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '100.00' })]), page<Payout>([]));
-    renderPointCash();
-    expect(within(ledger()).queryByText('Paid without berry')).toBeNull();
-    expect(row('Paid in cash on the spot')).toHaveTextContent(
-      /^Paid in cash on the spotwith a receipt0\.00 ₴$/,
+    expect(ofWhich()).toHaveTextContent(
+      /^of which: on the spot with a receipt 600\.00 ₴ · without berry 150\.00 ₴$/,
     );
   });
 
-  it('says more was paid out than accrued, without claiming which debt it settled', () => {
+  it('shows no split on a day nothing was paid', () => {
+    dayDocs(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '100.00' })]),
+      page<Payout>([]),
+    );
+    renderPointCash();
+    expect(row('Total cash out')).toHaveTextContent('0.00 ₴');
+    expect(within(ledger()).queryByText(/^of which:/)).toBeNull();
+  });
+
+  it('adds what was paid beyond accrued: 100 + 200 = 300', () => {
     dayDocs(
       page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '100.00' })]),
       page<Payout>([payout({ id: 'y1', code: 'VD-0001', amount: '300.00' })]),
@@ -1934,16 +2059,22 @@ describe('PointCashPage — «Звірка каси» (#221, from «Каса з�
 
     expect(tile('Paid beyond accrued')).toHaveTextContent('200.00 ₴');
     expect(screen.queryByText('Balances created')).toBeNull();
-    expect(row('Paid out beyond accrued')).toHaveTextContent('+200.00 ₴');
-    // Scoped to «Звірка каси»: `CashLedger`'s own two-rows note on this page
-    // legitimately mentions old balances.
-    expect(within(ledger()).queryByText(/old balances/i)).toBeNull();
+    expect(row('Paid out beyond accrued')).toHaveTextContent(
+      /^\+Paid out beyond accruedold balances paid down200\.00 ₴$/,
+    );
+    expect(row('Total cash out')).toHaveTextContent('300.00 ₴');
   });
 
   it('shows nothing out when every payout was voided in the open shift (#170 review)', () => {
     dayDocs(
       page<Intake>([
-        intake({ id: 'i1', code: 'KV-0001', amount: '510.00', voided_at: '2026-09-08T12:00:00Z', void_reason: 'x' }),
+        intake({
+          id: 'i1',
+          code: 'KV-0001',
+          amount: '510.00',
+          voided_at: '2026-09-08T12:00:00Z',
+          void_reason: 'x',
+        }),
       ]),
       page<Payout>([
         payout({
@@ -1963,10 +2094,10 @@ describe('PointCashPage — «Звірка каси» (#221, from «Каса з�
 
     expect(tile('Cash out')).toHaveTextContent('0.00 ₴');
     expect(row('Total cash out')).toHaveTextContent('0.00 ₴');
-    expect(screen.queryByText(/on voided payouts/)).toBeNull();
+    expect(within(ledger()).queryByText('Voided payouts, cash not in the drawer')).toBeNull();
   });
 
-  it('counts a closed-shift void as cash out while its return is pending', () => {
+  it('adds a closed-shift void while its return is pending: 500 − 500 + 40 = 40', () => {
     dayDocs(
       page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '500.00' })]),
       page<Payout>([payout({ id: 'y1', code: 'VD-0001', amount: '40.00', ...voided })]),
@@ -1974,11 +2105,12 @@ describe('PointCashPage — «Звірка каси» (#221, from «Каса з�
     renderPointCash();
 
     expect(tile('Cash out')).toHaveTextContent('40.00 ₴');
+    expect(row('Left on balance for us')).toHaveTextContent('500.00 ₴');
+    expect(row('Voided payouts, cash not in the drawer')).toHaveTextContent(
+      /^\+Voided payouts, cash not in the drawerstill waiting to come back to the drawer40\.00 ₴$/,
+    );
     expect(row('Total cash out')).toHaveTextContent('40.00 ₴');
-    expect(
-      screen.getByText('of which 40.00 ₴ on voided payouts still waiting to come back to the drawer'),
-    ).toBeInTheDocument();
-    expect(row('Left on balance for us')).toHaveTextContent('−500.00 ₴');
+    expect(ofWhich()).toHaveTextContent(/^of which: on voided payouts 40\.00 ₴$/);
   });
 
   it('counts nothing out for a closed-shift void returned the same day', () => {
@@ -1999,10 +2131,10 @@ describe('PointCashPage — «Звірка каси» (#221, from «Каса з�
     );
     renderPointCash();
     expect(tile('Cash out')).toHaveTextContent('0.00 ₴');
-    expect(screen.queryByText(/on voided payouts/)).toBeNull();
+    expect(within(ledger()).queryByText('Voided payouts, cash not in the drawer')).toBeNull();
   });
 
-  it('names a partial return with both figures', () => {
+  it('names a partial return with the figure still out', () => {
     dayDocs(
       page<Intake>([]),
       page<Payout>([
@@ -2018,12 +2150,12 @@ describe('PointCashPage — «Звірка каси» (#221, from «Каса з�
       ]),
     );
     renderPointCash();
-    expect(
-      screen.getByText('of which 65.00 ₴ on voided payouts, 40.00 ₴ of it still waiting to come back to the drawer'),
-    ).toBeInTheDocument();
+    expect(row('Voided payouts, cash not in the drawer')).toHaveTextContent(
+      /40\.00 ₴ of it still waiting to come back to the drawer65\.00 ₴$/,
+    );
   });
 
-  it('says so when every voided payout came back', () => {
+  it('says so when every voided payout came back later', () => {
     dayDocs(
       page<Intake>([]),
       page<Payout>([
@@ -2039,18 +2171,27 @@ describe('PointCashPage — «Звірка каси» (#221, from «Каса з�
     );
     renderPointCash();
     expect(
-      screen.getByText('of which 25.00 ₴ on voided payouts returned later, on the day of the return'),
+      within(ledger()).getByText('returned later — the cash came in on the day of the return'),
     ).toBeInTheDocument();
   });
 
-  it('puts the voided-payout line between the rows and the plaque it explains', () => {
-    dayDocs(page<Intake>([]), page<Payout>([payout({ id: 'y1', code: 'VD-0001', amount: '40.00', ...voided })]));
+  it('puts the voided term between the debt term and the plaque it adds up to', () => {
+    dayDocs(
+      page<Intake>([]),
+      page<Payout>([payout({ id: 'y1', code: 'VD-0001', amount: '40.00', ...voided })]),
+    );
     renderPointCash();
-    const line = screen.getByText(/on voided payouts/);
-    const plaque = screen.getByText('Total cash out');
-    const lastRow = screen.getByText('Left on balance for us');
-    expect(lastRow.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const line = within(ledger()).getByText('Voided payouts, cash not in the drawer');
+    const plaque = within(ledger()).getByText('Total cash out');
+    const debt = within(ledger()).getByText('Left on balance for us');
+    expect(debt.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(line.compareDocumentPosition(plaque) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('carries no developer note (rule 7)', () => {
+    dayDocs(page<Intake>([]), page<Payout>([]));
+    renderPointCash();
+    expect(within(ledger()).queryByText(/#\d/)).toBeNull();
   });
 
   it('warns inside the reconciliation when a journal was truncated', () => {
@@ -2068,7 +2209,12 @@ describe('PointCashPage — «Звірка каси» (#221, from «Каса з�
 describe('PointCashPage — the owner reopens a closed day (#221, from «Каса за день»)', () => {
   beforeEach(() => {
     meMock.mockReturnValue({ data: OWNER });
-    pointScopeMock.mockReturnValue({ pointId: 'p1', canPick: true, setPointId: vi.fn(), isLoading: false });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
     shiftMock.mockReturnValue({ data: closedYesterday, isPending: false, isError: false });
     dayDocs(page<Intake>([]), page<Payout>([]));
   });
@@ -2125,9 +2271,176 @@ describe('PointCashPage — the owner reopens a closed day (#221, from «Кас�
 
   it('offers the operator no reopen on the same closed day', () => {
     meMock.mockReturnValue({ data: OPERATOR });
-    pointScopeMock.mockReturnValue({ pointId: 'p1', canPick: false, setPointId: vi.fn(), isLoading: false });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: false,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
     renderPointCash('/point-cash?date=2026-09-07');
 
     expect(screen.queryByRole('button', { name: 'Reopen shift' })).toBeNull();
+  });
+});
+
+describe('PointCashPage — the owner’s unresolved discrepancies line (C14)', () => {
+  const asOwner = () => {
+    meMock.mockReturnValue({ data: OWNER });
+    pointScopeMock.mockReturnValue({
+      pointId: 'p1',
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: false,
+    });
+  };
+
+  it('counts the open incidents and names their net sum, linking to the history', async () => {
+    const user = userEvent.setup();
+    asOwner();
+    cashCountsMock.mockReturnValue(
+      list([
+        cashCount({ id: 'a', discrepancy: '-90.00', is_open: true }),
+        cashCount({ id: 'b', discrepancy: '-50.00', is_open: true }),
+        cashCount({ id: 'c', discrepancy: '-10.00', is_open: false }),
+      ]),
+    );
+    renderPointCash();
+
+    expect(screen.getByText('Unresolved discrepancies: 2')).toBeInTheDocument();
+    expect(screen.getByText('Short 140.00 ₴')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Explain in the recount history' }));
+    expect(screen.getByRole('tab', { name: 'Recount history' })).toHaveAttribute(
+      'data-state',
+      'active',
+    );
+  });
+
+  // Review 24.10 — netted, a −90 and a +90 read «Matched» in green over two
+  // open incidents. Each kind is summed and named on its own.
+  it('names shortages and surpluses apart — never «Matched» over open incidents', () => {
+    asOwner();
+    cashCountsMock.mockReturnValue(
+      list([
+        cashCount({ id: 'a', discrepancy: '-90.00', is_open: true }),
+        cashCount({ id: 'b', discrepancy: '90.00', is_open: true }),
+      ]),
+    );
+    renderPointCash();
+
+    const line = screen.getByText('Unresolved discrepancies: 2').parentElement as HTMLElement;
+    expect(within(line).getByText('Short 90.00 ₴')).toBeInTheDocument();
+    expect(within(line).getByText('Over 90.00 ₴')).toBeInTheDocument();
+    expect(within(line).queryByText('Matched')).toBeNull();
+  });
+
+  it('leaves out a kind that is not there', () => {
+    asOwner();
+    cashCountsMock.mockReturnValue(
+      list([cashCount({ id: 'a', discrepancy: '30.00', is_open: true })]),
+    );
+    renderPointCash();
+    const line = screen.getByText('Unresolved discrepancies: 1').parentElement as HTMLElement;
+    expect(within(line).getByText('Over 30.00 ₴')).toBeInTheDocument();
+    expect(within(line).queryByText(/^Short/)).toBeNull();
+  });
+
+  it('says nothing to an operator, nor when nothing is open', () => {
+    cashCountsMock.mockReturnValue(list([cashCount({ discrepancy: '-90.00', is_open: true })]));
+    const { unmount } = renderPointCash();
+    expect(screen.queryByText(/Unresolved discrepancies/)).toBeNull();
+    unmount();
+
+    asOwner();
+    cashCountsMock.mockReturnValue(list([cashCount()]));
+    renderPointCash();
+    expect(screen.queryByText(/Unresolved discrepancies/)).toBeNull();
+  });
+});
+
+describe('PointCashPage — the owner’s top-ups note under «Звірка каси» (top-ups review, item 5)', () => {
+  const note = () => document.querySelector('[data-top-ups-note]');
+
+  beforeEach(() => {
+    shiftMock.mockReturnValue({ data: openToday, isPending: false, isError: false });
+    dayDocs(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '100.00' })]),
+      page<Payout>([]),
+    );
+  });
+
+  it('names the day’s top-ups for the owner, read by the shift on screen', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    costOfDayMock.mockReturnValue({
+      data: { top_ups_total: '350.00' },
+      isPending: false,
+      isError: false,
+    });
+    renderPointCash();
+    expect(costOfDayMock).toHaveBeenCalledWith('s1');
+    expect(note()).toHaveTextContent(
+      'The owner’s top-ups to this day’s receipts (350.00 ₴) move no cash'.replace(/’/g, "'"),
+    );
+    // The old, false «they carry no date» is gone for good.
+    expect(screen.queryByText(/carry no date/)).toBeNull();
+  });
+
+  it('says nothing on a day without top-ups', () => {
+    meMock.mockReturnValue({ data: OWNER });
+    costOfDayMock.mockReturnValue({
+      data: { top_ups_total: '0.00' },
+      isPending: false,
+      isError: false,
+    });
+    renderPointCash();
+    expect(note()).toBeNull();
+  });
+
+  it('never asks for the owner-only cost of day as an operator, and shows no note', () => {
+    renderPointCash();
+    expect(costOfDayMock).not.toHaveBeenCalledWith('s1');
+    expect(note()).toBeNull();
+  });
+});
+
+describe('PointCashPage — traced formulas («звідки це число», 24.10)', () => {
+  beforeEach(() => {
+    shiftMock.mockReturnValue({ data: openToday, isPending: false, isError: false });
+    dayDocs(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '23986.00' })]),
+      page<Payout>([payout({ id: 'y1', code: 'VD-0001', amount: '4000.00' })]),
+    );
+  });
+
+  const term = (refs: string) =>
+    document.querySelector(`[data-slot="trace-term"][data-trace="${refs}"]`) as HTMLElement;
+
+  it('the ledger’s total lights the «Berry cash» tile', () => {
+    renderPointCash();
+    fireEvent.pointerEnter(term('ledger:total cash:total'));
+    const source = document.querySelector('[data-slot="stat-tile"] [data-trace="cash:total"]');
+    expect(source).toHaveAttribute('data-trace-hit', 'neutral');
+    fireEvent.pointerLeave(term('ledger:total cash:total'));
+    expect(source).not.toHaveAttribute('data-trace-hit');
+  });
+
+  it('«Cash reconciliation»’s figures light the day tiles and the feed rows they sum', () => {
+    renderPointCash();
+    fireEvent.pointerEnter(term('day:accrued feed:intake'));
+    expect(within(tile('Accrued on receipts')).getByText('23,986.00 ₴')).toHaveAttribute(
+      'data-trace-hit',
+      'neutral',
+    );
+    const intakeRow = screen.getByText('KV-0001').closest('li') as HTMLElement;
+    expect(intakeRow.querySelector('[data-trace="feed:intake"]')).toHaveAttribute('data-trace-hit');
+
+    fireEvent.pointerEnter(term('day:cashOut'));
+    expect(within(tile('Cash out')).getByText('4,000.00 ₴')).toHaveAttribute('data-trace-hit');
+
+    // «of which: without berry» lights the standalone payout's row.
+    fireEvent.pointerEnter(term('feed:withoutBerry'));
+    const payoutRow = screen.getByText('VD-0001').closest('li') as HTMLElement;
+    expect(payoutRow.querySelector('[data-trace="feed:withoutBerry"]')).toHaveAttribute(
+      'data-trace-hit',
+    );
   });
 });

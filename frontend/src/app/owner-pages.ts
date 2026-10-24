@@ -9,6 +9,11 @@
  * import from the eager graph pulls every one of these screens back into the
  * entry chunk and silently undoes the split.
  */
+import { addOwnerTranslations } from '@/shared/lib/i18n/owner';
+
+// The owner screens' own Ukrainian strings arrive with them, not in the first load.
+addOwnerTranslations();
+
 export { PointsPage } from '@/pages/points';
 export { UsersPage } from '@/pages/users';
 export { CatalogPage } from '@/pages/catalog';

@@ -31,16 +31,53 @@ export interface IntakeFormValues {
 /** A fresh draft line — pallet and bonus default to `'0.00'` (the same
  *  default the server applies when they are omitted from the wire body), and
  *  the one tare row starts at the caller's default tare type with a count of
- *  1, so a brand-new line already satisfies "at least one tare row with
- *  units ≥ 1" the moment a grade and a gross weight are typed. */
+ *  0 (client, 24.10): the count is always typed by the operator, never
+ *  assumed, and `hasTare` keeps the line from going anywhere until it is. */
 export function emptyLine(defaultTareTypeId: string): IntakeLineValues {
   return {
     product_grade_id: '',
     gross_kg: '',
     pallet_kg: '0.00',
     bonus: '0.00',
-    tare: [{ tare_type_id: defaultTareTypeId, units: '1' }],
+    tare: [{ tare_type_id: defaultTareTypeId, units: '0' }],
   };
+}
+
+/** A line nobody has started: no grade, no gross weight, no pallet. The
+ *  default tare row does not count — `emptyLine` puts it there, not the
+ *  operator, and without a weight it weighs nothing. */
+export function isBlankLine(line: IntakeLineValues): boolean {
+  const pallet = parseDecimal(line.pallet_kg);
+  return (
+    line.product_grade_id === '' &&
+    line.gross_kg.trim() === '' &&
+    (line.pallet_kg.trim() === '' || (pallet !== null && cmp(pallet, '0') === 0))
+  );
+}
+
+/** ≥1 row counting at least one, and no row the form refuses («0,5») — a
+ *  line with no tare is never sent (§9.1: «позиція без тари» is among the
+ *  things the system does not let through at all); a refused count is named
+ *  under the tare, not sent to be refused again. */
+export function hasTare(line: IntakeLineValues): boolean {
+  const counts = line.tare.map((row) => parseCrateCount(row.units));
+  return counts.every((n) => n !== null) && counts.some((n) => n !== null && n >= 1);
+}
+
+/**
+ * The receipt as it is meant: «Ще позиція» always leaves a fresh draft behind,
+ * and an untouched one is not a line — it is dropped here before the preview
+ * is asked or the receipt is sent, so the committed lines above it stay
+ * priced and «Прийняти» works (client, 24.10). Only a TRAILING draft, and only
+ * when a committed line remains, so every earlier index — the one server
+ * errors are placed by — is unchanged. A half-filled draft still blocks, with
+ * its hint and «Прибрати позицію».
+ */
+export function withoutBlankDraft(values: IntakeFormValues): IntakeFormValues {
+  const last = values.items[values.items.length - 1];
+  return values.items.length > 1 && last !== undefined && isBlankLine(last)
+    ? { ...values, items: values.items.slice(0, -1) }
+    : values;
 }
 
 /** One line as it crosses the wire — `units` is a whole count ≥ 1, not money. */

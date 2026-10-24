@@ -186,7 +186,9 @@ export function ReturnCratesDialog({
                   {split.allocations.map((a) => (
                     <li key={a.issuance_id} className="flex items-baseline gap-2">
                       <span className="font-mono text-xs text-muted-foreground">{a.code}</span>
-                      <span className="font-mono tabular-nums">{a.units}</span>
+                      <span className="whitespace-nowrap font-mono tabular-nums">
+                        {t('crates.return.units', { units: a.units })}
+                      </span>
                       <span className="text-muted-foreground">
                         {a.mode === 'receipt'
                           ? t('crates.return.byReceipt')

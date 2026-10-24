@@ -2,7 +2,19 @@ import { Decimal } from 'decimal.js';
 import * as fc from 'fast-check';
 
 import * as moneyModule from './money';
-import { add, allocate, div, mul, mulWholeHryvnia, sub, sum, lt, lte, isZero } from './money';
+import {
+  add,
+  allocate,
+  div,
+  mul,
+  mulWholeHryvnia,
+  percent,
+  sub,
+  sum,
+  lt,
+  lte,
+  isZero,
+} from './money';
 import { canonicalizeDecimalString } from './dto/canonical-decimal';
 
 /**
@@ -215,6 +227,21 @@ describe('money — properties', () => {
     );
   });
 
+  it('percent agrees with the oracle — part × 100 ÷ whole, half-up at scale 2', () => {
+    // Added for the cost-of-day split strategies (spec 2026-10-24 §2.2): a caption printed
+    // with «≈», so its only promise is that it is the honest two-decimal rounding of the
+    // exact ratio — never a figure anything is multiplied by.
+    const nonZero = amount.filter((a) => !isZero(a));
+    fc.assert(
+      fc.property(amount, nonZero, (part, whole) => {
+        expect(percent(part, whole)).toBe(
+          new D(part).times(100).div(whole).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2),
+        );
+      }),
+      RUNS,
+    );
+  });
+
   it('allocate parts ALWAYS sum back to the total, exactly', () => {
     // THE INVARIANT THE WHOLE FUNCTION EXISTS FOR. A proportional split that loses or gains
     // a kopiyka is how a §8.5 top-up stops reconciling, and the failure is one kopiyka on
@@ -286,6 +313,7 @@ describe('money — properties', () => {
       'lte',
       'mul',
       'mulWholeHryvnia',
+      'percent',
       'sub',
       'sum',
     ]);

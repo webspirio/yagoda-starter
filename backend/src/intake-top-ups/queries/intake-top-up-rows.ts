@@ -1,6 +1,6 @@
 import { Repository } from 'typeorm';
 import { IntakeTopUp } from '../intake-top-up.entity';
-import { IntakeTopUpResponse, toIntakeTopUpResponse } from '../intake-top-up.mapper';
+import { IntakeTopUpResponse, toIntakeTopUpResponse, topUpUserIds } from '../intake-top-up.mapper';
 import { Intake } from '../../intakes/intake.entity';
 
 /** Aliased columns: a raw query is the only way to bring the parent's `code` and `voided_at` back in one trip. */
@@ -44,7 +44,20 @@ export function topUpRows(repo: Repository<IntakeTopUp>, pointId?: string) {
   return qb;
 }
 
-export function toTopUpResponse(row: RawTopUpRow): IntakeTopUpResponse {
+/** The user ids a page of raw rows names, for the page's one `loadDisplayNames` read. */
+export function rawTopUpUserIds(rows: readonly RawTopUpRow[]): string[] {
+  return topUpUserIds(
+    rows.map((r) => ({
+      created_by_user_id: r.t_created_by_user_id,
+      voided_by_user_id: r.t_voided_by_user_id,
+    })),
+  );
+}
+
+export function toTopUpResponse(
+  row: RawTopUpRow,
+  names: ReadonlyMap<string, string>,
+): IntakeTopUpResponse {
   return toIntakeTopUpResponse(
     {
       id: row.t_id,
@@ -59,5 +72,6 @@ export function toTopUpResponse(row: RawTopUpRow): IntakeTopUpResponse {
       void_reason: row.t_void_reason,
     } as IntakeTopUp,
     { id: row.t_intake_id, code: row.i_code, voided_at: row.i_voided_at },
+    names,
   );
 }

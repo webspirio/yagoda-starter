@@ -149,6 +149,10 @@ describe('ReweighReconciliationService.forShift', () => {
     expect(p.missing_kg).toBe('1.40');
     expect(p.rate).toBe('189.42');
     expect(p.missing_amount).toBe('265.19');
+    // Audit 2026-10-24 E5: the rate's own operands, so the screen can print
+    // «113 044,20 ÷ 596,80 = 189,42» — accrued WITH the доплата, and the доплата.
+    expect(p.accrued).toBe('113044.20');
+    expect(p.top_ups).toBe('15000.00');
   });
 
   it('without a доплата the same day prices at the receipts alone', async () => {
@@ -156,6 +160,8 @@ describe('ReweighReconciliationService.forShift', () => {
     const p = (await svc.forShift(owner, 's-1')).products[0];
     expect(p.rate).toBe('164.28');
     expect(p.missing_amount).toBe('229.99');
+    expect(p.accrued).toBe('98044.20');
+    expect(p.top_ups).toBe('0.00');
   });
 
   it('totals only the shortfalls — a surplus never offsets another product — W2', async () => {

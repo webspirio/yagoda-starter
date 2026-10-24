@@ -1,6 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { i18n } from '@/shared/lib/i18n';
+import uk from '@/shared/lib/i18n/locales/uk.json';
 import { PointsPage } from './PointsPage';
 import type { CollectionPoint } from '../model/collectionPoint';
 
@@ -141,9 +143,9 @@ describe('PointsPage', () => {
         .map((r) => within(r).getAllByRole('cell')[0].textContent);
     await userEvent.click(screen.getByRole('button', { name: 'No.' }));
     expect(firstCells()).toEqual(['1', '2', '3']);
-    await userEvent.click(screen.getByRole('button', { name: 'Cash target' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cash target, ₴' }));
     expect(firstCells()).toEqual(['3', '1', '2']); // 15 000 < 145 453, unset last
-    await userEvent.click(screen.getByRole('button', { name: 'Cash target' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Cash target, ₴' }));
     expect(firstCells()).toEqual(['1', '3', '2']);
   });
 
@@ -160,5 +162,26 @@ describe('PointsPage', () => {
     // the row's number (the edit dialog prefills every field it has).
     expect(within(dialog).queryByLabelText(/number|номер|№|^No\.?$/i)).toBeNull();
     expect(within(dialog).queryByDisplayValue(String(point.number))).toBeNull();
+  });
+});
+
+describe('PointFormDialog — the prefill reads in the locale, the API gets the canonical form', () => {
+  beforeEach(async () => {
+    await act(() => i18n.changeLanguage('uk'));
+  });
+  afterEach(async () => {
+    await act(() => i18n.changeLanguage('en'));
+  });
+
+  it('shows the cash target with the decimal comma and sends it untouched as «15000.00»', async () => {
+    queryMock.mockReturnValue(loaded([point]));
+    render(<PointsPage />);
+    await userEvent.click(screen.getByText('Шипинки'));
+    const dialog = screen.getByRole('dialog');
+
+    expect(within(dialog).getByLabelText(uk.points.form.targetCash)).toHaveValue('15000,00');
+    await userEvent.click(within(dialog).getByRole('button', { name: uk.common.save }));
+    await waitFor(() => expect(updateMock).toHaveBeenCalledTimes(1));
+    expect(updateMock.mock.calls[0][0]).toMatchObject({ target_cash: '15000.00', target_crates: 800 });
   });
 });

@@ -23,6 +23,9 @@ export interface IntakeResponse {
   shift_closed: boolean;
   supplier_id: string;
   amount: string;
+  /** The supplier's debt right after this receipt and the cash paid with it — frozen at
+   *  write (audit 2026-10-24 A1), so the receipt's «Залишок» never moves on a reprint. */
+  balance_after: string;
   received_by_user_id: string;
   voided_at: string | null;
   voided_by_user_id: string | null;
@@ -157,6 +160,7 @@ export function toIntakeResponse(
     shift_closed: shift.closed_at !== null,
     supplier_id: intake.supplier_id,
     amount: intake.amount,
+    balance_after: intake.balance_after,
     received_by_user_id: intake.received_by_user_id,
     voided_at: intake.voided_at ? intake.voided_at.toISOString() : null,
     voided_by_user_id: intake.voided_by_user_id,

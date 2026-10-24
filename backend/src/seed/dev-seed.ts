@@ -18,6 +18,7 @@ import { allocate } from '../crates/crate-allocation';
 import { nextIssuanceCode } from '../crates/crate-code';
 import { CrateIssuanceMode } from '../crates/crate-issuance-mode.enum';
 import { REBUILD_BALANCE_AFTER_SQL } from '../migrations/1788600000023-PayoutBalanceAfter';
+import { REBUILD_INTAKE_BALANCE_AFTER_SQL } from '../migrations/1788600000025-IntakeBalanceAfter';
 import { AllocationsService } from '../supplier-balance/services/allocations';
 import {
   DEV_OPERATOR_PASSWORD,
@@ -155,9 +156,9 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
 
     const pointId = new Map<string, string>();
     for (const p of SEED_POINTS) {
-      const found = await one<{ id: string; code: string }>(
+      const found = await one<{ id: string; code: string; target_crates: number | null }>(
         qr,
-        `SELECT id, code FROM collection_points WHERE lower(name) = lower($1)`,
+        `SELECT id, code, target_crates FROM collection_points WHERE lower(name) = lower($1)`,
         [p.name],
       );
       if (found) {
@@ -170,6 +171,19 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
         if (/^P\d{2,}$/.test(found.code) && found.code !== p.code) {
           await qr.query(`UPDATE collection_points SET code = $1 WHERE id = $2`, [
             p.code,
+            found.id,
+          ]);
+        }
+        // The same rule for the allotment: the old seed's 120 / 60 / 40 were
+        // written before the generated season put ~1 300 crates on each point,
+        // so they read as «понад наділ» everywhere. Only that exact seeded
+        // value moves; an allotment the owner set by hand stays.
+        if (
+          p.legacy_target_crates !== undefined &&
+          found.target_crates === p.legacy_target_crates
+        ) {
+          await qr.query(`UPDATE collection_points SET target_crates = $1 WHERE id = $2`, [
+            p.target_crates,
             found.id,
           ]);
         }
@@ -613,6 +627,7 @@ async function seedDocuments(
     summary.shifts += 1;
   }
 
+  const newIntakeIds: string[] = [];
   for (const doc of allIntakes) {
     const code = nextSeedCode('IN', doc.point, doc.day, doc.typed);
     const found = await one<{ id: string }>(qr, `SELECT id FROM intakes WHERE code = $1`, [code]);
@@ -634,10 +649,11 @@ async function seedDocuments(
       });
     }
     const built = buildIntake(inputs, prices, tareById);
+    // `balance_after` is rebuilt with the payouts' below, once every seeded document exists (A1).
     const intake = await one<{ id: string }>(
       qr,
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id, created_at)
-       VALUES ($1, $2, $3, $4, $5, ${localTs(6, 7, 8)})
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id, created_at)
+       VALUES ($1, $2, $3, $4, '0.00', $5, ${localTs(6, 7, 8)})
        RETURNING id`,
       [
         code,
@@ -676,6 +692,7 @@ async function seedDocuments(
         );
       }
     }
+    newIntakeIds.push(intake!.id);
     summary.intakes += 1;
   }
 
@@ -888,6 +905,11 @@ async function seedDocuments(
   // Id-scoped, so re-running the seed leaves earlier payouts untouched.
   if (newPayoutIds.length > 0) {
     await qr.query(`${REBUILD_BALANCE_AFTER_SQL} WHERE p."id" = ANY($1)`, [newPayoutIds]);
+  }
+  // The receipts' twin (audit 2026-10-24 A1), for the same reason and in the same place: the
+  // payouts and top-ups recorded before each receipt must already exist for it to count them.
+  if (newIntakeIds.length > 0) {
+    await qr.query(`${REBUILD_INTAKE_BALANCE_AFTER_SQL} WHERE i."id" = ANY($1)`, [newIntakeIds]);
   }
 
   // TRANSFERS BEFORE COUNTS, and both after the payouts above: a closing

@@ -1,29 +1,72 @@
 import type { TFunction } from 'i18next';
 import type { IntakeDetail } from '@/entities/intake';
 import type { ReceiptDocument, ReceiptSection } from '@/shared/ui/receipt';
-import { add, cmp, formatKg, formatUah, isZero, sub } from '@/shared/lib/money';
+import { add, cmp, formatKg, formatUah, isZero, sub, sum } from '@/shared/lib/money';
 import { receiptHeader } from './receiptHeader';
 
 /**
  * One intake as a `ReceiptDocument` — every number and string resolved here,
- * so `ReceiptView` stays pure layout. `balance` is the supplier's LIVE debt
- * at this point (a supplier row is a point, §3.9), not frozen at write time,
- * read by the caller.
+ * so `ReceiptView` stays pure layout.
  *
  * The footer is the client's agreed five lines (23.10, read off their own
  * Excel receipt): Сума · Борг · Разом · Виплачено · Залишок, each always
  * printed — «Борг» and «Виплачено» as 0,00 when there is none — so they
  * re-check on a calculator: Сума + Борг = Разом, Разом − Виплачено = Залишок.
- * «Борг» is DERIVED from the other three (Залишок − Сума + Виплачено), never
- * read separately, so that check holds by construction. Then the tare tally:
- * one emphasised line per tare type, summed over every line of the receipt.
+ *
+ * Every figure is the one the FIRST print showed (audit 2026-10-24 A1):
+ * «Залишок» is the server's frozen `balance_after`, never the live debt, so a
+ * later receipt, payout or top-up of this supplier does not move a reprint.
+ * «Виплачено» is the cash handed over WITH the receipt — every linked payout,
+ * a since-voided one included, because `balance_after` already subtracted it;
+ * the voided one also gets its annulment line. «Борг» is DERIVED (Залишок −
+ * Сума + Виплачено), so the calculator check holds by construction.
+ *
+ * A VOIDED receipt (A2) prints its lines, «Сума» and «Анульовано — у залишок
+ * не входить» instead of that block: its own amount is no longer in any debt,
+ * and a «Залишок» that still counted it would contradict the stamp above.
+ * Then the tare tally: one emphasised line per tare type, summed over every
+ * line of the receipt.
  */
+function balanceBlock(intake: IntakeDetail, t: TFunction, locale: string): ReceiptSection[] {
+  const balance = intake.balance_after;
+  // Not `paid_amount` (live payouts only): after a payout void that would
+  // print a «Борг» the first print never showed.
+  const paid = sum(intake.payouts.map((p) => p.amount));
+  const debt = sub(add(balance, paid), intake.amount);
+  const totals: ReceiptSection[] = [
+    {
+      kind: 'rows',
+      rows: [
+        { label: t('receipt.sum'), value: formatUah(intake.amount, locale) },
+        { label: t('receipt.debt'), value: formatUah(debt, locale) },
+        {
+          label: t('receipt.total'),
+          value: formatUah(add(intake.amount, debt), locale),
+          strong: true,
+        },
+        { label: t('receipt.paidOut'), value: formatUah(paid, locale) },
+      ],
+    },
+  ];
+  const livePayoutCodes = intake.payouts.filter((p) => p.voided_at === null).map((p) => p.code);
+  if (livePayoutCodes.length > 0) {
+    totals.push({ kind: 'caption', text: livePayoutCodes.join(', ') });
+  }
+  for (const p of intake.payouts.filter((p) => p.voided_at !== null)) {
+    totals.push({ kind: 'caption', text: t('receipt.payoutVoided', { code: p.code }) });
+  }
+  totals.push({
+    kind: 'rows',
+    rows: [{ label: t('receipt.balance'), value: formatUah(balance, locale), strong: true }],
+  });
+  return totals;
+}
+
 export function buildIntakeReceipt({
   intake,
   supplierName,
   tareNameById,
   note,
-  balance,
   t,
   locale,
 }: {
@@ -31,7 +74,6 @@ export function buildIntakeReceipt({
   supplierName: string;
   tareNameById: Map<string, string>;
   note: string | null;
-  balance: string;
   t: TFunction;
   locale: string;
 }): ReceiptDocument {
@@ -78,31 +120,19 @@ export function buildIntakeReceipt({
     }
   }
 
-  const paid = intake.paid_amount;
-  const debt = sub(add(balance, paid), intake.amount);
-  const totals: ReceiptSection[] = [
-    {
-      kind: 'rows',
-      rows: [
-        { label: t('receipt.sum'), value: formatUah(intake.amount, locale) },
-        { label: t('receipt.debt'), value: formatUah(debt, locale) },
-        { label: t('receipt.total'), value: formatUah(add(intake.amount, debt), locale), strong: true },
-        { label: t('receipt.paidOut'), value: formatUah(paid, locale) },
-      ],
-    },
-  ];
-  const livePayoutCodes = intake.payouts.filter((p) => p.voided_at === null).map((p) => p.code);
-  if (livePayoutCodes.length > 0) {
-    totals.push({ kind: 'caption', text: livePayoutCodes.join(', ') });
+  if (intake.voided_at !== null) {
+    sections.push([
+      {
+        kind: 'rows',
+        rows: [
+          { label: t('receipt.sum'), value: formatUah(intake.amount, locale) },
+          { label: t('receipt.voidedNotInBalance'), value: '', muted: true },
+        ],
+      },
+    ]);
+  } else {
+    sections.push(balanceBlock(intake, t, locale));
   }
-  for (const p of intake.payouts.filter((p) => p.voided_at !== null)) {
-    totals.push({ kind: 'caption', text: t('receipt.payoutVoided', { code: p.code }) });
-  }
-  totals.push({
-    kind: 'rows',
-    rows: [{ label: t('receipt.balance'), value: formatUah(balance, locale), strong: true }],
-  });
-  sections.push(totals);
 
   // The tare tally (client 23.10, 38:18–47:06): how many of each tare type
   // the supplier takes away, the same type summed across lines, in the order

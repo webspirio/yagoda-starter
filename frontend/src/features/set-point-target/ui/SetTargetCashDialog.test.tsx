@@ -1,7 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Toaster } from '@/shared/ui/sonner';
+import { i18n } from '@/shared/lib/i18n';
+import uk from '@/shared/lib/i18n/locales/uk.json';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { SetTargetCashDialog } from './SetTargetCashDialog';
 
@@ -312,5 +314,28 @@ describe('the shared money field (#72)', () => {
     await userEvent.type(input, '12.');
     await userEvent.click(screen.getByRole('button', { name: 'Save target' }));
     expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
+  });
+});
+
+describe('the prefill reads in the locale, the API gets the canonical form', () => {
+  beforeEach(async () => {
+    await act(() => i18n.changeLanguage('uk'));
+  });
+  afterEach(async () => {
+    await act(() => i18n.changeLanguage('en'));
+  });
+
+  it('shows the current target with the decimal comma and sends it untouched as «600000.00»', async () => {
+    renderDialog(vi.fn(), '600000.00');
+
+    expect(screen.getByLabelText(uk.pointTarget.targetCash)).toHaveValue('600000,00');
+    await userEvent.type(screen.getByLabelText(uk.pointTarget.reason), 'причина');
+    await userEvent.click(screen.getByRole('button', { name: uk.pointTarget.submit }));
+
+    expect(setTargetMock).toHaveBeenCalledWith({
+      pointId: 'p1',
+      target_cash: '600000.00',
+      reason: 'причина',
+    });
   });
 });

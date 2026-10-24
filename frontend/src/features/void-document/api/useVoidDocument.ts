@@ -27,11 +27,17 @@ const DOCUMENTS: Record<VoidDocumentInput['kind'], VoidDescriptor> = {
     path: (id) => `/intakes/${id}/void`,
     // + pointCash: the void puts the linked payout back in the drawer (2026-09-28).
     // + crates: the void also strikes a crate return the receipt wrote (`returned_crates`, §8.3).
+    // + intakeTopUps: the receipt's top-ups stop counting (`counts_toward_balance`).
+    // + costOfDay/reweighs: the day's «Нараховано» and the shortfall price lose the receipt
+    //   (review 2026-10-24 I1 — both caches outlive the write otherwise).
     invalidates: [
       ...DOCUMENT_KEYS,
       queryKeys.pointCash,
       queryKeys.crates,
       queryKeys.crateBalances,
+      queryKeys.intakeTopUps,
+      queryKeys.costOfDay,
+      queryKeys.reweighs,
     ],
   },
   payout: {
@@ -45,10 +51,17 @@ const DOCUMENTS: Record<VoidDocumentInput['kind'], VoidDescriptor> = {
   },
   // A TOP-UP HAS NO SHIFT, so `payouts` are untouched by voiding one. What
   // moves is the supplier's debt (legally negative if it was already paid
-  // out) and the parent receipt's `open_amount`, which counts its top-ups.
+  // out) and the parent receipt's `open_amount`, which counts its top-ups —
+  // and the receipt day's cost and reweigh shortfall price (review 2026-10-24 I1).
   topUp: {
     path: (id) => `/intake-top-ups/${id}/void`,
-    invalidates: [queryKeys.intakeTopUps, queryKeys.supplierBalances, queryKeys.intakes],
+    invalidates: [
+      queryKeys.intakeTopUps,
+      queryKeys.supplierBalances,
+      queryKeys.intakes,
+      queryKeys.costOfDay,
+      queryKeys.reweighs,
+    ],
   },
   // CRATES ARE NOT MONEY OWED FOR BERRIES, so neither of these touches
   // `supplierBalances` — a person can owe twenty crates and be owed nothing for

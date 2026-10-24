@@ -79,9 +79,13 @@ describe('ConfirmRefundDialog', () => {
     expect(screen.getByText(/Deposit for/)).toHaveTextContent(
       'Deposit for 50 crates — 6,000.00 ₴ from the crates drawer',
     );
-    expect(
-      screen.getByRole('button', { name: 'Handed over 6,000.00 ₴' }),
-    ).toBeEnabled();
+    // Two sums go out, so the button confirms both, not just the deposit (B5).
+    expect(screen.getByRole('button', { name: 'Handed over both sums' })).toBeEnabled();
+  });
+
+  it('carries the deposit on the button when the deposit is the only sum', () => {
+    renderDialog({ paid: null });
+    expect(screen.getByRole('button', { name: 'Handed over 6,000.00 ₴' })).toBeEnabled();
   });
 
   it('asks for the preview of exactly these crates', () => {
@@ -170,11 +174,15 @@ describe('ConfirmRefundDialog', () => {
       expect(dialog).toHaveTextContent('За ягоду — 5 000,00 ₴ з каси за ягоду');
       expect(dialog).toHaveTextContent('Завдаток за 22 ящики — 2 640,00 ₴ з каси за ящики');
       expect(dialog).toHaveTextContent('21 ящик за розпискою — без грошей');
+      expect(screen.getByRole('button', { name: 'Видав обидві суми' })).toBeInTheDocument();
+    });
+
+    it('puts the deposit itself on the button when it is the only sum', async () => {
+      await i18n.changeLanguage('uk');
+      renderDialog({ paid: null });
       // `\s`, not a literal space: the uk group separator is Intl's own
       // (a narrow no-break space), which an accessible name keeps verbatim.
-      expect(
-        screen.getByRole('button', { name: /^Видав 2\s640,00 ₴$/ }),
-      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /^Видав 6\s000,00 ₴$/ })).toBeInTheDocument();
     });
   });
 

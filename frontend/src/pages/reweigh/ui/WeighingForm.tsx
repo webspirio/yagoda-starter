@@ -14,8 +14,20 @@ import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import type { ReconciliationGrade } from '@/entities/reweigh';
 import { netOf, newDraftKey, tareWeightOf, type Draft } from '../model/draft';
 import { addBlockReason, grossHint, tareHint } from '../lib/hints';
-import { netFormula } from '../lib/formula';
+import { netParts } from '../lib/formula';
 import { FieldWarning } from './FieldWarning';
+import { NetFormula, type NetTraceIds } from './NetFormula';
+
+/** The form's own fields, as the net formula under «Чиста вага» cites them —
+ *  scope-local to the page's `TraceScope` (one tare row: the crate type and its count). */
+const FORM_TRACE: NetTraceIds = {
+  gross: 'f:gross',
+  pallet: 'f:pallet',
+  units: () => 'f:units',
+  weight: () => 'f:tareType',
+  tareKg: 'f:tareKg',
+  net: 'f:net',
+};
 
 interface ProductGroup {
   product_id: string;
@@ -126,19 +138,17 @@ export function WeighingForm({
   const netForDisplay = cmp(net, '0.00') < 0 ? '0.00' : net;
   // W4 — the same figure as a formula, from the parts already on screen; only
   // while it is a real (positive) net, since a clamped zero has no formula.
-  const formula =
-    cmp(net, '0.00') > 0
-      ? netFormula(t, locale, {
-          gross: grossForCalc,
-          pallet: palletForCalc,
-          tare: tare.map((term) => ({
-            units: term.units,
-            unitWeightKg: weightById.get(term.tare_type_id) ?? null,
-          })),
-          tareKg: tareWeight,
-          net,
-        })
-      : null;
+  const formulaLine = {
+    gross: grossForCalc,
+    pallet: palletForCalc,
+    tare: tare.map((term) => ({
+      units: term.units,
+      unitWeightKg: weightById.get(term.tare_type_id) ?? null,
+    })),
+    tareKg: tareWeight,
+    net,
+  };
+  const formula = cmp(net, '0.00') > 0 ? netParts(formulaLine) : null;
 
   const block = addBlockReason({
     hasShift,
@@ -215,7 +225,7 @@ export function WeighingForm({
     setTareCountInput(String(Math.max(0, tareCount + delta)));
 
   return (
-    <div className="rounded-xl bg-card ring-1 ring-foreground/10">
+    <div className="rounded-xl border border-line2 bg-card">
       <div className="border-b border-border/70 p-4">
         <Eyebrow className="mb-2">{t('reweigh.step1')}</Eyebrow>
         <div className="flex flex-wrap items-start gap-3">
@@ -224,10 +234,11 @@ export function WeighingForm({
               <div className="relative w-[200px]">
                 <DecimalInput
                   {...a11y}
+                  data-trace={FORM_TRACE.gross}
                   value={gross}
                   onChange={(e) => setGross(e.target.value)}
                   {...grossField.inputProps}
-                  placeholder="0.00"
+                  placeholder={formatDecimal('0.00', locale)}
                   className="h-14 pr-12 font-mono text-2xl font-semibold"
                 />
                 <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-sm text-muted-foreground">
@@ -241,10 +252,11 @@ export function WeighingForm({
               <div className="relative w-[132px]">
                 <DecimalInput
                   {...a11y}
+                  data-trace={FORM_TRACE.pallet}
                   value={pallet}
                   onChange={(e) => setPallet(e.target.value)}
                   {...palletField.inputProps}
-                  placeholder="0.0"
+                  placeholder={formatDecimal('0.00', locale)}
                   className="h-14 pr-9 font-mono text-lg font-semibold"
                 />
                 <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 font-mono text-xs text-muted-foreground">
@@ -262,6 +274,7 @@ export function WeighingForm({
         <div className="flex flex-wrap items-center gap-2">
           <SelectField
             aria-label={t('reweigh.tareType')}
+            data-trace={FORM_TRACE.weight(0)}
             className="h-10 w-[168px]"
             value={effectiveTareId ?? ''}
             onChange={(e: ChangeEvent<HTMLSelectElement>) => setTareId(e.target.value)}
@@ -292,6 +305,7 @@ export function WeighingForm({
               inputMode="numeric"
               autoComplete="off"
               aria-label={t('reweigh.crateCount')}
+              data-trace={FORM_TRACE.units(0)}
               className="w-12 text-center font-mono text-base font-semibold"
             />
             <Button
@@ -305,7 +319,7 @@ export function WeighingForm({
             </Button>
           </div>
           <span className="font-mono text-sm text-muted-foreground">
-            = {formatKg(tareWeight, locale)}
+            = <span data-trace={FORM_TRACE.tareKg}>{formatKg(tareWeight, locale)}</span>
           </span>
           {[5, 10, 20].map((n) => (
             <Button key={n} type="button" variant="outline" size="sm" onClick={stepTare(n)}>
@@ -345,13 +359,14 @@ export function WeighingForm({
           <Eyebrow className="mb-1">{t('reweigh.netEyebrow')}</Eyebrow>
           <div
             data-testid="net-kg"
-            className="font-mono text-[34px] leading-none font-semibold tracking-tight text-primary"
+            data-trace={FORM_TRACE.net}
+            className="font-mono text-[34px] leading-none font-semibold tracking-tight text-brand"
           >
             {formatKg(netForDisplay, locale)}
           </div>
           {formula ? (
             <p data-testid="net-formula" className="mt-1.5 font-mono text-xs text-muted-foreground">
-              {formula}
+              <NetFormula line={formulaLine} parts={formula} ids={FORM_TRACE} netTone="berry" />
             </p>
           ) : null}
         </div>

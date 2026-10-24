@@ -6,7 +6,8 @@ import {
 } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { IntakeTopUp } from '../intake-top-up.entity';
-import { IntakeTopUpResponse, toIntakeTopUpResponse } from '../intake-top-up.mapper';
+import { IntakeTopUpResponse, toIntakeTopUpResponse, topUpUserIds } from '../intake-top-up.mapper';
+import { loadDisplayNames } from '../../users/display-names';
 import { Intake } from '../../intakes/intake.entity';
 import { VoidDocumentDto } from '../../intakes/dto/void-document.dto';
 import { AuditService } from '../../audit/audit.service';
@@ -79,7 +80,11 @@ export class VoidIntakeTopUpCommand {
           },
           m,
         );
-        return toIntakeTopUpResponse(saved, intake);
+        return toIntakeTopUpResponse(
+          saved,
+          intake,
+          await loadDisplayNames(m, topUpUserIds([saved])),
+        );
       });
     });
   }

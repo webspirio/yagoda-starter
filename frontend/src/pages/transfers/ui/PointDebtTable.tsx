@@ -4,26 +4,25 @@ import { Send, HandCoins, ChevronDown } from 'lucide-react';
 import { DataTable, type Column } from '@/shared/ui/data-table';
 import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
-import { PendingSlice } from '@/shared/ui/pending-slice';
 import { cn } from '@/shared/lib/cn';
-import { formatUah } from '@/shared/lib/money';
-import { shortfallTone, formatNullableUah, type PointCashRow } from '@/entities/point-cash';
+import { cmp, sub, formatDecimal, formatUah } from '@/shared/lib/money';
+import { shortfallTone, type PointCashRow } from '@/entities/point-cash';
 import type { Transfer } from '@/entities/transfer';
 import { TransferStatusBadge } from './TransferStatusBadge';
 import { DisputeList } from './DisputeDetails';
 
 /**
- * §7.10's table, one row per point: наділ · у касі · не вистачає · ящиків ·
- * стан. `GET /point-cash` gives every column except crates.
+ * §7.10's table, one row per point: наділ · у касі · не вистачає · стан.
+ * `GET /point-cash` gives every column. (The «Ящиків · поки не рахуються»
+ * placeholder column is gone — audit 2026-10-24, C10.) Money cells are plain
+ * figures; the unit is in the header (rule 4).
  *
  * RULE 1 — `target_cash`/`shortfall` are `null` = «не призначали», NEVER
  * `0.00` (§6.9, §7.10): both branch on `== null` explicitly and print «—»,
  * a point never silently reads as fully-funded or debt-free.
  *
- * RULE 2 — the crates cell is a `PendingSlice` (`variant="inline"`), never
- * an em dash: «—» already means «no target» in the column right next to it,
- * and never a bare `0 ящ.`, which would be a claim this backend cannot make
- * (no crate tables exist yet).
+ * RULE 2 — a label agrees with its sign (C5): a NEGATIVE shortfall prints
+ * «понад 2 800,00», never «−2 800,00» under «Не вистачає».
  *
  * RULE 3 — «Вирішити» renders whenever a point has an unresolved disputed
  * transfer, full stop, gated on the full records' own `resolved_at === null`
@@ -50,6 +49,7 @@ import { DisputeList } from './DisputeDetails';
 export function PointDebtTable({
   rows,
   unresolvedDisputes,
+  inTransit = new Map(),
   onSend,
   onResolve,
 }: {
@@ -59,6 +59,8 @@ export function PointDebtTable({
    *  read it also uses for `TransferHistory`, never a per-row query
    *  (`points.map(useX)` would break rules-of-hooks). */
   unresolvedDisputes: Transfer[];
+  /** C4 — Σ `cash` of the point's `sent` transfers, by point id (already summed with `sum`). */
+  inTransit?: Map<string, string>;
   onSend: (pointId: string, pointName: string) => void;
   onResolve: (transfer: Transfer) => void;
 }) {
@@ -88,10 +90,10 @@ export function PointDebtTable({
   const disputesOf = (row: PointCashRow): Transfer[] =>
     disputesByPoint.get(row.collection_point_id) ?? [];
   const isExpandable = (row: PointCashRow) => disputesOf(row).length >= 2;
-  const isExpanded = (row: PointCashRow) =>
-    openId === row.collection_point_id && isExpandable(row);
-  const toggle = (row: PointCashRow) =>
-    setOpenId(isExpanded(row) ? null : row.collection_point_id);
+  const isExpanded = (row: PointCashRow) => openId === row.collection_point_id && isExpandable(row);
+  const toggle = (row: PointCashRow) => setOpenId(isExpanded(row) ? null : row.collection_point_id);
+
+  const plain = (v: string | null) => (v == null ? '—' : formatDecimal(v, locale));
 
   const columns: Column<PointCashRow>[] = [
     {
@@ -103,46 +105,62 @@ export function PointDebtTable({
       id: 'target',
       header: t('transfers.col.target'),
       align: 'right',
-      className: 'font-mono tabular-nums',
-      cell: (row) => formatNullableUah(row.target_cash, locale),
+      className: 'font-mono tabular-nums whitespace-nowrap',
+      cell: (row) => plain(row.target_cash),
     },
     {
       id: 'cash',
       header: t('transfers.col.cash'),
       align: 'right',
-      className: 'font-mono tabular-nums',
-      cell: (row) => formatUah(row.cash, locale),
+      className: 'font-mono tabular-nums whitespace-nowrap',
+      cell: (row) => plain(row.cash),
     },
     {
       id: 'shortfall',
       header: t('transfers.col.shortfall'),
       align: 'right',
-      className: 'font-mono font-semibold tabular-nums',
+      className: 'font-mono font-semibold tabular-nums whitespace-nowrap',
       // Same tone convention as «Каса точки»'s own shortfall tile (now
       // shared as `shortfallTone`, `entities/point-cash/lib/shortfall.ts`):
       // owed (> 0) reads amber, settled (<= 0) reads leaf — a null stays the
       // default text colour, since «—» is not a value to colour-code.
       cell: (row) => {
         const tone = shortfallTone(row.shortfall);
-        const text = formatNullableUah(row.shortfall, locale);
-        return tone ? (
-          <span className={cn(tone === 'amber' ? 'text-amber' : 'text-leaf')}>{text}</span>
-        ) : (
-          text
+        const over = row.shortfall != null && cmp(row.shortfall, '0') === -1;
+        // Owed (> 0): the rows the page tile «Винні точкам» sums — the `data-trace`
+        // sources its terms light (`debt:owed`, `debt:road`).
+        const owed = row.shortfall != null && cmp(row.shortfall, '0') === 1;
+        // «понад 500,00 ₴» is a phrase, not a bare cell figure: it carries its unit.
+        const text =
+          row.shortfall == null
+            ? '—'
+            : over
+              ? t('transfers.overTarget', { amount: formatUah(sub('0', row.shortfall), locale) })
+              : formatDecimal(row.shortfall, locale);
+        const road = inTransit.get(row.collection_point_id);
+        return (
+          <div className="flex flex-col items-end">
+            {tone ? (
+              <span
+                data-trace={owed ? 'debt:owed' : undefined}
+                className={cn(tone === 'amber' ? 'text-amber' : 'text-leaf')}
+              >
+                {text}
+              </span>
+            ) : (
+              text
+            )}
+            {road ? (
+              <span
+                data-trace={owed ? 'debt:road' : undefined}
+                className="text-xs font-normal text-muted-foreground"
+              >
+                {t('transfers.onTheRoad', { uah: formatUah(road, locale) })}
+              </span>
+            ) : null}
+          </div>
         );
       },
-    },
-    {
-      id: 'crates',
-      header: t('transfers.col.crates'),
-      align: 'right',
-      cell: () => (
-        <PendingSlice
-          label={t('transfers.crates.label')}
-          note={t('transfers.crates.note')}
-          variant="inline"
-        />
-      ),
     },
     {
       id: 'status',
@@ -210,8 +228,11 @@ export function PointDebtTable({
                 {t('transfers.resolve')}
               </Button>
             ) : null}
+            {/* A row-level repeated action — outline, never a column of
+                berry buttons (rule 1). */}
             <Button
               size="sm"
+              variant="outline"
               onClick={(e) => {
                 e.stopPropagation();
                 onSend(row.collection_point_id, row.name);

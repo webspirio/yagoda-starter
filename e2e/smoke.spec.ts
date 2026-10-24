@@ -36,7 +36,7 @@ const T = {
   username: 'Логін',
   password: 'Пароль',
   dashboardTitle: 'Зведення',
-  receiptsTileLabel: 'Квитанцій сьогодні',
+  receiptsTileLabel: 'Квитанцій',
 };
 
 test('signs in as the seeded owner and reaches a dashboard built from real seed data', async ({
@@ -77,8 +77,8 @@ test('signs in as the seeded owner and reaches a dashboard built from real seed 
     await expect(page.getByRole('heading', { name: T.dashboardTitle })).toBeVisible();
 
     // --- Assertion 2: a page requiring data renders a number that came from the seed —
-    // not NaN, not an empty state. The dashboard's "Квитанцій сьогодні" (receipts
-    // today) stat tile is `String(totalReceipts)` (frontend/src/pages/dashboard/ui/
+    // not NaN, not an empty state. The dashboard's "Квитанцій" (today's receipts —
+    // the whole page is today) stat tile is `String(totalReceipts)` (frontend/src/pages/dashboard/ui/
     // DashboardPage.tsx), a plain integer with no currency formatting to parse around —
     // and `npm run db:seed` seeds real receipts on open shifts dated today
     // (backend/CLAUDE.md's Dev seed section), so a correctly composed stack renders a
@@ -86,7 +86,9 @@ test('signs in as the seeded owner and reaches a dashboard built from real seed 
     // literally NaN) and not a crash.
     const receiptsTile = page
       .locator('[data-slot="stat-tile"]')
-      .filter({ hasText: T.receiptsTileLabel });
+      // `has` + exact text, not `hasText`: a substring match would also catch the
+      // «Сума квитанцій» tile beside it.
+      .filter({ has: page.getByText(T.receiptsTileLabel, { exact: true }) });
     await expect(receiptsTile).toBeVisible();
     const rawValue = (await receiptsTile.locator('div.font-mono').textContent())?.trim() ?? '';
     const receiptsCount = Number(rawValue);

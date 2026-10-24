@@ -19,6 +19,7 @@ import { UserRole } from '../users/user-role.enum';
 import { CrateDispatchService } from './crate-dispatch.service';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { stockPoint } from '../testing/crate-stock-fixture';
+import { listenOnLoopback } from '../testing/listen-on-loopback';
 
 /**
  * UNVERIFIED AT WRITE TIME. This spec has never been run — no Postgres was
@@ -77,7 +78,7 @@ describe('crates lifecycle (HTTP)', () => {
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
     app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
-    await app.init();
+    await listenOnLoopback(app);
     ds = app.get(DataSource);
 
     const users = app.get(UsersService);
@@ -434,8 +435,8 @@ describe('crates lifecycle (HTTP)', () => {
     // straight to SQL rather than over `POST /intakes` — a real receipt would
     // need a grade price and a supplier debt, none of which this query reads.
     const [{ id: intakeId }] = (await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '4280.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '4280.00', '0.00', $4) RETURNING id`,
       [`DISP-${randomUUID().slice(0, 8)}`, shiftId, supplierId, ownerActor.sub],
     )) as Array<{ id: string }>;
     const [{ id: itemId }] = (await ds.query(
@@ -681,8 +682,8 @@ describe('crates lifecycle (HTTP)', () => {
       // insert further up this file).
       r2IntakeCode = `R2-${randomUUID().slice(0, 8)}`;
       const [{ id: intakeId }] = (await ds.query(
-        `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-         VALUES ($1, $2, $3, '0.00', $4) RETURNING id`,
+        `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+         VALUES ($1, $2, $3, '0.00', '0.00', $4) RETURNING id`,
         [r2IntakeCode, r2ShiftId, r2SupplierId, ownerActor.sub],
       )) as Array<{ id: string }>;
       r2IntakeId = intakeId;

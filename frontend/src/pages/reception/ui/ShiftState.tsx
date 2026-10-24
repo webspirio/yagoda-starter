@@ -30,11 +30,11 @@ export function ShiftStatus({ shift }: { shift: StripShift }) {
     <p
       className={cn(
         'flex items-center gap-2 text-sm font-medium whitespace-nowrap',
-        open ? 'text-success' : 'text-amber',
+        open ? 'text-leaf' : 'text-amber',
       )}
     >
       <span
-        className={cn('size-2 shrink-0 rounded-full', open ? 'bg-success' : 'bg-amber')}
+        className={cn('size-2 shrink-0 rounded-full', open ? 'bg-leaf' : 'bg-amber')}
         aria-hidden="true"
       />
       {open

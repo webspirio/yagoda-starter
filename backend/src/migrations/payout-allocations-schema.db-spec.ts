@@ -35,9 +35,9 @@ describe('PayoutAllocations migration', () => {
   };
   const intake = async (s: string, shiftId: string, amount: string, at: string, voided = false) => {
     const [row] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id, created_at,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id, created_at,
                             voided_at, voided_by_user_id, void_reason)
-       VALUES ($1, $2, $3, $4, $5, $6,
+       VALUES ($1, $2, $3, $4, '0.00', $5, $6,
                CASE WHEN $7 THEN now() END, CASE WHEN $7 THEN $5::uuid END,
                CASE WHEN $7 THEN 'test' END) RETURNING id`,
       [`IN-${run}-${++seq}`, shiftId, s, amount, userId, at, voided],

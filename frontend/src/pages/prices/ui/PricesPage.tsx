@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { PageHeader } from '@/shared/ui/page-header';
+import { DashboardPage } from '@/shared/ui/templates/dashboard-page';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { useMeQuery } from '@/entities/user';
@@ -110,42 +110,44 @@ export function PricesPage() {
 
   return (
     <>
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6">
-        <PageHeader
-          eyebrow={t('prices.eyebrow')}
-          title={t('prices.title')}
-          description={t('prices.description')}
-        />
+      {/* `<main>` pads the page; the template sets the width (audit 2026-10-24, F9). */}
+      <DashboardPage
+        maxWidth={1280}
+        eyebrow={t('prices.eyebrow')}
+        title={t('prices.title')}
+        description={t('prices.description')}
+      >
+        <div className="flex flex-col gap-6">
+          {canEdit ? null : (
+            <p className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+              {t('prices.banner')}
+            </p>
+          )}
 
-        {canEdit ? null : (
-          <p className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
-            {t('prices.banner')}
-          </p>
-        )}
+          {sheet.isPending ? (
+            <div className="flex justify-center py-12">
+              <Spinner />
+            </div>
+          ) : sheet.isError ? (
+            <p role="alert" className="py-6 text-center text-destructive">
+              {t('common.somethingWentWrong')}
+            </p>
+          ) : sheet.data && sheet.data.rows.length > 0 && sheet.data.points.length > 0 ? (
+            <PriceSheet
+              sheet={sheet.data}
+              canEdit={canEdit}
+              onEditCell={editCell}
+              onSetEverywhere={setEverywhere}
+              onShowHistory={(row, point) => openHistory(point.id, asCatalogItem(row))}
+            />
+          ) : (
+            <EmptyState title={t('prices.empty.title')} hint={t('prices.empty.hint')} />
+          )}
 
-        {sheet.isPending ? (
-          <div className="flex justify-center py-12">
-            <Spinner />
-          </div>
-        ) : sheet.isError ? (
-          <p role="alert" className="py-6 text-center text-destructive">
-            {t('common.somethingWentWrong')}
-          </p>
-        ) : sheet.data && sheet.data.rows.length > 0 && sheet.data.points.length > 0 ? (
-          <PriceSheet
-            sheet={sheet.data}
-            canEdit={canEdit}
-            onEditCell={editCell}
-            onSetEverywhere={setEverywhere}
-            onShowHistory={(row, point) => openHistory(point.id, asCatalogItem(row))}
-          />
-        ) : (
-          <EmptyState title={t('prices.empty.title')} hint={t('prices.empty.hint')} />
-        )}
-
-        {/* #151 — its own read, so a failed or slow feed never hides the sheet. */}
-        <PriceChanges />
-      </div>
+          {/* #151 — its own read, so a failed or slow feed never hides the sheet. */}
+          <PriceChanges />
+        </div>
+      </DashboardPage>
 
       {editing ? (
         <SetPriceDialog

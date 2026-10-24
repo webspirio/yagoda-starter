@@ -118,7 +118,7 @@ describe('TodayReceipts — a row reads like the mock', () => {
     expect(screen.getByText('2 positions')).toBeInTheDocument();
     expect(screen.getByText(formatKg('36.90', 'en'))).toBeInTheDocument();
 
-    const remainder = screen.getByText('remainder ' + formatUah('3000.00', 'en'));
+    const remainder = screen.getByText('unpaid ' + formatUah('3000.00', 'en'));
     expect(remainder).toHaveClass('text-amber');
 
     expect(screen.getByText(formatUah('15000.00', 'en'))).toBeInTheDocument();
@@ -129,7 +129,7 @@ describe('TodayReceipts — a row reads like the mock', () => {
     render(<TodayReceipts shiftId="s1" onOpen={vi.fn()} />);
 
     expect(screen.queryByText(/position/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/remainder/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/unpaid/)).not.toBeInTheDocument();
   });
 
   it('still lists a voided receipt, struck through', () => {
@@ -145,11 +145,11 @@ describe('TodayReceipts — a row reads like the mock', () => {
     render(<TodayReceipts shiftId="s1" onOpen={vi.fn()} />);
 
     // The live row (Ніна) still reads its remainder…
-    expect(screen.getByText('remainder ' + formatUah('3000.00', 'en'))).toBeInTheDocument();
+    expect(screen.getByText('unpaid ' + formatUah('3000.00', 'en'))).toBeInTheDocument();
     // …but the voided row's open figure does not.
     expect(screen.getByText('Iryna Sokil')).toBeInTheDocument();
     expect(
-      screen.queryByText('remainder ' + formatUah('100.00', 'en')),
+      screen.queryByText('unpaid ' + formatUah('100.00', 'en')),
     ).not.toBeInTheDocument();
   });
 
@@ -158,7 +158,7 @@ describe('TodayReceipts — a row reads like the mock', () => {
     render(<TodayReceipts shiftId="s1" onOpen={vi.fn()} />);
 
     expect(screen.getByText('Olena Hrab')).toBeInTheDocument();
-    expect(screen.queryByText(/remainder/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/unpaid/)).not.toBeInTheDocument();
   });
 
   it('scrolls a tall list instead of growing the page', () => {

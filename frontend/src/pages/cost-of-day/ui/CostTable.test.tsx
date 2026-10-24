@@ -1,9 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { i18n } from '@/shared/lib/i18n';
 import type { CostOfDay, CostOfDayProduct } from '@/entities/cost-of-day';
+import { TraceScope } from '@/shared/ui/trace';
 import { CostTable } from './CostTable';
+
+// A formula holds each figure to its unit with no-break spaces; compare as plain text.
+const flat = (s: string | null) => (s ?? '').replace(/[\u00a0\u202f]/g, ' ');
 
 // Ukrainian copy on purpose — `test-setup.ts` defaults the suite to 'en', so
 // switch for this file only and switch back so it never leaks (same convention).
@@ -33,8 +37,9 @@ const cornel: CostOfDayProduct = {
   basket_share: '50.49',
   full_cost: '647.09',
   price_was: '38.00',
+  shortfall_per_kg: '0.43',
+  expenses_per_kg: '2.78',
   price_cost: '41.21',
-  price_by_our_weight: '38.00',
   complete: true,
   grades: [
     {
@@ -63,8 +68,9 @@ const raspberry: CostOfDayProduct = {
   basket_share: '1914.70',
   full_cost: '114693.71',
   price_was: '189.42',
+  shortfall_per_kg: '0.43',
+  expenses_per_kg: '2.78',
   price_cost: '192.63',
-  price_by_our_weight: '189.86',
   complete: true,
   grades: [
     {
@@ -90,6 +96,10 @@ const raspberry: CostOfDayProduct = {
 
 const day: CostOfDay = {
   shift_id: 's-1910',
+  split: 'weight',
+  split_applied: 'weight',
+  expenses_pct: null,
+  shortfall_pct: null,
   closed_at: '2026-10-19T18:00:00.000Z',
   provisional: false,
   accrued: '113640.80',
@@ -117,7 +127,19 @@ const day: CostOfDay = {
   products: [cornel, raspberry],
 };
 
-const renderTable = (d: CostOfDay = day) => render(<CostTable day={d} locale="uk" />);
+// Inside a trace scope, as the page mounts it (`CostOfDayPage`).
+const renderTable = (d: CostOfDay = day) =>
+  render(
+    <TraceScope>
+      <CostTable day={d} locale="uk" />
+    </TraceScope>,
+  );
+
+/** The traced operand showing exactly `text` (no-break spaces read as spaces). */
+const term = (within_: HTMLElement, text: string) =>
+  Array.from(within_.querySelectorAll<HTMLElement>('[data-slot="trace-term"]')).find(
+    (el) => flat(el.textContent) === text,
+  ) as HTMLElement;
 
 /** The cells of a row, in column order (the first is the product's name). */
 const cellsOf = (row: HTMLElement) => within(row).getAllByRole('cell');
@@ -133,7 +155,7 @@ describe('CostTable', () => {
       '596,80',
       '595,40',
       '−1,40',
-      '113 044,20 ₴у т.ч. доплати 15 000,00',
+      '113 044,20у т.ч. доплати 15 000,00\u00a0₴',
       '189,42',
       '−265,19',
       '0,43',
@@ -146,6 +168,9 @@ describe('CostTable', () => {
     renderTable();
 
     expect(screen.getByRole('columnheader', { name: 'Ціна закупки, ₴/кг' })).toBeInTheDocument();
+    // Units live in the header, the cells are plain (audit 2026-10-24 E9).
+    expect(screen.getByRole('columnheader', { name: /^Нараховано, ₴/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Собівартість, ₴/кг' })).toBeInTheDocument();
     expect(screen.queryByText(/Δ/)).not.toBeInTheDocument();
     // No rule codes on a client-facing screen.
     expect(document.body.textContent).not.toContain('§');
@@ -155,7 +180,7 @@ describe('CostTable', () => {
     renderTable();
 
     const accrued = cellsOf(screen.getByRole('row', { name: /Кизил/ }))[4];
-    expect(accrued.textContent).toBe('596,60 ₴');
+    expect(accrued.textContent).toBe('596,60');
   });
 
   it('prints a weighed zero as a muted 0,00', () => {
@@ -177,7 +202,7 @@ describe('CostTable', () => {
       '612,50',
       '611,10',
       '−1,40',
-      '113 640,80 ₴',
+      '113 640,80',
       '',
       '−265,19',
       '',
@@ -192,10 +217,12 @@ describe('CostTable', () => {
     const { container } = renderTable();
 
     const line = container.querySelector('[data-day-formula]') as HTMLElement;
-    expect(line.textContent).toBe(
-      'Середня собівартість кілограма дня: (нараховано 113 640,80 + витрати 1 700,00) ÷ 611,10 кг = 188,74 ₴/кг',
+    expect(flat(line.textContent)).toBe(
+      'Середня собівартість кілограма дня: (нараховано 113 640,80 ₴ + витрати 1 700,00 ₴) ÷ 611,10 кг = 188,74 ₴/кг',
     );
     expect(within(line).getByText('188,74 ₴/кг').className).toContain('--leaf');
+    // Every operand is a mono figure, so its thin thousands space reads as one (2026-10-24).
+    expect(within(line).getByText('1 700,00 ₴').className).toContain('font-mono');
   });
 
   it('opens a product into its calculator chain, then its grades — review C4', async () => {
@@ -209,11 +236,17 @@ describe('CostTable', () => {
     await user.click(toggle);
 
     const chain = container.querySelector('[data-chain]') as HTMLElement;
-    expect(within(chain).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
-      'Ціна закупки: 113 044,20 ÷ 596,80 = 189,42',
-      'Недостача: 1,40 кг × 189,42 = 265,19 ₴',
-      'Собівартість: 189,42 + 0,43 + 2,78 = 192,63',
+    expect(
+      within(chain)
+        .getAllByRole('listitem')
+        .map((li) => flat(li.textContent)),
+    ).toEqual([
+      'Ціна закупки: 113 044,20 ₴ ÷ 596,80 кг = 189,42 ₴/кг',
+      'Недостача: 1,40 кг × 189,42 ₴/кг = 265,19 ₴',
+      'Собівартість: 189,42 ₴/кг + 0,43 ₴/кг + 2,78 ₴/кг = 192,63 ₴/кг',
     ]);
+    // A wrapped chain never strands a unit: figure and unit share a no-break space.
+    expect(chain.textContent).toContain('189,42\u00a0₴/кг');
 
     const grade = screen.getByText('Сорт 1').closest('tr') as HTMLElement;
     expect(cellsOf(grade).map((c) => c.textContent)).toEqual([
@@ -221,7 +254,7 @@ describe('CostTable', () => {
       '333,70',
       '227,40',
       '',
-      '71 067,20 ₴у т.ч. доплати 15 000,00',
+      '71 067,20у т.ч. доплати 15 000,00\u00a0₴',
       '212,97',
       '',
       '',
@@ -242,9 +275,13 @@ describe('CostTable', () => {
     await user.click(screen.getByRole('button', { name: 'Показати сорти: Кизил' }));
 
     const chain = container.querySelector('[data-chain]') as HTMLElement;
-    expect(within(chain).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
-      'Ціна закупки: 596,60 ÷ 15,70 = 38,00',
-      'Собівартість: 38,00 + 0,43 + 2,78 = 41,21',
+    expect(
+      within(chain)
+        .getAllByRole('listitem')
+        .map((li) => flat(li.textContent)),
+    ).toEqual([
+      'Ціна закупки: 596,60 ₴ ÷ 15,70 кг = 38,00 ₴/кг',
+      'Собівартість: 38,00 ₴/кг + 0,43 ₴/кг + 2,78 ₴/кг = 41,21 ₴/кг',
     ]);
   });
 
@@ -266,7 +303,6 @@ describe('CostTable', () => {
       full_cost: null,
       price_was: '150.00',
       price_cost: null,
-      price_by_our_weight: null,
       complete: false,
       grades: [],
     };
@@ -279,32 +315,31 @@ describe('CostTable', () => {
     const row = screen.getByRole('row', { name: /Ожина/ });
     expect(within(row).getByText('не перезважено')).toBeInTheDocument();
     const texts = cellsOf(row).map((c) => c.textContent);
-    expect(texts.slice(1)).toEqual([
-      '60,00',
-      '—',
-      '—',
-      '9 000,00 ₴',
-      '150,00',
-      '—',
-      '—',
-      '—',
-      '—',
-    ]);
+    expect(texts.slice(1)).toEqual(['60,00', '—', '—', '9 000,00', '150,00', '—', '—', '—', '—']);
 
     // Not folded into the total — it sits on its own muted line under it.
     const total = screen.getByRole('row', { name: /^Усього/ });
     expect(total).toHaveTextContent('612,50');
     expect(total).not.toHaveTextContent('9 000,00');
-    expect(
-      screen.getByText('Не перезважено, не входить у підсумок: 60,00 кг · 9 000,00 ₴'),
-    ).toBeInTheDocument();
+    const unweighedLine = screen.getByText(/Не перезважено, не входить у підсумок/);
+    expect(flat(unweighedLine.textContent)).toBe(
+      'Не перезважено, не входить у підсумок: 60,00 кг · 9 000,00 ₴',
+    );
+
+    // The day formula names its operand: only what was reweighed (audit E3).
+    const formula = container.querySelector('[data-day-formula]') as HTMLElement;
+    expect(formula).toHaveTextContent(
+      '(нараховано по перезваженому 113 640,80 ₴ + витрати 1 700,00 ₴)',
+    );
 
     // Its chain stops at what the point knows: the purchase price.
     await user.click(screen.getByRole('button', { name: 'Показати сорти: Ожина' }));
     const chain = container.querySelector('[data-chain]') as HTMLElement;
-    expect(within(chain).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
-      'Ціна закупки: 9 000,00 ÷ 60,00 = 150,00',
-    ]);
+    expect(
+      within(chain)
+        .getAllByRole('listitem')
+        .map((li) => flat(li.textContent)),
+    ).toEqual(['Ціна закупки: 9 000,00 ₴ ÷ 60,00 кг = 150,00 ₴/кг']);
   });
 
   it('shows the awaiting note instead of the formulas when nothing is weighed', () => {
@@ -318,7 +353,6 @@ describe('CostTable', () => {
       basket_share: null,
       full_cost: null,
       price_cost: null,
-      price_by_our_weight: null,
       complete: false,
     };
     const { container } = renderTable({
@@ -354,13 +388,36 @@ describe('CostTable', () => {
     expect(box.outerHTML).not.toContain('--amber');
   });
 
+  it('does not announce «0,00 ₴ не розподілено» when there are no expenses — audit E11', () => {
+    renderTable({
+      ...day,
+      reweighed_kg: '0.00',
+      shortfall_amount: '0.00',
+      expenses_amount: '0.00',
+      basket: '0.00',
+      per_kg: null,
+      shortfall_per_kg: null,
+      expenses_per_kg: null,
+      weighed: null,
+      full_cost: null,
+      price_cost_avg: null,
+      checks: null,
+      products: [{ ...raspberry, reweigh_net_kg: null, complete: false, price_cost: null }],
+    });
+    const box = screen.getByText('Очікує переважування').closest('[data-awaiting]') as HTMLElement;
+    expect(box).not.toHaveTextContent('не розподілено');
+  });
+
   it('prints each half of на кілограм as its own division — review C1', () => {
-    renderTable();
+    const { container } = renderTable();
 
     const hint = screen.getByText(/Як читати рядок/);
-    expect(hint).toHaveTextContent('265,19 ÷ 611,10 кг = 0,43');
-    expect(hint).toHaveTextContent('1 700,00 ÷ 611,10 кг = 2,78');
     expect(within(hint).getByText('собівартість').className).toContain('--leaf');
+    // Two spreads, two formulas — each on its own line (client, 24.10).
+    const spreads = container.querySelectorAll('[data-how-to-read] > li');
+    expect(spreads).toHaveLength(2);
+    expect(spreads[0]).toHaveTextContent('Недостача дня на кг: 265,19 ₴ ÷ 611,10 кг = 0,43 ₴/кг');
+    expect(spreads[1]).toHaveTextContent('Витрати дня на кг: 1 700,00 ₴ ÷ 611,10 кг = 2,78 ₴/кг');
     expect(screen.queryByText('Очікує переважування')).not.toBeInTheDocument();
   });
 
@@ -392,5 +449,174 @@ describe('CostTable', () => {
         el.closest('[data-group]')?.getAttribute('data-group'),
       );
     }
+  });
+
+  // «Звідки це число» (client, 24.10): every operand of a formula is a boxed
+  // figure that, pointed at, lights the cell it was read from.
+  describe('traced formulas', () => {
+    it('points a row chain’s operands at that row’s own cells', async () => {
+      const user = userEvent.setup();
+      const { container } = renderTable();
+      const rasp = cellsOf(screen.getByRole('row', { name: /Малина/ }));
+      const cornel = cellsOf(screen.getByRole('row', { name: /Кизил/ }));
+      await user.click(screen.getByRole('button', { name: 'Показати сорти: Малина' }));
+      const chain = container.querySelector('[data-chain]') as HTMLElement;
+
+      const accrued = term(chain, '113 044,20 ₴');
+      expect(accrued).toHaveAttribute('title', 'Колонка «Нараховано, ₴» · Малина');
+      fireEvent.pointerEnter(accrued);
+      expect(rasp[4]).toHaveAttribute('data-trace-hit', 'sky');
+      expect(cornel[4]).not.toHaveAttribute('data-trace-hit');
+      fireEvent.pointerLeave(accrued);
+      expect(rasp[4]).not.toHaveAttribute('data-trace-hit');
+
+      // The cost chain's 0,43 is this row's «Дня» cell — not the column.
+      fireEvent.pointerEnter(term(chain, '0,43 ₴/кг'));
+      expect(rasp[7]).toHaveAttribute('data-trace-hit', 'amber');
+      expect(cornel[7]).not.toHaveAttribute('data-trace-hit');
+
+      fireEvent.pointerEnter(term(chain, '192,63 ₴/кг'));
+      expect(rasp[9]).toHaveAttribute('data-trace-hit', 'leaf');
+    });
+
+    it('points «Як читати» at the total row and the whole per-kg column', () => {
+      const { container } = renderTable();
+      const hint = container.querySelector('[data-how-to-read]') as HTMLElement;
+      const total = cellsOf(screen.getByRole('row', { name: /^Усього/ }));
+
+      fireEvent.pointerEnter(term(hint, '265,19 ₴'));
+      expect(total[6]).toHaveAttribute('data-trace-hit', 'amber');
+
+      fireEvent.pointerEnter(term(hint, '0,43 ₴/кг'));
+      for (const name of [/Кизил/, /Малина/]) {
+        expect(cellsOf(screen.getByRole('row', { name }))[7]).toHaveAttribute(
+          'data-trace-hit',
+          'amber',
+        );
+      }
+    });
+
+    it('points the day formula at the total row; the average at all it is made of', () => {
+      const { container } = renderTable();
+      const line = container.querySelector('[data-day-formula]') as HTMLElement;
+      const total = cellsOf(screen.getByRole('row', { name: /^Усього/ }));
+
+      fireEvent.pointerEnter(term(line, '611,10 кг'));
+      expect(total[2]).toHaveAttribute('data-trace-hit', 'neutral');
+      expect(total[4]).not.toHaveAttribute('data-trace-hit');
+
+      fireEvent.pointerEnter(term(line, '188,74 ₴/кг'));
+      expect(total[2]).toHaveAttribute('data-trace-hit', 'leaf');
+      expect(total[4]).toHaveAttribute('data-trace-hit', 'leaf');
+    });
+  });
+});
+
+// Spec 2026-10-24 — the same 19.10 day, витрати 1 900,00, split by money.
+// Every figure is the server's (`allocate`, `div`), pinned in the backend suite.
+const byMoney = (
+  split: 'value' | 'own',
+  rows: Record<'cornel' | 'raspberry', [string, string, string, string, string]>,
+): CostOfDay => {
+  const at = (p: CostOfDayProduct, [sShare, eShare, sKg, eKg, cost]: string[]) => ({
+    ...p,
+    shortfall_share: sShare,
+    expenses_share: eShare,
+    shortfall_per_kg: sKg,
+    expenses_per_kg: eKg,
+    price_cost: cost,
+  });
+  return {
+    ...day,
+    split,
+    split_applied: split,
+    expenses_amount: '1900.00',
+    basket: '2165.19',
+    per_kg: '3.54',
+    expenses_per_kg: '3.11',
+    expenses_pct: '1.67',
+    shortfall_pct: split === 'value' ? '0.23' : null,
+    products: [at(cornel, rows.cornel), at(raspberry, rows.raspberry)],
+  };
+};
+const valueDay = byMoney('value', {
+  cornel: ['1.39', '9.97', '0.09', '0.64', '38.73'],
+  raspberry: ['263.80', '1890.03', '0.44', '3.17', '193.03'],
+});
+const ownDay = byMoney('own', {
+  cornel: ['0.00', '9.97', '0.00', '0.64', '38.64'],
+  raspberry: ['265.19', '1890.03', '0.45', '3.17', '193.04'],
+});
+
+describe('CostTable — split by money (spec 2026-10-24 §3.2)', () => {
+  it('prints each row’s own per-kg halves under value', () => {
+    renderTable(valueDay);
+
+    const rasp = cellsOf(screen.getByRole('row', { name: /Малина/ })).map((c) => c.textContent);
+    expect(rasp.slice(7)).toEqual(['0,44', '3,17', '193,03']);
+    const cornelRow = cellsOf(screen.getByRole('row', { name: /Кизил/ })).map((c) => c.textContent);
+    expect(cornelRow.slice(7)).toEqual(['0,09', '0,64', '38,73']);
+  });
+
+  it('states both spreads as ≈ % of the purchase and points at the rows for the hryvnias', () => {
+    const { container } = renderTable(valueDay);
+
+    const lines = Array.from(container.querySelectorAll('[data-how-to-read] > li')).map((li) =>
+      flat(li.textContent),
+    );
+    expect(lines).toEqual([
+      'Недостача дня: 265,19 ₴ ÷ 113 640,80 ₴ ≈ 0,23 % від закупки',
+      'Витрати дня: 1 900,00 ₴ ÷ 113 640,80 ₴ ≈ 1,67 % від закупки',
+      'Частка кожного товару в гривнях — у розгорнутому рядку (›).',
+    ]);
+    expect(flat(screen.getByText(/Як читати рядок/).textContent)).toContain(
+      'пропорційно до нарахованого',
+    );
+  });
+
+  it('opens a row into its shares in hryvnias, never through the rounded percentage', async () => {
+    const user = userEvent.setup();
+    const { container } = renderTable(valueDay);
+
+    await user.click(screen.getByRole('button', { name: 'Показати сорти: Малина' }));
+
+    const chain = container.querySelector('[data-chain]') as HTMLElement;
+    const lines = within(chain)
+      .getAllByRole('listitem')
+      .map((li) => flat(li.textContent));
+    expect(lines).toContain(
+      'Недостача дня: 265,19 ₴ × 113 044,20 ₴ ÷ 113 640,80 ₴ ≈ 263,80 ₴ ÷ 595,40 кг = 0,44 ₴/кг',
+    );
+    expect(lines).toContain(
+      'Витрати: 1 900,00 ₴ × 113 044,20 ₴ ÷ 113 640,80 ₴ ≈ 1 890,03 ₴ ÷ 595,40 кг = 3,17 ₴/кг',
+    );
+    expect(lines).toContain('Собівартість: 189,42 ₴/кг + 0,44 ₴/кг + 3,17 ₴/кг = 193,03 ₴/кг');
+  });
+
+  it('names the shortfall column «своя» under own and keeps each product’s own', async () => {
+    const user = userEvent.setup();
+    const { container } = renderTable(ownDay);
+
+    expect(screen.getByRole('columnheader', { name: 'Своя, ₴/кг' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Дня, ₴/кг' })).not.toBeInTheDocument();
+    const lines = Array.from(container.querySelectorAll('[data-how-to-read] > li')).map((li) =>
+      flat(li.textContent),
+    );
+    expect(lines[0]).toBe('Недостача — своя у кожного товару: своя ₴ ÷ база кг');
+
+    await user.click(screen.getByRole('button', { name: 'Показати сорти: Малина' }));
+    const chain = container.querySelector('[data-chain]') as HTMLElement;
+    expect(
+      within(chain)
+        .getAllByRole('listitem')
+        .map((li) => flat(li.textContent)),
+    ).toContain('Своя недостача на кг: 265,19 ₴ ÷ 595,40 кг = 0,45 ₴/кг');
+  });
+
+  it('keeps the day average formula as it is under every split', () => {
+    const { container } = renderTable(valueDay);
+    expect(flat(container.querySelector('[data-day-formula]')!.textContent)).toBe(
+      'Середня собівартість кілограма дня: (нараховано 113 640,80 ₴ + витрати 1 900,00 ₴) ÷ 611,10 кг = 188,74 ₴/кг',
+    );
   });
 });

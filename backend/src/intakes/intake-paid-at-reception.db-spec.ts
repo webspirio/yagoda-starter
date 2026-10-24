@@ -18,6 +18,7 @@ import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
 import { stockPoint } from '../testing/crate-stock-fixture';
+import { listenOnLoopback } from '../testing/listen-on-loopback';
 
 const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -43,7 +44,7 @@ beforeAll(async () => {
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
   );
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
-  await app.init();
+  await listenOnLoopback(app);
 
   const users = app.get(UsersService);
   const credentials = app.get(CredentialsService);
@@ -238,6 +239,8 @@ describe('paid at reception (HTTP, Postgres)', () => {
       expect(res.body.payouts).toHaveLength(1);
       expect(res.body.payouts[0].code).toMatch(/-PO-\d{8}-\d+$/);
       expect(res.body.payouts[0].amount).toBe('500.00');
+      // A1 — frozen: 0 before + 1000 − 500 handed over, the same figure as the payout's own.
+      expect(res.body.balance_after).toBe('500.00');
       paidIntakeId = res.body.id as string;
       paidPayoutId = res.body.payouts[0].id as string;
 
@@ -259,6 +262,7 @@ describe('paid at reception (HTTP, Postgres)', () => {
         .set('Authorization', `Bearer ${oksanaToken}`)
         .expect(200);
       expect(payouts.body.data[0].intake_id).toBe(res.body.id);
+      expect(payouts.body.data[0].balance_after).toBe(res.body.balance_after);
 
       const balance = await request(app.getHttpServer())
         .get(`/suppliers/${supplierId}/balance`)
@@ -297,6 +301,21 @@ describe('paid at reception (HTTP, Postgres)', () => {
       expect(after.body.total).toBe(before.body.total);
     });
 
+    it('a later receipt freezes its own balance and leaves the earlier one’s as printed (A1)', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/intakes')
+        .set('Authorization', `Bearer ${oksanaToken}`)
+        .send({ supplier_id: supplierId, items: [line()] })
+        .expect(201);
+      expect(res.body.balance_after).toBe('1500.00');
+
+      const first = await request(app.getHttpServer())
+        .get(`/intakes/${paidIntakeId}`)
+        .set('Authorization', `Bearer ${oksanaToken}`)
+        .expect(200);
+      expect(first.body.balance_after).toBe('500.00');
+    });
+
     it('voiding the paid-at-reception payout zeroes paid_amount but keeps the trail — and never returns the cash', async () => {
       // MUST RUN LAST (see the describe-level comment above): this voids the
       // 500.00 payout the second test wrote. §9.3 — voiding does NOT return
@@ -314,6 +333,8 @@ describe('paid at reception (HTTP, Postgres)', () => {
         .set('Authorization', `Bearer ${oksanaToken}`)
         .expect(200);
       expect(detail.body.paid_amount).toBe('0.00');
+      // A record of what was printed: the void leaves it (A1).
+      expect(detail.body.balance_after).toBe('500.00');
       expect(detail.body.payouts).toHaveLength(1);
       expect(detail.body.payouts[0].voided_at).not.toBeNull();
 
@@ -391,6 +412,8 @@ describe('paid at reception (HTTP, Postgres)', () => {
         .send({ supplier_id: supplierId, items: [line()], paid_amount: '1500.00' })
         .expect(201); // Разом = 2000, paid 1500
       expect(res.body.paid_amount).toBe('1500.00');
+      // A1 — «Залишок» on this receipt: 1000 before + 1000 − 1500.
+      expect(res.body.balance_after).toBe('500.00');
       paidAboveOwnAmountId = res.body.id as string;
       const balance = await request(app.getHttpServer())
         .get(`/suppliers/${supplierId}/balance`)

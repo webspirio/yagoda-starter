@@ -30,8 +30,10 @@
   --secondary: #e1e4db;
   --secondary-foreground: #2b2f27;
   --muted: #e4e7de;
-  --muted-foreground: #6c7167;
-  --muted2: #6c7167; /* starter token: tertiary body text → muted-foreground */
+  /* #62675d, not the mock's #6c7167: that one read 4.28:1 on the paper, under AA
+     for the small text it carries (audit 2026-10-24, F1). Now 5.81 card / 4.97 paper. */
+  --muted-foreground: #62675d;
+  --muted2: #62675d; /* starter token: tertiary body text → muted-foreground */
   --accent: #dee2d7;
   --accent-foreground: #171a15;
   --brand: #c81e4e; /* starter token: accent ink → berry */
@@ -41,7 +43,11 @@
   --border: #d7dbd0; /* hairline dividers */
   --line2: #cfd4c6; /* starter token: stronger divider → mock input */
   --input: #cfd4c6;
-  --ring: #c81e4e;
+  /* The focus ring is NEUTRAL ink, not berry (audit 2026-10-24, F1): berry means
+     «brand / the one CTA / destructive», and a berry halo on every focused field read
+     as an error. Components draw it at /50 — near-black at half strength is still
+     3.35:1 on the card and 3.23:1 on the paper (WCAG 1.4.11 asks 3:1). */
+  --ring: #171a15;
 
   /* instrument + domain colours */
   --readout: #a8e86a;
@@ -49,6 +55,14 @@
   --amber: #c57a00;
   --sky: #2e7bc4;
   --plum: #7a4cc4;
+  /* TEXT twins of amber and sky (audit 2026-10-24, F1). The fills stay the mock's
+     bright colours — a bar, a dot, a tint — but as small text #c57a00 read 3.41:1 on
+     the card and 2.92:1 on the paper, #2e7bc4 4.42 / 3.78. These reach AA on both:
+     amber-ink 5.77 card / 4.94 paper, sky-ink 5.65 / 4.83. `text-amber`,
+     `text-[var(--amber)]` and `text-[var(--sky)]` are mapped onto them in the
+     utilities layer at the end of this file, so no screen has to change a class. */
+  --amber-ink: #935800;
+  --sky-ink: #286aa8;
 
   /* validated categorical set — mock DESIGN.md */
   --chart-1: #c81e4e;
@@ -65,7 +79,8 @@
   --sidebar-accent: #232719;
   --sidebar-accent-foreground: #f2f5ec;
   --sidebar-border: #2b3022;
-  --sidebar-ring: #c81e4e;
+  /* Light neutral on the dark sidebar: 3.61:1 at /50, 10.87 solid. */
+  --sidebar-ring: #c4cbba;
 }
 
 .dark {
@@ -93,7 +108,10 @@
   --muted2: #8f8a82;
   --accent: #3b3b42;
   --accent-foreground: #f5f5f4;
-  --brand: #e8557a; /* berry, lightened for legibility on dark surfaces */
+  /* Berry, lightened for legibility on dark surfaces: berry TEXT in dark mode is
+     `text-brand`, never `text-primary` (the fill, 2.77:1 on the card). #ec6386 is
+     4.94:1 on the card and 5.66 on the paper — #e8557a was 4.44, just under AA. */
+  --brand: #ec6386;
   --brand-foreground: #1a0a10;
   --destructive: #fb7185;
   --success: #6ee7b7;
@@ -103,13 +121,17 @@
   --border: #4d4d55;
   --line2: #5b5b64;
   --input: #5b5b64;
-  --ring: #e8557a;
+  /* Neutral, like the light ring: 4.67:1 at /50 on the card, 4.94 on the paper. */
+  --ring: #f5f5f4;
 
   --readout: #a8e86a;
   --leaf: #4ea85e;
   --amber: #e0a038;
   --sky: #5aa0e0;
   --plum: #a98bf0;
+  /* On the dark paper the fills are already text-safe (amber 6.83, sky 5.56 on the card). */
+  --amber-ink: #e0a038;
+  --sky-ink: #5aa0e0;
 
   --chart-1: #e8557a;
   --chart-2: #5aa0e0;
@@ -149,6 +171,8 @@
   --color-leaf: var(--leaf);
   --color-amber: var(--amber);
   --color-sky: var(--sky);
+  --color-amber-ink: var(--amber-ink);
+  --color-sky-ink: var(--sky-ink);
   --color-plum: var(--plum);
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
@@ -437,5 +461,64 @@
     color: #000 !important;
     border-color: #000 !important;
     background: transparent !important;
+  }
+}
+
+/* ─── Amber and sky as TEXT (audit 2026-10-24, F1) ─────────────────────────────────
+   `--amber`/`--sky` are fill colours; as small text they fail AA on the light paper. The
+   text utilities every screen already writes are re-pointed at the ink twins here, so a
+   bar keeps `bg-[var(--amber)]` and a figure keeps `text-amber` and both look right.
+   Same layer as Tailwind's own utilities, later in source order, equal specificity — so
+   this wins over the generated `color: var(--color-amber)`. New code may write
+   `text-amber-ink` / `text-sky-ink` directly. */
+@layer utilities {
+  .text-amber,
+  .text-\[var\(--amber\)\] {
+    color: var(--amber-ink);
+  }
+  .text-sky,
+  .text-\[var\(--sky\)\] {
+    color: var(--sky-ink);
+  }
+}
+
+/* ─── Traced formulas («звідки це число») ──────────────────────────────────────────
+   `shared/ui/trace.tsx`: hovering or focusing a formula operand (`TraceTerm`) marks
+   every element in its `TraceScope` whose `data-trace` lists the same id with
+   `data-trace-hit="<tone>"` — the table cell the number came from, and every other
+   operand showing it. Unlayered, so it wins over a cell's own tinted background. */
+[data-trace-hit] {
+  --trace: var(--foreground);
+  background-color: color-mix(in oklab, var(--trace) 16%, transparent);
+  outline: 2px solid color-mix(in oklab, var(--trace) 75%, transparent);
+  outline-offset: -2px;
+  transition:
+    background-color 120ms ease,
+    outline-color 120ms ease;
+}
+[data-trace-hit='sky'] {
+  --trace: var(--sky);
+}
+[data-trace-hit='amber'] {
+  --trace: var(--amber);
+}
+[data-trace-hit='plum'] {
+  --trace: var(--plum);
+}
+[data-trace-hit='leaf'] {
+  --trace: var(--leaf);
+}
+[data-trace-hit='berry'] {
+  --trace: var(--brand);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-trace-hit] {
+    transition: none;
+  }
+}
+@media print {
+  [data-trace-hit] {
+    background-color: transparent;
+    outline: none;
   }
 }

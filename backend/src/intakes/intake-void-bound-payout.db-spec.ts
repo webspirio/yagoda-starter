@@ -25,6 +25,7 @@ import { PointCashService } from '../point-cash/point-cash.service';
 import { timezoneConfig } from '../config/timezone.config';
 import { sub } from '../common/money';
 import { allocationViolations } from '../testing/allocation-invariants';
+import { listenOnLoopback } from '../testing/listen-on-loopback';
 
 /**
  * Old debt 1000, receipt R 500, payout P 1500 issued with R (it covered R and the
@@ -55,7 +56,7 @@ describe('intake void with a bound payout (HTTP, Postgres)', () => {
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
     app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
-    await app.init();
+    await listenOnLoopback(app);
     ds = app.get(DataSource);
 
     const users = app.get(UsersService);
@@ -124,8 +125,8 @@ describe('intake void with a bound payout (HTTP, Postgres)', () => {
     );
     const intake = async (shiftId: string, amount: string) => {
       const [row] = await ds.query(
-        `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+         VALUES ($1, $2, $3, $4, '0.00', $5) RETURNING id`,
         [`IN-${run}-${++seq}`, shiftId, supplier.id, amount, operatorId],
       );
       return row.id as string;

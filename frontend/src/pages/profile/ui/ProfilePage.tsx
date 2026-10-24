@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toastError } from '@/shared/ui/toast';
-import { useMeQuery } from '@/entities/user';
+import { initialsOf, useMeQuery } from '@/entities/user';
+import { PageHeader } from '@/shared/ui/page-header';
 import { useUploadAvatarMutation } from '@/features/edit-profile';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import { resolveUploadUrl, validateImageFile } from '@/shared/lib/upload';
@@ -35,9 +36,9 @@ export function ProfilePage() {
 
   return (
     <section className="max-w-md">
-      <h1 className="text-2xl font-semibold">{t('profile.title')}</h1>
+      <PageHeader title={t('profile.title')} />
 
-      <div className="mt-6 flex items-center gap-4">
+      <div className="flex items-center gap-4">
         {/* `Avatar` is a Radix compound component, not `<Avatar src alt/>`.
             `resolveUploadUrl` is load-bearing: the API returns a path rooted at
             ITS origin (`/uploads/avatars/…`), and in dev the frontend is served
@@ -48,7 +49,7 @@ export function ProfilePage() {
             src={data.avatar_url ? resolveUploadUrl(data.avatar_url) : undefined}
             alt={data.display_name}
           />
-          <AvatarFallback>{data.display_name.slice(0, 2).toUpperCase()}</AvatarFallback>
+          <AvatarFallback>{initialsOf(data.display_name)}</AvatarFallback>
         </Avatar>
         {/* `ImagePicker` is CONTROLLED — `value: File | null`, `onChange`,
             `title`. Hold the picked File in state and fire the upload from
@@ -70,7 +71,9 @@ export function ProfilePage() {
             // security.
             const problem = validateImageFile(file);
             if (problem) {
-              setAvatarError(problem === 'size' ? 'profile.avatarTooLarge' : 'profile.avatarWrongType');
+              setAvatarError(
+                problem === 'size' ? 'profile.avatarTooLarge' : 'profile.avatarWrongType',
+              );
               setPendingAvatar(null);
               return;
             }
@@ -79,7 +82,8 @@ export function ProfilePage() {
               // Without onError a failed upload is indistinguishable from a
               // successful one: the picker just reverts and nothing tells the
               // user why.
-              onError: (error) => toastError(t(apiErrorToBanner(error, 'profile.avatarUploadFailed'))),
+              onError: (error) =>
+                toastError(t(apiErrorToBanner(error, 'profile.avatarUploadFailed'))),
               onSettled: () => setPendingAvatar(null),
             });
           }}
@@ -98,9 +102,15 @@ export function ProfilePage() {
         <dd>{t(`profile.roles.${data.role}`)}</dd>
 
         {/* The receipt header's own wording (#250), so the operator can match a
-            receipt to themselves at a glance. An owner's receipts print it too. */}
-        <dt className="text-muted-foreground">{t('profile.number')}</dt>
-        <dd>{t('receipt.headerStaff', { number: data.number })}</dd>
+            receipt to themselves at a glance. Not for the owner: «Приймальник №»
+            names an operator, and on the owner's profile it read as a demotion
+            (audit 2026-10-24, F11). */}
+        {data.role === 'point_operator' ? (
+          <>
+            <dt className="text-muted-foreground">{t('profile.number')}</dt>
+            <dd>{t('receipt.headerStaff', { number: data.number })}</dd>
+          </>
+        ) : null}
       </dl>
     </section>
   );

@@ -1,8 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { ShiftsService } from '../shifts/shifts.service';
 import { productCostRows, ProductCostGrade, ProductCostRow } from './product-cost-rows';
-import { add, allocate, cmp, div, isZero, sub, sum } from '../common/money';
+import { add, allocate, cmp, div, isZero, percent, sub, sum } from '../common/money';
+import type { CostSplit } from './cost-split';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 export interface CostOfDayProduct {
@@ -72,6 +73,14 @@ export interface CostOfDayProduct {
    *
    *  `null` exactly when `basket_share` is. */
   full_cost: string | null;
+  /** This row's «недостача дня, ₴/кг» (spec 2026-10-24 §2.1). Under `weight`
+   *  it is the day's `shortfall_per_kg`, as before; under `value`/`own` it is
+   *  the row's own `shortfall_share ÷ reweigh_net_kg`, so «ціна закупки +
+   *  недостача + витрати = собівартість» still adds up on every row. `null`
+   *  exactly when `price_cost` is. */
+  shortfall_per_kg: string | null;
+  /** This row's «витрати, ₴/кг» — the same rule as `shortfall_per_kg`. */
+  expenses_per_kg: string | null;
   /** «було» — the price the day's intake actually paid, per kilogram taken in. */
   price_was: string;
   /** «собівартість» — `price_was` plus the day's per-kilogram basket share.
@@ -94,6 +103,17 @@ export interface CostOfDayProduct {
 
 export interface CostOfDayResponse {
   shift_id: string;
+  /** The split the caller asked for (spec 2026-10-24 §2). */
+  split: CostSplit;
+  /** The split the figures were actually built with. Equals `split`, except
+   *  that `value`/`own` fall back to `weight` on a day whose weighed products
+   *  accrued 0,00 ₴ — there is nothing to take a percentage of (§2.3). */
+  split_applied: CostSplit;
+  /** витрати ÷ weighed нараховано × 100 — a caption printed with «≈», never
+   *  an operand (§2.2). `null` under `weight` and whenever `per_kg` is. */
+  expenses_pct: string | null;
+  /** недостача ÷ weighed нараховано × 100, under `value` only. */
+  shortfall_pct: string | null;
   /** `null` while the shift is still open. Mirrors `ReconciliationResponse`
    *  so the two §8 screens can be read side by side. */
   closed_at: string | null;
@@ -215,13 +235,39 @@ export class CostOfDayService {
     private readonly shifts: ShiftsService,
   ) {}
 
-  async forShift(_actor: AuthenticatedUser, shiftId: string): Promise<CostOfDayResponse> {
-    const shift = await this.shifts.findOneRaw(shiftId);
+  /**
+   * ONE SNAPSHOT (audit 2026-10-24 M5). The day is five reads — the shift,
+   * the grade totals, the receipts its top-ups split over, the expenses and
+   * the latest top-up's time — and a top-up, a void or an expense landing
+   * between two of them used to print a day no single moment ever had: a
+   * «Нараховано» without the expense the per-kg column already spread, or a
+   * «last top-up» time for a доплата the column does not hold yet. One REPEATABLE READ
+   * transaction makes every figure on the screen the same instant's, as
+   * `SupplierSettlementQuery.settlementFor` does for a supplier's balance.
+   */
+  async forShift(
+    _actor: AuthenticatedUser,
+    shiftId: string,
+    split: CostSplit = 'weight',
+  ): Promise<CostOfDayResponse> {
+    return this.dataSource.transaction('REPEATABLE READ', (manager) =>
+      this.forShiftIn(manager, shiftId, split),
+    );
+  }
+
+  /** `forShift`'s reads through a caller's own transaction — the network day
+   *  reads every point's day inside ONE snapshot, not one per point. */
+  async forShiftIn(
+    manager: EntityManager,
+    shiftId: string,
+    split: CostSplit = 'weight',
+  ): Promise<CostOfDayResponse> {
+    const shift = await this.shifts.findOneRaw(shiftId, manager);
     if (!shift) throw new NotFoundException('Shift not found');
 
-    const rows = await productCostRows(this.dataSource, shiftId);
+    const rows = await productCostRows(manager, shiftId);
 
-    const expensesRows = (await this.dataSource.query(
+    const expensesRows = (await manager.query(
       `SELECT COALESCE(SUM(amount)::text, '0.00') AS total FROM day_expenses WHERE shift_id = $1`,
       [shiftId],
     )) as { total: string }[];
@@ -235,9 +281,9 @@ export class CostOfDayService {
     // a late top-up belongs to the day the berries were weighed in, not the
     // day someone renegotiated the price. This is a deliberate divergence
     // from that Note, not an oversight. (The allocation itself now lives in
-    // `productCostRows`, which both this service and `NetworkAverageService`
+    // `productCostRows`, which both this service and `NetworkCostOfDayService` (through `forShift`)
     // call.)
-    const latestRows = (await this.dataSource.query(
+    const latestRows = (await manager.query(
       `SELECT MAX(ti.created_at) AS latest
          FROM intake_top_ups ti
          JOIN intakes i ON i.id = ti.intake_id
@@ -263,12 +309,26 @@ export class CostOfDayService {
     const perKg =
       shortfallPerKg === null || expensesPerKg === null ? null : add(shortfallPerKg, expensesPerKg);
 
-    const products = this.buildProducts(rows, perKg, shortfallAmount, expenses);
-    const totalCheck = add(accrued, expenses);
-
     // §3.15 — the total row covers the complete products only; the rest are
     // reported beside it in `unweighed`.
     const complete = rows.filter((r) => r.complete);
+    // Spec 2026-10-24 §2.3 — a split by money needs money to split by. A day
+    // whose weighed products accrued nothing falls back to `weight` rather
+    // than letting `allocate` split evenly across zero weights. Only once
+    // something IS weighed: with nothing on the scale every share is «—»
+    // anyway, and «нараховано 0 ₴» would be a false thing to say.
+    const weighedAccrued = sum(complete.map((r) => r.accrued));
+    const applied: CostSplit =
+      split !== 'weight' && perKg !== null && isZero(weighedAccrued) ? 'weight' : split;
+    const products = this.buildProducts(rows, applied, {
+      perKg,
+      shortfallPerKg,
+      expensesPerKg,
+      shortfallAmount,
+      expenses,
+    });
+    const totalCheck = add(accrued, expenses);
+    const byMoney = applied !== 'weight' && perKg !== null;
     const incomplete = rows.filter((r) => !r.complete);
     const unweighed = {
       intake_kg: sum(incomplete.map((r) => r.intake_net_kg)),
@@ -297,6 +357,11 @@ export class CostOfDayService {
 
     return {
       shift_id: shiftId,
+      split,
+      split_applied: applied,
+      expenses_pct: byMoney ? percent(expenses, weighedAccrued) : null,
+      shortfall_pct:
+        byMoney && applied === 'value' ? percent(shortfallAmount, weighedAccrued) : null,
       closed_at: shift.closed_at ? shift.closed_at.toISOString() : null,
       provisional: shift.closed_at === null,
       accrued,
@@ -322,10 +387,16 @@ export class CostOfDayService {
 
   private buildProducts(
     rows: ProductCostRow[],
-    perKg: string | null,
-    shortfallAmount: string,
-    expenses: string,
+    split: CostSplit,
+    day: {
+      perKg: string | null;
+      shortfallPerKg: string | null;
+      expensesPerKg: string | null;
+      shortfallAmount: string;
+      expenses: string;
+    },
   ): CostOfDayProduct[] {
+    const { perKg, shortfallAmount, expenses } = day;
     // §3.15 — the splits run over the COMPLETE products alone, whose
     // kilograms are exactly `reweighed_kg`. `perKg === null` means that sum
     // is zero, and `allocate` would otherwise split the basket evenly across
@@ -334,10 +405,22 @@ export class CostOfDayService {
     // Spec 2026-10-23 §3.3 — TWO splits over the same weights, one per part
     // of the basket, so each product's row shows its недостача and витрати
     // separately and each column sums exactly to its own day total.
+    //
+    // Spec 2026-10-24 §2 — the strategy changes the WEIGHTS of those two
+    // splits and nothing else: kilograms under `weight`, нараховано under
+    // `value`; under `own` the недостача is not split at all, each product
+    // keeping the one it booked (they already sum to `shortfallAmount`).
     const weighed = rows.filter((r) => r.complete);
-    const weights = weighed.map((r) => r.reweigh_net_kg as string);
-    const shortfallShares = perKg === null ? [] : allocate(shortfallAmount, weights);
-    const expensesShares = perKg === null ? [] : allocate(expenses, weights);
+    const kilograms = weighed.map((r) => r.reweigh_net_kg as string);
+    const money = weighed.map((r) => r.accrued);
+    const shortfallShares =
+      perKg === null
+        ? []
+        : split === 'own'
+          ? weighed.map((r) => r.shortfall)
+          : allocate(shortfallAmount, split === 'value' ? money : kilograms);
+    const expensesShares =
+      perKg === null ? [] : allocate(expenses, split === 'weight' ? kilograms : money);
     const partsOf = new Map(
       weighed.map((r, i) => [
         r.product_id,
@@ -347,15 +430,29 @@ export class CostOfDayService {
 
     return rows.map((r) => {
       const priceWas = div(r.accrued, r.intake_net_kg);
-      // §3.15 — `r.complete`, not just `perKg`. A partially weighed product
-      // contributed no kilograms to `reweighedKg` and no недостача to the
-      // basket, so it does not collect a share of either. Without the
-      // `r.complete` guard such a product still read `price_was + per_kg` on
-      // a day that also had a fully weighed product — a price derived from a
-      // divisor it was deliberately left out of.
-      const priceCost = perKg === null || !r.complete ? null : add(priceWas, perKg);
-      const priceByOurWeight = r.reweigh_net_kg === null ? null : div(r.accrued, r.reweigh_net_kg);
+      // §3.15 — `parts` exists for the COMPLETE products only, not merely
+      // whenever `perKg` does. A partially weighed product contributed no
+      // kilograms to `reweighedKg` and no недостача to the basket, so it does
+      // not collect a share of either. Without that guard such a product still
+      // read `price_was + per_kg` on a day that also had a fully weighed
+      // product — a price derived from a divisor it was deliberately left out of.
       const parts = partsOf.get(r.product_id);
+      // Spec 2026-10-24 §2.1 — under `weight` the row repeats the day's two
+      // halves, exactly as before; otherwise each half is this row's own
+      // share over its own kilograms.
+      let shortfallPerKg: string | null = null;
+      let expensesPerKg: string | null = null;
+      if (parts && r.reweigh_net_kg !== null) {
+        shortfallPerKg =
+          split === 'weight' ? day.shortfallPerKg : div(parts.shortfall, r.reweigh_net_kg);
+        expensesPerKg =
+          split === 'weight' ? day.expensesPerKg : div(parts.expenses, r.reweigh_net_kg);
+      }
+      const priceCost =
+        shortfallPerKg === null || expensesPerKg === null
+          ? null
+          : add(priceWas, add(shortfallPerKg, expensesPerKg));
+      const priceByOurWeight = r.reweigh_net_kg === null ? null : div(r.accrued, r.reweigh_net_kg);
       const basketShare = parts ? add(parts.shortfall, parts.expenses) : null;
       // The недостача leaves `accrued` and returns pooled inside the share.
       const fullCost = basketShare === null ? null : add(sub(r.accrued, r.shortfall), basketShare);
@@ -373,6 +470,8 @@ export class CostOfDayService {
         expenses_share: parts?.expenses ?? null,
         basket_share: basketShare,
         full_cost: fullCost,
+        shortfall_per_kg: shortfallPerKg,
+        expenses_per_kg: expensesPerKg,
         price_was: priceWas,
         price_cost: priceCost,
         price_by_our_weight: priceByOurWeight,

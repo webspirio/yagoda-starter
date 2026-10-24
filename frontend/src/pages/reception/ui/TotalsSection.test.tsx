@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import type { ComponentProps } from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { TraceScope } from '@/shared/ui/trace';
 import { TotalsSection } from './TotalsSection';
 
 /**
@@ -26,6 +27,7 @@ function Harness({
       lineCount={1}
       debt="37.37"
       cash="1616.10"
+      debtStatus="ready"
       cashUnavailable={false}
       paidError={null}
       disabled={false}
@@ -72,17 +74,41 @@ describe('TotalsSection — the total and the carried-in balance', () => {
     await user.click(screen.getByRole('button', { name: 'Full amount' }));
     expect(screen.getByLabelText('Paid in cash')).toHaveValue('0.00');
     expect(screen.getByRole('button', { name: 'Round to 100' })).toBeDisabled();
-    // The balance stays signed after the visit, never «Settled in full».
+    // A balance below zero reads as what it is — the supplier owes us — with
+    // no minus to contradict a label about what WE owe (B1).
     const row = screen.getByTestId('remainder-row');
-    expect(row).toHaveTextContent('Owed by us after this');
-    expect(row).toHaveTextContent('−200.00 ₴');
+    expect(row).toHaveTextContent('Supplier owes us');
+    expect(row).toHaveTextContent('200.00 ₴');
+    expect(row).not.toHaveTextContent('−');
+    expect(row).not.toHaveTextContent('Owed by us after this');
     expect(screen.queryByText('Settled in full')).toBeNull();
+    // Today's 300 only pays down what the supplier owed: no debt of ours from it.
+    expect(screen.queryByText('Debt from this delivery')).toBeNull();
 
     // Any payout at all is over the cap: refused, the button disabled.
     await user.clear(screen.getByLabelText('Paid in cash'));
     await user.type(screen.getByLabelText('Paid in cash'), '1');
     expect(screen.getByText('Cannot pay out more than the total — at most 0.00 ₴')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Accept/ })).toBeDisabled();
+  });
+
+  it('nets a negative previous balance out of this delivery’s debt (B1)', async () => {
+    const user = userEvent.setup();
+    // 1000 accrued, the supplier owed us 200: the first 200 of today's berries
+    // pay that off, so at most 800 can be new debt of ours.
+    render(<Harness accrued="1000.00" debt="-200.00" cash="9000.00" paid="500.00" />);
+    expect(screen.getByText('Debt from this delivery').parentElement).toHaveTextContent(
+      '+ 300.00 ₴',
+    );
+    const row = screen.getByTestId('remainder-row');
+    expect(row).toHaveTextContent('Owed by us after this');
+    expect(row).toHaveTextContent('300.00 ₴');
+
+    // The whole cap paid out: nothing new owed, settled in full.
+    await user.click(screen.getByRole('button', { name: 'Full amount' }));
+    expect(screen.getByLabelText('Paid in cash')).toHaveValue('800.00');
+    expect(screen.queryByText('Debt from this delivery')).toBeNull();
+    expect(screen.getByText('Settled in full')).toBeInTheDocument();
   });
 
   it('renders the crate return slot between the cash note and the submit', () => {
@@ -92,6 +118,30 @@ describe('TotalsSection — the total and the carried-in balance', () => {
     const submit = screen.getByRole('button', { name: /Accept/ });
     expect(note.compareDocumentPosition(slot) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(slot.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe('TotalsSection — a balance not known yet (B2)', () => {
+  it('while the balance loads: «…» for it, «—» for the total, nothing to pay or accept', () => {
+    render(<Harness debtStatus="pending" debt={null} cash="9000.00" />);
+    expect(screen.getByText('Previous balance').parentElement).toHaveTextContent('…');
+    expect(screen.getByText('Total to pay out').parentElement).toHaveTextContent('—');
+    expect(screen.getByText('Total to pay out').parentElement).not.toHaveTextContent('5,460');
+    // B3 — no cap yet, so no chip can set one.
+    expect(screen.getByRole('button', { name: 'Full amount' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Round to 100' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Accept/ })).toBeDisabled();
+    expect(screen.queryByText('Settled in full')).toBeNull();
+  });
+
+  it('when the balance read failed: says so, and still never shows a total without it', () => {
+    render(<Harness debtStatus="error" debt={null} cash="9000.00" />);
+    expect(screen.getByText('Previous balance').parentElement).toHaveTextContent(
+      "couldn't be read",
+    );
+    expect(screen.getByText('Total to pay out').parentElement).toHaveTextContent('—');
+    expect(screen.getByRole('button', { name: 'Full amount' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Accept/ })).toBeDisabled();
   });
 });
 
@@ -121,6 +171,11 @@ describe('TotalsSection — the chips', () => {
     expect(screen.getByRole('button', { name: 'Round to 100' })).toBeDisabled();
   });
 
+  it('disables «Full amount» too while there is no cap yet (B3)', () => {
+    render(<Harness accrued={null} />);
+    expect(screen.getByRole('button', { name: 'Full amount' })).toBeDisabled();
+  });
+
   it('leaves «Round to 100» enabled once the cap clears 100', () => {
     render(<Harness cash="9000.00" />);
     expect(screen.getByRole('button', { name: 'Round to 100' })).toBeEnabled();
@@ -132,8 +187,10 @@ describe('TotalsSection — the remainder panel', () => {
     render(<Harness paid="1616.10" />);
     expect(screen.getByText(/Only 1,616.10 ₴ is in the berry drawer/)).toBeInTheDocument();
     // 5460.00 accrued − 1616.10 paid: this delivery's own new debt…
-    expect(screen.getByText('New debt from this delivery')).toBeInTheDocument();
-    expect(screen.getByText('+ 3,843.90 ₴')).toBeInTheDocument();
+    expect(screen.getByText('Debt from this delivery')).toBeInTheDocument();
+    expect(screen.getByText('Debt from this delivery').parentElement).toHaveTextContent(
+      '+ 3,843.90 ₴',
+    );
     // …and the balance it all comes to, the earlier 37.37 included.
     const row = screen.getByTestId('remainder-row');
     expect(row).toHaveTextContent('Owed by us after this');
@@ -144,8 +201,10 @@ describe('TotalsSection — the remainder panel', () => {
   it('shows what the cash pays off the earlier balance when it is more than today accrues', () => {
     render(<Harness paid="5497.37" cash="9000.00" />);
     expect(screen.getByText('Paid off the earlier balance')).toBeInTheDocument();
-    expect(screen.getByText('− 37.37 ₴')).toBeInTheDocument();
-    expect(screen.queryByText('New debt from this delivery')).toBeNull();
+    expect(screen.getByText('Paid off the earlier balance').parentElement).toHaveTextContent(
+      '− 37.37 ₴',
+    );
+    expect(screen.queryByText('Debt from this delivery')).toBeNull();
   });
 
   it('shows the paid figure formatted like the total at rest, raw while typed into', async () => {
@@ -283,6 +342,7 @@ describe('TotalsSection — the cap and the clamp', () => {
         lineCount={1}
         debt="37.37"
         cash="1616.10"
+        debtStatus="ready"
         cashUnavailable={false}
         paid="1616.10"
         onPaidChange={onPaidChange}
@@ -390,5 +450,37 @@ describe('TotalsSection — refusal and hints', () => {
 
     rerender(<Harness isSubmitting />);
     expect(screen.getByRole('button', { name: /Accept/ })).toBeDisabled();
+  });
+});
+
+// «Звідки це число» (client, 24.10): every figure the card derives points at its rows.
+describe('TotalsSection — traced figures', () => {
+  it('«Разом» lights the accrual and the carried-in balance; the remainder «Разом» and the cash', () => {
+    render(
+      <TraceScope>
+        <Harness paid="1616.10" />
+      </TraceScope>,
+    );
+    const accrued = screen.getByText('5,460.00 ₴');
+    const debt = screen.getByText('+ 37.37 ₴');
+    const paid = screen.getByLabelText('Paid in cash');
+    const total = screen.getByText('Total to pay out').parentElement!.querySelector('[data-trace]')!;
+
+    fireEvent.pointerEnter(screen.getByText('5,497.37 ₴'));
+    expect(accrued).toHaveAttribute('data-trace-hit', 'neutral');
+    expect(debt).toHaveAttribute('data-trace-hit', 'neutral');
+    expect(paid).not.toHaveAttribute('data-trace-hit');
+
+    fireEvent.pointerEnter(screen.getByText('3,881.27 ₴'));
+    expect(total).toHaveAttribute('data-trace-hit', 'amber');
+    expect(paid).toHaveAttribute('data-trace-hit', 'amber');
+    expect(accrued).not.toHaveAttribute('data-trace-hit');
+    // A result that shares an operand is not lit with it.
+    expect(screen.getByText('3,843.90 ₴')).not.toHaveAttribute('data-trace-hit');
+
+    fireEvent.pointerEnter(screen.getByText('3,843.90 ₴'));
+    expect(accrued).toHaveAttribute('data-trace-hit', 'amber');
+    expect(paid).toHaveAttribute('data-trace-hit', 'amber');
+    expect(debt).not.toHaveAttribute('data-trace-hit');
   });
 });

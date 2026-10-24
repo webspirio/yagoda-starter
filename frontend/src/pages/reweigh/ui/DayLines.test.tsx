@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ApiError } from '@/shared/api';
 import { DayLines } from './DayLines';
@@ -60,17 +60,38 @@ beforeEach(() => {
 });
 
 describe('DayLines', () => {
-  it('lists a line with its point, time and net weight', () => {
+  it('lists a line with its point, time and net weight — the unit in the header', () => {
     render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
     const row = screen.getByRole('row', { name: /Шипинки/ });
-    expect(within(row).getByText('108.50 kg')).toBeInTheDocument();
+    expect(within(row).getByText('108.50')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Base, kg' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Point' })).toBeInTheDocument();
+  });
+
+  it('carries no badge on a live line — only a voided one is marked (audit E11)', () => {
+    render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
+    const row = screen.getByRole('row', { name: /Шипинки/ });
+    expect(within(row).queryByText(/posted/i)).not.toBeInTheDocument();
   });
 
   it('shows the stored line as its net formula, under the figure and as the row title — W4', () => {
     render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
     const row = screen.getByRole('row', { name: /Шипинки/ });
-    expect(within(row).getByText('120.50 − 10 × 1.20 = 108.50')).toBeInTheDocument();
-    expect(row).toHaveAttribute('title', '120.50 − 10 × 1.20 = 108.50');
+    // The figures are `TraceTerm`s: the formula's text is split across elements.
+    expect(within(row).getByText('120.50 kg').parentElement?.textContent?.replace(/\s+/g, ' ')).toBe(
+      '120.50 kg − 10 pcs × 1.20 kg = 108.50 kg',
+    );
+    expect(row.getAttribute('title')?.replace(/\u00a0/g, ' ')).toBe(
+      '120.50 kg − 10 pcs × 1.20 kg = 108.50 kg',
+    );
+  });
+
+  // «Звідки це число» (client, 24.10): the formula's result is the figure above it.
+  it('lights the line’s net figure from the formula’s result', () => {
+    render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
+    const row = screen.getByRole('row', { name: /Шипинки/ });
+    fireEvent.pointerEnter(within(row).getByText('108.50 kg'));
+    expect(within(row).getByText('108.50')).toHaveAttribute('data-trace-hit', 'neutral');
   });
 
   it('falls back to the stored tare total when the per-unit weight is unproven', () => {
@@ -95,7 +116,9 @@ describe('DayLines', () => {
         date="2026-09-21"
       />,
     );
-    expect(screen.getByText('300.60 − 15.60 − 57.60 tare = 227.40')).toBeInTheDocument();
+    expect(screen.getByText('300.60 kg').parentElement?.textContent?.replace(/\s+/g, ' ')).toBe(
+      '300.60 kg − 15.60 kg − 57.60 kg tare = 227.40 kg',
+    );
   });
 
   /**

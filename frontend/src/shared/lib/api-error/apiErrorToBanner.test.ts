@@ -249,26 +249,21 @@ describe('apiErrorToBanner', () => {
   });
 });
 
-const onHand = (inTransit: number) =>
-  new ApiError(409, 'Request failed', undefined, 'CRATES_ON_HAND_INSUFFICIENT', {
-    code: 'CRATES_ON_HAND_INSUFFICIENT', available: 5, required: 15, in_transit: inTransit, message: 'x',
+// No refusal carries numbers since CRATES_ON_HAND_INSUFFICIENT went (23.10.2026); the plumbing
+// stays generic, so it is pinned with a made-up payload.
+const withNumbers = () =>
+  new ApiError(409, 'Request failed', undefined, 'CRATE_CASH_INSUFFICIENT', {
+    code: 'CRATE_CASH_INSUFFICIENT', available: 5, required: 15, message: 'x',
   });
 
-describe('CRATES_ON_HAND_INSUFFICIENT', () => {
-  it('maps to the plain sentence when nothing is in transit', () => {
-    expect(apiErrorToBanner(onHand(0), 'crates.errors.issueFailed')).toBe('crates.errors.onHandInsufficient');
-  });
-  it('points at the transfer in transit when there is one', () => {
-    expect(apiErrorToBanner(onHand(20), 'crates.errors.issueFailed')).toBe('crates.errors.onHandInsufficientInTransit');
-  });
+describe('apiErrorParams / toBannerError', () => {
   it('carries the numbers for interpolation, and only the numbers', () => {
-    expect(apiErrorParams(onHand(20))).toMatchObject({ available: 5, required: 15, in_transit: 20 });
-    expect(apiErrorParams(onHand(20))).not.toHaveProperty('message');
+    expect(apiErrorParams(withNumbers())).toEqual({ available: 5, required: 15 });
   });
-  it('toBannerError bundles both', () => {
-    expect(toBannerError(onHand(0), 'x')).toEqual({
-      key: 'crates.errors.onHandInsufficient',
-      params: expect.objectContaining({ available: 5, required: 15 }),
+  it('toBannerError bundles the key and the numbers', () => {
+    expect(toBannerError(withNumbers(), 'x')).toEqual({
+      key: apiErrorToBanner(withNumbers(), 'x'),
+      params: { available: 5, required: 15 },
     });
   });
   it('has no params for a non-ApiError', () => expect(apiErrorParams(new Error('down'))).toEqual({}));

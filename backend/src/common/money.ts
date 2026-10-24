@@ -145,6 +145,17 @@ export function div(a: string, b: string): string {
 }
 
 /**
+ * `part` as a percentage of `whole`, scale 2, half-up — `div(part × 100, whole)`.
+ * Spec 2026-10-24 §2.2: a CAPTION printed with «≈», never an operand. A
+ * two-decimal percentage cannot reproduce an `allocate` share on a calculator
+ * (113 044,20 × 1,67 % = 1 887,84 against 1 890,03), so every check runs
+ * through hryvnias instead. Throws on a zero `whole`, like `div`.
+ */
+export function percent(part: string, whole: string): string {
+  return div(mul(part, '100.00'), whole);
+}
+
+/**
  * Split `total` across `weights` pro-rata, LARGEST REMAINDER.
  *
  * The parts sum exactly to the total — that is the whole point, and it is what

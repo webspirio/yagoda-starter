@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
-import { render, fireEvent } from '@testing-library/react';
+import { render, fireEvent, screen } from '@testing-library/react';
 import { i18n } from '@/shared/lib/i18n';
 import type { CostOfDay, CostOfDayProduct } from '@/entities/cost-of-day';
+import { TraceScope } from '@/shared/ui/trace';
 import { ChecksDisclosure } from './ChecksDisclosure';
 
 beforeAll(async () => {
@@ -45,14 +46,14 @@ const renderIt = (over: Partial<CostOfDay> = {}, onOpenChange = vi.fn(), open = 
   );
 
 describe('ChecksDisclosure', () => {
-  it('prints both identities from server figures', () => {
+  it('prints both identities from server figures, each operand named by its product — audit E4', () => {
     const { container } = renderIt();
     const text = norm(container.textContent);
     expect(text).toContain(
-      '50,49 ₴ + 1 914,70 ₴ = 1 965,19 ₴ = недостача 265,19 ₴ + витрати 1 700,00 ₴',
+      'Кизил 50,49 ₴ + Малина 1 914,70 ₴ = 1 965,19 ₴ = недостача 265,19 ₴ + витрати 1 700,00 ₴',
     );
     expect(text).toContain(
-      '647,09 ₴ + 114 693,71 ₴ = 115 340,80 ₴ = нараховано 113 640,80 ₴ + витрати 1 700,00 ₴',
+      'Кизил 647,09 ₴ + Малина 114 693,71 ₴ = 115 340,80 ₴ = нараховано 113 640,80 ₴ + витрати 1 700,00 ₴',
     );
     expect(container.querySelector('details#cost-checks')).not.toBeNull();
   });
@@ -82,5 +83,39 @@ describe('ChecksDisclosure', () => {
     d.open = false;
     fireEvent(d, new Event('toggle'));
     expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
+  // «Звідки це число» (client, 24.10): a share or a повна вартість has no
+  // column of its own, so its operand points at the cells of its row it is
+  // made of; the day's figures at the total row.
+  it('points each operand at the table cells it is made of', () => {
+    render(
+      <TraceScope>
+        <table>
+          <tbody>
+            <tr>
+              <td data-trace="p:Малина:baseKg">база</td>
+              <td data-trace="p:Малина:accrued">нараховано</td>
+              <td data-trace="p:Кизил:baseKg">база кизилу</td>
+              <td data-trace="total:shortfall">недостача</td>
+            </tr>
+          </tbody>
+        </table>
+        <ChecksDisclosure day={day} locale="uk" open onOpenChange={vi.fn()} />
+      </TraceScope>,
+    );
+    const share = screen.getAllByText((_, el) => norm(el?.textContent ?? null) === '1 914,70 ₴');
+    fireEvent.pointerEnter(share[share.length - 1]);
+    expect(screen.getByText('база')).toHaveAttribute('data-trace-hit', 'neutral');
+    expect(screen.getByText('нараховано')).not.toHaveAttribute('data-trace-hit');
+    expect(screen.getByText('база кизилу')).not.toHaveAttribute('data-trace-hit');
+
+    const full = screen.getAllByText((_, el) => norm(el?.textContent ?? null) === '114 693,71 ₴');
+    fireEvent.pointerEnter(full[full.length - 1]);
+    expect(screen.getByText('нараховано')).toHaveAttribute('data-trace-hit', 'leaf');
+
+    const shortfall = screen.getAllByText((_, el) => norm(el?.textContent ?? null) === '265,19 ₴');
+    fireEvent.pointerEnter(shortfall[shortfall.length - 1]);
+    expect(screen.getByText('недостача')).toHaveAttribute('data-trace-hit', 'amber');
   });
 });

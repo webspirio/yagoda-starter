@@ -78,6 +78,8 @@ export function toSupplierBalanceRowResponse(row: SupplierBalanceRow): SupplierB
 export interface SupplierBalanceListResponse extends Paginated<SupplierBalanceRowResponse> {
   oldest_open_date: string | null;
   total_owed: string;
+  /** Rows owed money (`debt > 0`) over EVERY visible row — «Постачальників із залишком». */
+  owed_count: number;
 }
 
 /** One line of «Відкриті залишки» — spec §4.3. Every amount a scale-2 string. */

@@ -1,7 +1,9 @@
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { AlertTriangle } from 'lucide-react';
-import { DashboardPage as DashboardTemplate, type StatItem } from '@/shared/ui/templates/dashboard-page';
+import { DashboardPage as DashboardTemplate } from '@/shared/ui/templates/dashboard-page';
+import { StatGrid } from '@/shared/ui/stat-grid';
+import { StatTile } from '@/shared/ui/stat-tile';
 import { SectionCard } from '@/shared/ui/section-card';
 import { Card } from '@/shared/ui/card';
 import { Badge } from '@/shared/ui/badge';
@@ -9,7 +11,7 @@ import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { isTruncated } from '@/shared/api';
-import { sum, cmp, formatUah } from '@/shared/lib/money';
+import { sum, formatUah } from '@/shared/lib/money';
 import { todayIso, formatWeekday, formatLongDate } from '@/shared/lib/date';
 import { useMeQuery } from '@/entities/user';
 import { usePointOptionsQuery } from '@/entities/collection-point';
@@ -17,15 +19,24 @@ import { useSupplierBalancesQuery, supplierName } from '@/entities/supplier';
 import { useStaleOpenShiftsQuery, type Shift } from '@/entities/shift';
 import { useNetworkToday, type PointToday } from '../api/useNetworkToday';
 
-/** Shift `Badge` variant for a point's row — open and "needs an explanation"
- *  read loud (`default`/`destructive`), closed is quiet (`secondary`). "No
- *  shift today" here is the emptiest `outline`. */
-function shiftBadgeVariant(status: Shift['status'] | 'none'): 'default' | 'secondary' | 'destructive' | 'outline' {
-  if (status === 'open') return 'default';
-  if (status === 'awaiting_explanation') return 'destructive';
-  if (status === 'closed') return 'secondary';
-  return 'outline';
+/** Shift `Badge` look for a point's row. Berry is the brand and the one CTA,
+ *  never a state (audit 2026-10-24 rule 1): an open shift is a `leaf`
+ *  outline, «needs an explanation» reads `destructive`, closed is quiet
+ *  (`secondary`), «no shift today» the emptiest `outline`. */
+function shiftBadge(status: Shift['status'] | 'none'): {
+  variant: 'secondary' | 'destructive' | 'outline';
+  className?: string;
+} {
+  if (status === 'open') return { variant: 'outline', className: 'border-[var(--leaf)] text-[var(--leaf)]' };
+  if (status === 'awaiting_explanation') return { variant: 'destructive' };
+  if (status === 'closed') return { variant: 'secondary' };
+  return { variant: 'outline' };
 }
+
+/** A money figure never breaks across lines (audit E10). */
+const money = (value: string, locale: string) => (
+  <span className="whitespace-nowrap">{formatUah(value, locale)}</span>
+);
 
 /**
  * «Зведення» — today across the network for the owner (shifts, receipts,
@@ -99,28 +110,46 @@ export function DashboardPage() {
   );
 
   const balanceRows = balances.data?.data ?? [];
-  const positiveDebt = sum(balanceRows.filter((b) => cmp(b.debt, '0') === 1).map((b) => b.debt));
-  const balancesTruncated = (balances.data?.total ?? 0) > balanceRows.length;
   const topBalances = balanceRows.slice(0, 5);
   const truncatedHint = network.anyTruncated ? t('dashboard.tiles.truncatedHint') : undefined;
 
-  const stats: StatItem[] = [
-    { label: t('dashboard.tiles.pointsOpen'), value: `${openCount} / ${activePoints.length}` },
-    { label: t('dashboard.tiles.receipts'), value: String(totalReceipts), hint: truncatedHint },
-    { label: t('dashboard.tiles.accrued'), value: formatUah(totalAccrued, i18n.language), hint: truncatedHint },
-    {
-      label: t('dashboard.tiles.paid'),
-      value: formatUah(totalPaid, i18n.language),
-      hint: truncatedHint,
-      tone: 'berry',
-    },
-    {
-      label: t('dashboard.tiles.balances'),
-      value: formatUah(positiveDebt, i18n.language),
-      hint: balancesTruncated ? t('dashboard.tiles.balancesHint') : undefined,
-      tone: 'amber',
-    },
-  ];
+  // ONE COLUMN BELOW 400 px (audit E10): two 26-px money figures side by side
+  // do not fit a phone. «Сума квитанцій», not «Нараховано» (E2): these are the
+  // receipts alone, while cost of day's «нараховано» adds the доплати. «Всього
+  // винні» is the SERVER's Σ over every row (#229, E7) — summing the first 100
+  // here read low on a long list. Plain money is neutral ink (rule 1).
+  const statsBand = (
+    <StatGrid columns={5} className="max-[399px]:grid-cols-1">
+      <StatTile
+        label={t('dashboard.tiles.pointsOpen')}
+        value={`${openCount} / ${activePoints.length}`}
+      />
+      <StatTile label={t('dashboard.tiles.receipts')} value={String(totalReceipts)} hint={truncatedHint} />
+      <StatTile
+        label={t('dashboard.tiles.accrued')}
+        value={money(totalAccrued, i18n.language)}
+        hint={truncatedHint}
+      />
+      <StatTile
+        label={t('dashboard.tiles.paid')}
+        value={money(totalPaid, i18n.language)}
+        hint={truncatedHint}
+      />
+      <StatTile
+        label={t('dashboard.tiles.balances')}
+        value={balances.data ? money(balances.data.total_owed, i18n.language) : '—'}
+        tone="amber"
+      />
+    </StatGrid>
+  );
+
+  // A point with no shift today has nothing to show but that fact — one line
+  // for all of them instead of a card each (audit E11).
+  const workingRows = network.rows.filter((r) => r.shift !== null);
+  const idleNames = network.rows
+    .filter((r) => r.shift === null)
+    .map((r) => pointName(r.pointId))
+    .filter(Boolean);
 
   const pointRow = (row: PointToday, withLinks: boolean) => {
     const status: Shift['status'] | 'none' = row.shift?.status ?? 'none';
@@ -129,7 +158,10 @@ export function DashboardPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="font-medium">{pointName(row.pointId)}</div>
-            <Badge variant={shiftBadgeVariant(status)} className="mt-1">
+            <Badge
+              variant={shiftBadge(status).variant}
+              className={`mt-1 ${shiftBadge(status).className ?? ''}`}
+            >
               {t(`dashboard.points.status.${status}`)}
             </Badge>
             {row.truncated ? (
@@ -144,11 +176,11 @@ export function DashboardPage() {
             </span>
             <span>
               {t('dashboard.tiles.accrued')}:{' '}
-              <span className="font-mono text-foreground">{formatUah(row.accrued, i18n.language)}</span>
+              <span className="font-mono text-foreground">{money(row.accrued, i18n.language)}</span>
             </span>
             <span>
               {t('dashboard.tiles.paid')}:{' '}
-              <span className="font-mono text-foreground">{formatUah(row.paid, i18n.language)}</span>
+              <span className="font-mono text-foreground">{money(row.paid, i18n.language)}</span>
             </span>
           </div>
           {withLinks ? (
@@ -156,7 +188,9 @@ export function DashboardPage() {
               <Button asChild variant="outline" size="sm">
                 <Link to={`/point-cash?point=${row.pointId}`}>{t('dashboard.points.pointCash')}</Link>
               </Button>
-              <Button asChild size="sm">
+              {/* A row-level repeated action: outline, never a column of
+                  berry buttons (rule 1). */}
+              <Button asChild variant="outline" size="sm">
                 <Link to={`/reception?point=${row.pointId}`}>{t('dashboard.points.reception')}</Link>
               </Button>
             </div>
@@ -251,7 +285,14 @@ export function DashboardPage() {
           {network.rows.length === 0 ? (
             <EmptyState title={t('dashboard.points.empty')} />
           ) : (
-            <div className="space-y-3">{network.rows.map((row) => pointRow(row, true))}</div>
+            <div className="space-y-3">
+              {workingRows.map((row) => pointRow(row, true))}
+              {idleNames.length > 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {t('dashboard.points.idle', { names: idleNames.join(', ') })}
+                </p>
+              ) : null}
+            </div>
           )}
         </SectionCard>
         <SectionCard eyebrow={t('dashboard.topBalances.title')}>
@@ -262,13 +303,13 @@ export function DashboardPage() {
               {topBalances.map((b) => (
                 <li key={b.supplier_id}>
                   <Link
-                    to={`/debts?point=${b.collection_point_id}`}
+                    to={`/suppliers/${b.supplier_id}`}
                     className="flex items-center justify-between gap-3 py-2.5 text-sm transition-colors hover:bg-muted/60"
                   >
                     <span className="min-w-0 truncate">
                       {supplierName(b)} · {pointName(b.collection_point_id)}
                     </span>
-                    <span className="ml-auto shrink-0 font-mono tabular-nums">
+                    <span className="ml-auto shrink-0 font-mono tabular-nums whitespace-nowrap">
                       {formatUah(b.debt, i18n.language)}
                     </span>
                   </Link>
@@ -306,8 +347,7 @@ export function DashboardPage() {
       })}
       title={t('dashboard.title')}
       description={t(isOwner ? 'dashboard.description' : 'dashboard.operatorDescription')}
-      stats={isOwner && !isPending && !isError ? stats : undefined}
-      statColumns={5}
+      statsSlot={isOwner && !isPending && !isError ? statsBand : undefined}
     >
       {body}
     </DashboardTemplate>

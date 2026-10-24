@@ -1,9 +1,18 @@
-import { useTranslation } from 'react-i18next';
+import type { ReactElement } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { ChevronRight } from 'lucide-react';
 import { Badge } from '@/shared/ui/badge';
 import { TableCell, TableRow } from '@/shared/ui/table';
-import { formatDecimal, formatKg, formatUah } from '@/shared/lib/money';
-import type { CostOfDayProduct } from '@/entities/cost-of-day';
+import {
+  formatDecimal,
+  formatKg,
+  formatUah,
+  formatUahPerKg,
+  unbreakable,
+} from '@/shared/lib/money';
+import type { CostOfDayProduct, CostSplit } from '@/entities/cost-of-day';
+import { DAY, TOTAL, UNWEIGHED, rowId } from './trace-ids';
+import { ShortfallTerm, Term } from './terms';
 
 /**
  * «Не доїхало» sits in the neutral weight group but is a недостача all the
@@ -29,14 +38,33 @@ export const COLUMNS = 10;
 
 /**
  * «у т.ч. доплати …» under a «Нараховано» figure — the part of it no receipt
- * shows (review C3). Nothing at all when the server says '0.00'.
+ * shows (review C3). Nothing at all when the server says '0.00'. A phrase, not
+ * a cell, so its figure wears its ₴ and is a traced operand: on one point's
+ * day it points at the «Доплати» chip above the table (the default `refs`).
  */
-function TopUpsNote({ value, locale }: { value: string; locale: string }) {
+export function TopUpsNote({
+  value,
+  locale,
+  refs = DAY.topUps,
+  hint,
+}: {
+  value: string;
+  locale: string;
+  refs?: string | readonly string[];
+  hint?: string;
+}) {
   const { t } = useTranslation();
   if (value === '0.00') return null;
   return (
     <div className="text-xs font-normal text-muted-foreground">
-      {t('costOfDay.table.topUps', { amount: formatDecimal(value, locale) })}
+      <Trans
+        t={t}
+        i18nKey="costOfDay.table.topUps"
+        values={{ amount: unbreakable(formatUah(value, locale)) }}
+        components={{
+          amount: <Term refs={refs} hint={hint ?? t('costOfDay.trace.topUps')} />,
+        }}
+      />
     </div>
   );
 }
@@ -86,18 +114,28 @@ export function ShortfallValue({
  *
  * Opened, the row shows its own calculator chain (review C4) — every operand
  * a figure printed in the row or the day's halves — then its grades.
+ *
+ * The per-kg halves are the product's own fields (spec 2026-10-24 §2.1): the
+ * day's two halves under `weight`, this row's share ÷ its base kilograms under
+ * a split by money. There the chain also prints each share IN HRYVNIAS — «витрати
+ * × нараховано ÷ нараховано дня ≈ частка» — because the day's two-decimal
+ * percentage cannot reproduce an `allocate` share on a calculator; the «≈»
+ * stands for that largest-remainder kopiyka.
  */
 export function CostTableRow({
   product: p,
-  shortfallPerKg,
-  expensesPerKg,
+  split,
+  day,
   open,
   onToggle,
   locale,
 }: {
   product: CostOfDayProduct;
-  shortfallPerKg: string | null;
-  expensesPerKg: string | null;
+  /** The split the figures were built with (`split_applied`). */
+  split: CostSplit;
+  /** The day's totals a share is cut from — the «Усього» row's нараховано
+   *  and недостача, and the expenses strip's total. */
+  day: { accrued: string | null; shortfall: string; expenses: string };
   open: boolean;
   onToggle: () => void;
   locale: string;
@@ -105,6 +143,81 @@ export function CostTableRow({
   const { t } = useTranslation();
   const dash = (v: string | null, f: (s: string) => string) => (v === null ? '—' : f(v));
   const dec = (s: string) => formatDecimal(s, locale);
+  // The chain's operands carry their units — ₴, кг, ₴/кг — and each stays on
+  // one line when the chain wraps (2026-10-24: «Завжди показуй одиниці»).
+  const uah = (s: string) => unbreakable(formatUah(s, locale));
+  const kg = (s: string) => unbreakable(formatKg(s, locale));
+  const perKg = (s: string) => unbreakable(formatUahPerKg(s, locale));
+  // Every operand of the chain points at the cell of THIS row it was read
+  // from (`shared/ui/trace`); the hint names that cell in words.
+  const id = (field: Parameters<typeof rowId>[1]) => rowId(p.product_id, field);
+  const cell = (column: string) => t('costOfDay.trace.cell', { column, row: p.product_name });
+  const col = {
+    point: t('costOfDay.table.point'),
+    notArrived: t('costOfDay.table.notArrived'),
+    accrued: t('costOfDay.table.accrued'),
+    price: t('costOfDay.table.priceWas'),
+    own: t('costOfDay.table.ownShortfall'),
+    day: t(split === 'own' ? 'costOfDay.table.ownShortfallPerKg' : 'costOfDay.table.dayShortfall'),
+    expenses: `${t('costOfDay.table.groupExpenses')} · ${t('costOfDay.table.expensesPerKg')}`,
+    cost: t('costOfDay.table.cost'),
+  };
+  // A product left out of the total is one of the cells the «не перезважено»
+  // line under the table sums.
+  const unweighed = (own: string, total: string) => (p.complete ? own : `${own} ${total}`);
+  // Under `weight` the day's per-kg halves repeat down their column; the «Як
+  // читати» line points at the whole column, the row's chain at this row's
+  // cell. Under a split by money each cell is the row's own.
+  const perDay = (own: string, dayId: string) =>
+    p.complete && split === 'weight' ? `${own} ${dayId}` : own;
+  const shortfallPerKg = p.shortfall_per_kg;
+  const expensesPerKg = p.expenses_per_kg;
+  const totalCell = (column: string) =>
+    t('costOfDay.trace.cell', { column, row: t('costOfDay.table.total') });
+  const shareHint = split === 'own' ? 'costOfDay.trace.shareOwn' : 'costOfDay.trace.shareValue';
+  // A share's chain, «total × нараховано ÷ нараховано дня ≈ share ÷ база = ₴/кг».
+  const shareChain = (
+    key: 'costOfDay.chain.shortfallShare' | 'costOfDay.chain.expensesShare',
+    total: ReactElement,
+    totalValue: string,
+    share: string,
+    perKgValue: string,
+    perKgTerm: ReactElement,
+  ) => (
+    <Trans
+      t={t}
+      i18nKey={key}
+      values={{
+        total: uah(totalValue),
+        accrued: uah(p.accrued),
+        dayAccrued: uah(day.accrued as string),
+        share: uah(share),
+        kg: kg(p.reweigh_net_kg as string),
+        perKg: perKg(perKgValue),
+      }}
+      components={{
+        total,
+        accrued: <Term refs={id('accrued')} tone="sky" hint={cell(col.accrued)} />,
+        dayAccrued: <Term refs={TOTAL.accrued} tone="sky" hint={totalCell(col.accrued)} />,
+        share: (
+          <Term
+            refs={[id('accrued'), TOTAL.accrued]}
+            hint={t(shareHint, { row: p.product_name })}
+          />
+        ),
+        kg: <Term refs={id('baseKg')} hint={cell(t('costOfDay.table.base'))} />,
+        perKg: perKgTerm,
+      }}
+    />
+  );
+  const byMoney =
+    split !== 'weight' &&
+    day.accrued !== null &&
+    p.reweigh_net_kg !== null &&
+    p.shortfall_share !== null &&
+    p.expenses_share !== null &&
+    shortfallPerKg !== null &&
+    expensesPerKg !== null;
 
   return (
     <>
@@ -128,26 +241,49 @@ export function CostTableRow({
             </Badge>
           )}
         </TableCell>
-        <TableCell className={NUM}>{dec(p.intake_net_kg)}</TableCell>
-        <TableCell className={NUM}>{dash(p.reweigh_net_kg, dec)}</TableCell>
-        <TableCell className={NUM} data-group="shortfall-kg">
+        <TableCell className={NUM} data-trace={unweighed(id('intakeKg'), UNWEIGHED.intakeKg)}>
+          {dec(p.intake_net_kg)}
+        </TableCell>
+        <TableCell className={NUM} data-trace={id('baseKg')}>
+          {dash(p.reweigh_net_kg, dec)}
+        </TableCell>
+        <TableCell className={NUM} data-group="shortfall-kg" data-trace={id('shortKg')}>
           <ShortfallValue value={p.complete ? p.shortfall_kg : null} minus locale={locale} />
         </TableCell>
-        <TableCell className={`${NUM} ${SKY}`}>
-          {formatUah(p.accrued, locale)}
+        <TableCell
+          className={`${NUM} ${SKY}`}
+          data-trace={unweighed(id('accrued'), UNWEIGHED.accrued)}
+        >
+          {dec(p.accrued)}
           <TopUpsNote value={p.top_ups} locale={locale} />
         </TableCell>
-        <TableCell className={`${NUM} ${SKY} text-[var(--sky)]`}>{dec(p.price_was)}</TableCell>
-        <TableCell className={`${NUM} ${AMBER}`} data-group="shortfall">
+        <TableCell className={`${NUM} ${SKY} text-[var(--sky)]`} data-trace={id('price')}>
+          {dec(p.price_was)}
+        </TableCell>
+        <TableCell
+          className={`${NUM} ${AMBER}`}
+          data-group="shortfall"
+          data-trace={id('shortfall')}
+        >
           <ShortfallValue value={p.complete ? p.shortfall : null} minus locale={locale} />
         </TableCell>
-        <TableCell className={`${NUM} ${AMBER}`} data-group="shortfall">
+        <TableCell
+          className={`${NUM} ${AMBER}`}
+          data-group="shortfall"
+          data-trace={perDay(id('shortfallPerKg'), DAY.shortfallPerKg)}
+        >
           <ShortfallValue value={p.complete ? shortfallPerKg : null} locale={locale} />
         </TableCell>
-        <TableCell className={`${NUM} ${PLUM}`}>
+        <TableCell
+          className={`${NUM} ${PLUM}`}
+          data-trace={perDay(id('expensesPerKg'), DAY.expensesPerKg)}
+        >
           {p.complete ? dash(expensesPerKg, dec) : '—'}
         </TableCell>
-        <TableCell className={`${NUM} ${LEAF} text-base font-bold text-[var(--leaf)]`}>
+        <TableCell
+          className={`${NUM} ${LEAF} text-base font-bold text-[var(--leaf)]`}
+          data-trace={id('cost')}
+        >
           {dash(p.price_cost, dec)}
         </TableCell>
       </TableRow>
@@ -157,31 +293,103 @@ export function CostTableRow({
           <TableCell colSpan={COLUMNS} className="!pl-9 text-xs whitespace-normal">
             <ul data-chain className="flex flex-wrap gap-x-6 gap-y-1 font-mono tabular-nums">
               <li>
-                {t('costOfDay.chain.price', {
-                  accrued: dec(p.accrued),
-                  kg: dec(p.intake_net_kg),
-                  price: dec(p.price_was),
-                })}
+                <Trans
+                  t={t}
+                  i18nKey="costOfDay.chain.price"
+                  values={{
+                    accrued: uah(p.accrued),
+                    kg: kg(p.intake_net_kg),
+                    price: perKg(p.price_was),
+                  }}
+                  components={{
+                    accrued: <Term refs={id('accrued')} tone="sky" hint={cell(col.accrued)} />,
+                    kg: <Term refs={id('intakeKg')} hint={cell(col.point)} />,
+                    price: <Term refs={id('price')} tone="sky" hint={cell(col.price)} />,
+                  }}
+                />
               </li>
               {/* Only a weighed, non-zero недостача has a line: a zero is
                   already the muted 0,00 in the row. */}
               {p.complete && p.shortfall_kg !== '0.00' ? (
                 <li data-group="shortfall" className="text-[var(--amber)]">
-                  {t('costOfDay.chain.shortfall', {
-                    kg: formatKg(p.shortfall_kg, locale),
-                    price: dec(p.price_was),
-                    amount: formatUah(p.shortfall, locale),
-                  })}
+                  <Trans
+                    t={t}
+                    i18nKey="costOfDay.chain.shortfall"
+                    values={{
+                      kg: kg(p.shortfall_kg),
+                      price: perKg(p.price_was),
+                      amount: uah(p.shortfall),
+                    }}
+                    components={{
+                      kg: <Term refs={id('shortKg')} tone="amber" hint={cell(col.notArrived)} />,
+                      price: <Term refs={id('price')} tone="sky" hint={cell(col.price)} />,
+                      amount: <Term refs={id('shortfall')} tone="amber" hint={cell(col.own)} />,
+                    }}
+                  />
+                </li>
+              ) : null}
+              {byMoney && split === 'value' ? (
+                <li data-group="shortfall" className="text-[var(--amber)]">
+                  {shareChain(
+                    'costOfDay.chain.shortfallShare',
+                    <ShortfallTerm refs={TOTAL.shortfall} hint={totalCell(col.own)} />,
+                    day.shortfall,
+                    p.shortfall_share as string,
+                    shortfallPerKg as string,
+                    <ShortfallTerm refs={id('shortfallPerKg')} hint={cell(col.day)} />,
+                  )}
+                </li>
+              ) : null}
+              {byMoney && split === 'own' ? (
+                <li data-group="shortfall" className="text-[var(--amber)]">
+                  <Trans
+                    t={t}
+                    i18nKey="costOfDay.chain.shortfallOwn"
+                    values={{
+                      amount: uah(p.shortfall),
+                      kg: kg(p.reweigh_net_kg as string),
+                      perKg: perKg(shortfallPerKg as string),
+                    }}
+                    components={{
+                      amount: <ShortfallTerm refs={id('shortfall')} hint={cell(col.own)} />,
+                      kg: <Term refs={id('baseKg')} hint={cell(t('costOfDay.table.base'))} />,
+                      perKg: <ShortfallTerm refs={id('shortfallPerKg')} hint={cell(col.day)} />,
+                    }}
+                  />
+                </li>
+              ) : null}
+              {byMoney ? (
+                <li className="text-[var(--plum)]">
+                  {shareChain(
+                    'costOfDay.chain.expensesShare',
+                    <Term refs={DAY.expenses} tone="plum" hint={t('costOfDay.trace.expenses')} />,
+                    day.expenses,
+                    p.expenses_share as string,
+                    expensesPerKg as string,
+                    <Term refs={id('expensesPerKg')} tone="plum" hint={cell(col.expenses)} />,
+                  )}
                 </li>
               ) : null}
               {p.price_cost !== null && shortfallPerKg !== null && expensesPerKg !== null ? (
                 <li>
-                  {t('costOfDay.chain.cost', {
-                    price: dec(p.price_was),
-                    shortfall: dec(shortfallPerKg),
-                    expenses: dec(expensesPerKg),
-                    cost: dec(p.price_cost),
-                  })}
+                  <Trans
+                    t={t}
+                    i18nKey="costOfDay.chain.cost"
+                    values={{
+                      price: perKg(p.price_was),
+                      shortfall: perKg(shortfallPerKg),
+                      expenses: perKg(expensesPerKg),
+                      cost: perKg(p.price_cost),
+                    }}
+                    components={{
+                      price: <Term refs={id('price')} tone="sky" hint={cell(col.price)} />,
+                      shortfall: <ShortfallTerm refs={id('shortfallPerKg')} hint={cell(col.day)} />,
+                      expenses: (
+                        <Term refs={id('expensesPerKg')} tone="plum" hint={cell(col.expenses)} />
+                      ),
+                      cost: <Term refs={id('cost')} tone="leaf" hint={cell(col.cost)} />,
+                    }}
+                  />
                 </li>
               ) : null}
             </ul>
@@ -199,7 +407,7 @@ export function CostTableRow({
               <TableCell className={NUM}>{dash(g.reweigh_net_kg, dec)}</TableCell>
               <TableCell data-group="shortfall-kg" />
               <TableCell className={`${NUM} ${SKY}`}>
-                {formatUah(g.accrued, locale)}
+                {dec(g.accrued)}
                 <TopUpsNote value={g.top_ups} locale={locale} />
               </TableCell>
               <TableCell className={`${NUM} ${SKY}`}>{dec(g.price_was)}</TableCell>

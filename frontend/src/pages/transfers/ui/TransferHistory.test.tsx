@@ -58,7 +58,7 @@ describe('TransferHistory', () => {
     expect(screen.getByText('Accepted')).toBeInTheDocument();
   });
 
-  it('shows «Resolved», not «Doesn\'t match», for a dispute the owner already settled', () => {
+  it("shows «Resolved», not «Doesn't match», for a dispute the owner already settled", () => {
     // `resolve()` never touches `status` (transfers.service.ts) — this is
     // the one place the FULL record is available to tell the two apart
     // (fix round 1, finding 4).
@@ -74,7 +74,7 @@ describe('TransferHistory', () => {
     expect(screen.queryByText("Doesn't match")).toBeNull();
   });
 
-  it('still shows «Doesn\'t match» for a dispute nobody has resolved yet', () => {
+  it("still shows «Doesn't match» for a dispute nobody has resolved yet", () => {
     render(
       <TransferHistory
         transfers={[transfer({ status: 'disputed', resolved_at: null })]}
@@ -154,18 +154,23 @@ describe('TransferHistory', () => {
       expect(screen.getAllByRole('button', { expanded: false })).toHaveLength(1);
     });
 
-    it('shows an open dispute\'s details and its own «Resolve»', async () => {
+    it("shows an open dispute's details and its own «Resolve»", async () => {
       const user = userEvent.setup();
       const onResolve = vi.fn();
       render(
-        <TransferHistory transfers={[open]} pointName={() => 'Shypynky'} onVoid={noop} onResolve={onResolve} />,
+        <TransferHistory
+          transfers={[open]}
+          pointName={() => 'Shypynky'}
+          onVoid={noop}
+          onResolve={onResolve}
+        />,
       );
 
       await user.click(screen.getByRole('button', { name: "Doesn't match" }));
       const item = within(screen.getByRole('list')).getByRole('listitem');
       expect(item).toHaveTextContent('450.00 ₴');
       expect(item).toHaveTextContent('Порахували менше');
-      expect(item).toHaveTextContent('Crates: sent 20 · counted 18 · difference 2');
+      expect(item).toHaveTextContent('Crates: sent 20 cr. · counted 18 cr. · difference 2 cr.');
 
       await user.click(within(item).getByRole('button', { name: 'Resolve' }));
       expect(onResolve).toHaveBeenCalledWith(open);
@@ -175,7 +180,12 @@ describe('TransferHistory', () => {
       const user = userEvent.setup();
       vi.stubEnv('TZ', 'UTC');
       render(
-        <TransferHistory transfers={[settled]} pointName={() => 'Shypynky'} onVoid={noop} onResolve={noop} />,
+        <TransferHistory
+          transfers={[settled]}
+          pointName={() => 'Shypynky'}
+          onVoid={noop}
+          onResolve={noop}
+        />,
       );
 
       await user.click(screen.getByRole('button', { name: 'Resolved' }));
@@ -201,7 +211,11 @@ describe('TransferHistory', () => {
     it('does not make a plain row clickable', async () => {
       const user = userEvent.setup();
       render(
-        <TransferHistory transfers={[transfer({ status: 'sent' })]} pointName={() => 'Shypynky'} onVoid={noop} />,
+        <TransferHistory
+          transfers={[transfer({ status: 'sent' })]}
+          pointName={() => 'Shypynky'}
+          onVoid={noop}
+        />,
       );
       await user.click(screen.getByText('Shypynky'));
       expect(screen.queryByRole('list')).toBeNull();

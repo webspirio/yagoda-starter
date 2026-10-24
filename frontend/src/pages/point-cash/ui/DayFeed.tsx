@@ -12,6 +12,18 @@ import { ReceiptVoidButton } from '@/widgets/receipt';
 import type { DayFeedRow } from '../model/useDayDocuments';
 
 /**
+ * Which of «Звірка каси»'s figures a row's amount is part of — the `data-trace`
+ * source its terms light (`DayLedger`). A voided receipt is in none of them.
+ * A voided payout is lit by «анульовані» even when its cash already came back:
+ * the feed cannot tell the two apart, the ledger's own row can.
+ */
+function feedTrace(row: DayFeedRow): string | undefined {
+  if (row.kind === 'intake') return row.voided ? undefined : 'feed:intake';
+  if (row.voided) return 'feed:voidedPayout';
+  return row.standalonePayout ? 'feed:withoutBerry' : 'feed:atReception';
+}
+
+/**
  * «Документи дня» — every receipt and payout the shift on screen wrote, newest
  * first (#221: lifted from «Каса за день»). An intake row opens its receipt
  * and, when `canVoidIntake` allows, offers «Анулювати» beside it; a standalone
@@ -72,68 +84,89 @@ export function DayFeed({
   ) : feed.length === 0 ? (
     <EmptyState title={t('day.feed.empty')} />
   ) : (
-    <ul className="divide-y divide-border">
+    // C13 — ONE grid for the whole list: the row and its action column are
+    // subgrid tracks, so every amount ends on the same line whether or not
+    // the row carries «Анулювати», and the button never sits over a figure.
+    // Below `sm` each row is a two-line card: time · kind · code, then the
+    // supplier, with the amount on the right of both.
+    <ul className="grid grid-cols-[minmax(0,1fr)_auto] divide-y divide-border">
       {feed.map((row) => {
         const rowContent = (
           <>
-            {/* Local wall clock, not the UTC slice of created_at — the operator
-                reads this against the clock on their own wall. */}
-            <span className="font-mono text-xs text-muted-foreground">
-              {new Date(row.at).toLocaleTimeString(i18n.language, {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5 sm:flex-row sm:items-center sm:gap-3">
+              <span className="flex items-center gap-3">
+                {/* Local wall clock, not the UTC slice of created_at — the
+                    operator reads this against the clock on their own wall. */}
+                <span className="font-mono text-xs text-muted-foreground">
+                  {new Date(row.at).toLocaleTimeString(i18n.language, {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </span>
+                <Badge variant={row.kind === 'intake' ? 'secondary' : 'outline'}>
+                  {t(`day.feed.${row.kind}`)}
+                </Badge>
+                <span className="font-mono">{row.code}</span>
+              </span>
+              <span className="flex min-w-0 flex-1 items-center gap-2">
+                <span className="min-w-0 truncate">
+                  {supplierNameById.get(row.supplierId) ?? '—'}
+                </span>
+                {row.voided ? (
+                  <span className="shrink-0 text-xs">{t('day.feed.voided')}</span>
+                ) : null}
+              </span>
             </span>
-            <Badge variant={row.kind === 'intake' ? 'secondary' : 'outline'}>
-              {t(`day.feed.${row.kind}`)}
-            </Badge>
-            <span className="font-mono">{row.code}</span>
-            <span className="min-w-0 flex-1 truncate">
-              {supplierNameById.get(row.supplierId) ?? '—'}
-            </span>
-            {row.voided ? <span className="text-xs">{t('day.feed.voided')}</span> : null}
-            <span className="ml-auto font-mono tabular-nums">
+            <span
+              data-trace={feedTrace(row)}
+              className="shrink-0 whitespace-nowrap font-mono tabular-nums"
+            >
               {formatUah(row.amount, i18n.language)}
             </span>
           </>
         );
         const rowClassName = cn(
-          'flex items-center gap-3 text-sm',
+          'flex min-w-0 items-center gap-3 text-sm',
           row.voided && 'text-muted-foreground line-through',
         );
 
         return (
-          <li key={`${row.kind}-${row.id}`} className="py-2.5">
+          <li
+            key={`${row.kind}-${row.id}`}
+            className="col-span-2 grid grid-cols-subgrid items-center gap-x-1 py-2.5"
+          >
             {row.intake ? (
               // The void action is a SIBLING of the row button, never nested in it.
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => onOpenReceipt(row.id)}
-                  className={cn(rowClassName, 'min-w-0 flex-1 text-left')}
-                >
-                  {rowContent}
-                </button>
-                {me && canVoidIntake(me, row.intake) ? (
-                  <ReceiptVoidButton
-                    code={row.code}
-                    onClick={() => onOpenReceipt(row.id, { void: true })}
-                  />
-                ) : null}
-              </div>
+              <button
+                type="button"
+                onClick={() => onOpenReceipt(row.id)}
+                className={cn(rowClassName, 'text-left')}
+              >
+                {rowContent}
+              </button>
             ) : row.standalonePayout ? (
               <button
                 type="button"
                 onClick={() => onOpenPayoutReceipt(row.id)}
-                className={cn(rowClassName, 'w-full text-left')}
+                className={cn(rowClassName, 'text-left')}
               >
                 {rowContent}
               </button>
             ) : (
               <div className={rowClassName}>{rowContent}</div>
             )}
+            {/* The action track — empty on rows with nothing to void, so the
+                amounts above and below still line up. */}
+            <div className="flex justify-end">
+              {row.intake && me && canVoidIntake(me, row.intake) ? (
+                <ReceiptVoidButton
+                  code={row.code}
+                  onClick={() => onOpenReceipt(row.id, { void: true })}
+                />
+              ) : null}
+            </div>
             {row.voided && row.reason ? (
-              <p className="mt-1 text-xs text-muted-foreground">
+              <p className="col-span-2 mt-1 text-xs text-muted-foreground">
                 {t('day.feed.voidedReason', { reason: row.reason })}
               </p>
             ) : null}

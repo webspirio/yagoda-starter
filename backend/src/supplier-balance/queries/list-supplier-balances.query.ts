@@ -55,15 +55,23 @@ export class ListSupplierBalancesQuery {
 
     // `::int` so the driver hands back a number: `COUNT` is `bigint`, which
     // `pg` returns as a string, and `Number()` is banned in this module.
-    // Both tiles are over rows OWED money only: a supplier in credit must never shrink the total
-    // owed to suppliers who are actually waiting on cash. `0.00`, not `0`, keeps the sum scale 2.
-    const [{ total, oldest_open_date, total_owed }] = (await manager.query(
+    // The three tiles are over rows OWED money only: a supplier in credit must never shrink the
+    // total owed to suppliers who are actually waiting on cash, nor count among «Постачальників із
+    // залишком» (audit D9) — `total` stays the pager's row count, credits included. `0.00`, not
+    // `0`, keeps the sum scale 2.
+    const [{ total, oldest_open_date, total_owed, owed_count }] = (await manager.query(
       `SELECT COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE b.debt > 0)::int AS owed_count,
               (MIN(b.oldest_open_date) FILTER (WHERE b.debt > 0))::text AS oldest_open_date,
               COALESCE(SUM(b.debt) FILTER (WHERE b.debt > 0), 0.00)::text AS total_owed
          FROM (${scoped}) b WHERE ${visible}`,
       [pointId, query.include_zero],
-    )) as { total: number; oldest_open_date: string | null; total_owed: string }[];
+    )) as {
+      total: number;
+      oldest_open_date: string | null;
+      total_owed: string;
+      owed_count: number;
+    }[];
 
     return {
       data: rows.map(toSupplierBalanceRowResponse),
@@ -72,6 +80,7 @@ export class ListSupplierBalancesQuery {
       limit: query.limit,
       oldest_open_date,
       total_owed,
+      owed_count,
     };
   }
 }

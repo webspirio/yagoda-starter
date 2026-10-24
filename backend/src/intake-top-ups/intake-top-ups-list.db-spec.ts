@@ -59,8 +59,8 @@ describe('ListIntakeTopUpsQuery.list (Postgres)', () => {
       [pointId, ownerId],
     );
     const [intake] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '100.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '100.00', '0.00', $4) RETURNING id`,
       [`${label}-IN-${run}`, shift.id, supplier.id, ownerId],
     );
     const [topUp] = await ds.query(
@@ -89,8 +89,8 @@ describe('ListIntakeTopUpsQuery.list (Postgres)', () => {
     };
     const intake = async (supplierId: string, label: string): Promise<string> => {
       const [row] = await ds.query(
-        `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-         VALUES ($1, $2, $3, '100.00', $4) RETURNING id`,
+        `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+         VALUES ($1, $2, $3, '100.00', '0.00', $4) RETURNING id`,
         [`${label}-IN-${run}`, shift.id, supplierId, ownerId],
       );
       return row.id;
@@ -190,6 +190,27 @@ describe('ListIntakeTopUpsQuery.list (Postgres)', () => {
       limit: 50,
     } as never);
     expect(page.data).toHaveLength(0);
+  });
+
+  // Review 2026-10-24 #7: «Додано: …» / «Анульовано … · …» — one batched users read per page.
+  it('names the author and, once voided, the voider (D-8)', async () => {
+    const page = await service.list(operatorAt(pointA), {
+      include_voided: true,
+      page: 1,
+      limit: 50,
+    } as never);
+    const [row] = page.data;
+    expect(row.id).toBe(topUpOnA);
+    expect(row.created_by_name).toBe(`Власник Список-${run}`);
+    expect(row.voided_by_name).toBe(`Власник Список-${run}`);
+
+    const live = await service.list(operatorAt(pointB), {
+      include_voided: true,
+      page: 1,
+      limit: 50,
+    } as never);
+    expect(live.data[0].created_by_name).toBe(`Власник Список-${run}`);
+    expect(live.data[0].voided_by_name).toBeNull();
   });
 
   it('include_voided=false does NOT hide a row whose PARENT is voided', async () => {

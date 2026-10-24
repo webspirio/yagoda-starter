@@ -21,6 +21,10 @@ export interface CreateTopUpInput {
  * is the entire reason the row exists — `Σ intakes + Σ top-ups − Σ payouts`;
  * `intakes` because the parent receipt's `open_amount` counts its top-ups.
  * `payouts` are untouched: a top-up has no shift.
+ *
+ * `costOfDay` and `reweighs` too (review 2026-10-24 I1): the top-up lands in
+ * «Нараховано» and the purchase price of its RECEIPT's day, and in §8's
+ * shortfall price — both cached long enough to show the old figure otherwise.
  */
 export function useCreateTopUpMutation() {
   const qc = useQueryClient();
@@ -33,6 +37,8 @@ export function useCreateTopUpMutation() {
       qc.invalidateQueries({ queryKey: queryKeys.intakeTopUps });
       qc.invalidateQueries({ queryKey: queryKeys.supplierBalances });
       qc.invalidateQueries({ queryKey: queryKeys.intakes });
+      qc.invalidateQueries({ queryKey: queryKeys.costOfDay });
+      qc.invalidateQueries({ queryKey: queryKeys.reweighs });
     },
   });
 }

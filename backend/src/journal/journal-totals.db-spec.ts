@@ -75,8 +75,8 @@ describe('JournalTotalsQuery.totals (Postgres)', () => {
     `CASE WHEN ${flag} THEN now() END, CASE WHEN ${flag} THEN ${user}::uuid END, CASE WHEN ${flag} THEN 'test' END`;
   const insertIntake = async (point: string, date: string, supplier: string, amount: string, voided = false) => {
     await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id, ${voidCols})
-       VALUES ($1, $2, $3, $4, $5, ${voidVals('$6', '$5')})`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id, ${voidCols})
+       VALUES ($1, $2, $3, $4, '0.00', $5, ${voidVals('$6', '$5')})`,
       [`IN-${run}-${++seq}`, await shiftOn(point, date), supplier, amount, userId, voided],
     );
   };

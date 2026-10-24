@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { i18n } from '@/shared/lib/i18n';
+import { getStoredCostSplit } from '@/shared/lib/split-preference';
 import { CostOfDayPage } from './CostOfDayPage';
 
 // Every assertion below is the Ukrainian copy the page's own t() calls
@@ -17,25 +18,62 @@ afterAll(async () => {
   await i18n.changeLanguage('en');
 });
 
-const { workingPointMock, pointsMock, shiftMock, dayMock, expensesMock, setDateMock } = vi.hoisted(
-  () => ({
-    workingPointMock: vi.fn(),
-    pointsMock: vi.fn(),
-    shiftMock: vi.fn(),
-    dayMock: vi.fn(),
-    expensesMock: vi.fn(),
-    setDateMock: vi.fn(),
-  }),
-);
+const {
+  workingPointMock,
+  pointsMock,
+  shiftMock,
+  dayMock,
+  expensesMock,
+  networkMock,
+  pointParamMock,
+  setPointParamMock,
+  setDateMock,
+  splitParamMock,
+  setSplitParamMock,
+  daySplitMock,
+  networkSplitMock,
+} = vi.hoisted(() => ({
+  workingPointMock: vi.fn(),
+  pointsMock: vi.fn(),
+  shiftMock: vi.fn(),
+  dayMock: vi.fn(),
+  expensesMock: vi.fn(),
+  networkMock: vi.fn(),
+  pointParamMock: vi.fn(),
+  setPointParamMock: vi.fn(),
+  setDateMock: vi.fn(),
+  splitParamMock: vi.fn(),
+  setSplitParamMock: vi.fn(),
+  daySplitMock: vi.fn(),
+  networkSplitMock: vi.fn(),
+}));
 
 // `useUrlParam` reads react-router's search params, so without this stub the
 // page cannot mount outside a Router at all. `null` means «no ?date=», which
 // the page clamps to today — the date stepper is not what these tests drive.
-vi.mock('@/shared/lib/url-state', () => ({ useUrlParam: () => [null, setDateMock] }));
+// `?point=` is the raw param «Усі точки» lives in.
+vi.mock('@/shared/lib/url-state', () => ({
+  useUrlParam: (name: string) =>
+    name === 'point'
+      ? [pointParamMock(), setPointParamMock]
+      : name === 'split'
+        ? [splitParamMock(), setSplitParamMock]
+        : [null, setDateMock],
+}));
 vi.mock('@/features/point-scope', () => ({ useWorkingPoint: () => workingPointMock() }));
 vi.mock('@/entities/collection-point', () => ({ usePointOptionsQuery: () => pointsMock() }));
 vi.mock('@/entities/shift', () => ({ useShiftOnDateQuery: () => shiftMock() }));
-vi.mock('@/entities/cost-of-day', () => ({ useCostOfDayQuery: () => dayMock() }));
+vi.mock('@/entities/cost-of-day', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/cost-of-day')>()),
+  useCostOfDayQuery: (_shiftId: string | undefined, split: string) => {
+    daySplitMock(split);
+    return dayMock();
+  },
+  useNetworkCostOfDayQuery: (date: string | null, split: string) => {
+    networkSplitMock(split);
+    return networkMock(date);
+  },
+}));
 vi.mock('@/entities/day-expense', () => ({
   useDayExpensesQuery: () => expensesMock(),
   useCreateDayExpenseMutation: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -45,6 +83,10 @@ vi.mock('@/entities/day-expense', () => ({
 
 const day = {
   shift_id: 's1',
+  split: 'weight' as const,
+  split_applied: 'weight' as const,
+  expenses_pct: null,
+  shortfall_pct: null,
   closed_at: null,
   provisional: true,
   accrued: '131900.00',
@@ -84,8 +126,9 @@ const day = {
       basket_share: '5460.00',
       full_cost: '133460.00',
       price_was: '160.00',
+      shortfall_per_kg: '1.94',
+      expenses_per_kg: '4.45',
       price_cost: '166.39',
-      price_by_our_weight: '162.03',
       complete: true,
       grades: [],
     },
@@ -96,8 +139,55 @@ const ok = <T,>(data: T) => ({ data, isPending: false, isError: false });
 const pending = { data: undefined, isPending: true, isError: false };
 const failed = { data: undefined, isPending: false, isError: true };
 
+const network = {
+  date: '2026-10-22',
+  split: 'weight' as const,
+  points: [
+    {
+      point_id: 'p1',
+      point_name: 'Шипинки',
+      shift_id: 's1',
+      provisional: false,
+      expenses_amount: '3800.00',
+      weighed: true,
+    },
+    {
+      point_id: 'p2',
+      point_name: 'Гайове',
+      shift_id: 's2',
+      provisional: true,
+      expenses_amount: '1050.00',
+      weighed: true,
+    },
+  ],
+  provisional: true,
+  accrued: '160550.00',
+  expenses_amount: '4850.00',
+  expenses_weighed: '4850.00',
+  reweighed_kg: '1000.00',
+  shortfall_amount: '1600.00',
+  top_ups_total: '0.00',
+  weighed: {
+    intake_kg: '1010.00',
+    shortfall_kg: '10.00',
+    accrued: '160550.00',
+    shortfall: '1600.00',
+    shortfall_share: '1600.00',
+    expenses_share: '4850.00',
+    full_cost: '165400.00',
+  },
+  price_cost_avg: '165.40',
+  unweighed: { intake_kg: '0.00', accrued: '0.00' },
+  checks: { points_ok: true, total_ok: true },
+  products: [],
+};
+
 beforeEach(() => {
+  localStorage.clear();
+  splitParamMock.mockReturnValue(null);
   workingPointMock.mockReturnValue({ pointId: 'p1', canPick: true, setPointId: vi.fn() });
+  pointParamMock.mockReturnValue(null);
+  networkMock.mockReturnValue({ data: undefined, isPending: false, isError: false });
   pointsMock.mockReturnValue(ok([{ id: 'p1', name: 'Шипинки', kind: 'reception' }]));
   shiftMock.mockReturnValue(ok({ id: 's1', status: 'open' }));
   dayMock.mockReturnValue(ok(day));
@@ -141,6 +231,36 @@ describe('CostOfDayPage', () => {
     expect(table.compareDocumentPosition(checks) & before).toBeTruthy();
   });
 
+  // «Звідки це число» (client, 24.10): one trace scope spans the chips, the
+  // expenses strip, the table and the звірка, so an operand under the table
+  // lights a figure above it.
+  it('points the day formula’s витрати at the expenses strip and a доплата at its chip', () => {
+    dayMock.mockReturnValue(
+      ok({
+        ...day,
+        top_ups_total: '2000.00',
+        products: [{ ...day.products[0], top_ups: '2000.00' }],
+      }),
+    );
+    const { container } = render(<CostOfDayPage />);
+    const termOf = (root: Element, text: string) =>
+      Array.from(root.querySelectorAll<HTMLElement>('[data-slot="trace-term"]')).find(
+        (el) => (el.textContent ?? '').replace(/\s/g, ' ') === text,
+      ) as HTMLElement;
+
+    const formula = container.querySelector('[data-day-formula]') as HTMLElement;
+    fireEvent.pointerEnter(termOf(formula, '3 800,00 ₴'));
+    const stripTotal = container.querySelector('span[data-trace="day:expenses"]:not([data-slot])');
+    expect(stripTotal).toHaveTextContent('3 800,00 ₴');
+    expect(stripTotal).toHaveAttribute('data-trace-hit', 'plum');
+
+    fireEvent.pointerEnter(termOf(container, '2 000,00 ₴'));
+    const chip = container.querySelector('[data-slot="badge"][data-trace="day:topUps"]');
+    expect(chip).toHaveTextContent(/^Доплати:/);
+    expect(chip).toHaveAttribute('data-trace-hit', 'neutral');
+    expect(stripTotal).not.toHaveAttribute('data-trace-hit');
+  });
+
   it('opens the checks when they fail', () => {
     dayMock.mockReturnValue(ok({ ...day, checks: { shares_ok: true, total_ok: false } }));
     const { container } = render(<CostOfDayPage />);
@@ -163,6 +283,17 @@ describe('CostOfDayPage', () => {
     expect(container.querySelector('details#cost-checks')).toHaveTextContent('Частки товарів');
     expect(container.querySelectorAll('.print-only')).not.toHaveLength(0);
     expect(container.querySelector('p.print-only')).toHaveTextContent(/разом із доплатами/);
+  });
+
+  it('names the point and the date on paper only — the header already shows both on screen', () => {
+    const { container } = render(<CostOfDayPage />);
+    const sheet = container.querySelector('.printable') as HTMLElement;
+
+    expect(sheet.querySelector('.print-only')).toHaveTextContent(/Шипинки/);
+    const onScreen = Array.from(sheet.querySelectorAll('span')).filter(
+      (el) => el.textContent === 'Шипинки' && !el.closest('.print-only'),
+    );
+    expect(onScreen).toHaveLength(0);
   });
 
   it('marks an open shift as still moving', () => {
@@ -200,7 +331,7 @@ describe('CostOfDayPage', () => {
     dayMock.mockReturnValue(ok({ ...day, products: [] }));
     render(<CostOfDayPage />);
 
-    expect(screen.getByText('Цього дня на цьому пункті прийомки не було.')).toBeInTheDocument();
+    expect(screen.getByText('Цього дня на цій точці прийомки не було.')).toBeInTheDocument();
   });
 
   // The strip is the application's ONLY write path to `day_expenses`.
@@ -213,7 +344,7 @@ describe('CostOfDayPage', () => {
     dayMock.mockReturnValue(ok({ ...day, products: [] }));
     render(<CostOfDayPage />);
 
-    expect(screen.getByText('Цього дня на цьому пункті прийомки не було.')).toBeInTheDocument();
+    expect(screen.getByText('Цього дня на цій точці прийомки не було.')).toBeInTheDocument();
     expect(screen.getByText('Витрати дня')).toBeInTheDocument();
   });
 
@@ -262,5 +393,186 @@ describe('CostOfDayPage', () => {
     expect(screen.getByText('Витрати дня')).toBeInTheDocument();
     expect(container.querySelector('[data-awaiting]')).not.toBeNull();
     expect(container.querySelector('details#cost-checks')).toBeNull();
+  });
+
+  describe('«Усі точки»', () => {
+    it('is the picker’s first option, and picking it writes ?point=all without remembering it', async () => {
+      const setPointId = vi.fn();
+      workingPointMock.mockReturnValue({ pointId: 'p1', canPick: true, setPointId });
+      const user = userEvent.setup();
+      render(<CostOfDayPage />);
+
+      const picker = screen.getByRole('combobox', { name: 'Точка' });
+      expect(screen.getAllByRole('option')[0]).toHaveTextContent('Усі точки');
+
+      await user.selectOptions(picker, 'Усі точки');
+      expect(setPointParamMock).toHaveBeenCalledWith('all');
+      expect(setPointId).not.toHaveBeenCalled();
+    });
+
+    it('goes back to one point through the ordinary remembered pick', async () => {
+      const setPointId = vi.fn();
+      workingPointMock.mockReturnValue({ pointId: 'p1', canPick: true, setPointId });
+      pointParamMock.mockReturnValue('all');
+      networkMock.mockReturnValue(ok(network));
+      const user = userEvent.setup();
+      render(<CostOfDayPage />);
+
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Точка' }), 'Шипинки');
+      expect(setPointId).toHaveBeenCalledWith('p1');
+    });
+
+    it('reads the network for the page’s date, and nothing per point', () => {
+      pointParamMock.mockReturnValue('all');
+      networkMock.mockReturnValue(ok(network));
+      render(<CostOfDayPage />);
+
+      expect(networkMock).toHaveBeenLastCalledWith(expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
+      expect(screen.getByRole('combobox', { name: 'Точка' })).toHaveValue('all');
+    });
+
+    it('has no expense entry — only each point’s expenses, read back', () => {
+      pointParamMock.mockReturnValue('all');
+      networkMock.mockReturnValue(ok(network));
+      const { container } = render(<CostOfDayPage />);
+
+      expect(screen.queryByPlaceholderText('Підпис витрати')).not.toBeInTheDocument();
+      expect(container.querySelector('[data-network-expenses]')).toHaveTextContent(
+        /Шипинки 3\s800,00.*Гайове 1\s050,00.*разом 4\s850,00/,
+      );
+      expect(screen.getByText('Зміна ще відкрита: Гайове')).toBeInTheDocument();
+    });
+
+    it('drops «разом» when only one point entered expenses — audit E11', () => {
+      pointParamMock.mockReturnValue('all');
+      networkMock.mockReturnValue(
+        ok({
+          ...network,
+          points: [network.points[0], { ...network.points[1], expenses_amount: '0.00' }],
+          expenses_amount: '3800.00',
+        }),
+      );
+      const { container } = render(<CostOfDayPage />);
+
+      const line = container.querySelector('[data-network-expenses]');
+      expect(line).toHaveTextContent(/Витрати дня: Шипинки 3\s800,00/);
+      expect(line).not.toHaveTextContent('разом');
+    });
+
+    it('prints as «Усі точки»', () => {
+      pointParamMock.mockReturnValue('all');
+      networkMock.mockReturnValue(ok(network));
+      const { container } = render(<CostOfDayPage />);
+
+      expect(container.querySelector('.print-only')).toHaveTextContent(/Усі точки/);
+    });
+
+    it('says no point opened a shift that day', () => {
+      pointParamMock.mockReturnValue('all');
+      networkMock.mockReturnValue(ok({ ...network, points: [] }));
+      render(<CostOfDayPage />);
+
+      expect(screen.getByText(/жодна точка не відкривала зміну/)).toBeInTheDocument();
+    });
+
+    it('reports a failed network read as a failure', () => {
+      pointParamMock.mockReturnValue('all');
+      networkMock.mockReturnValue(failed);
+      render(<CostOfDayPage />);
+
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+
+    it('is not an operator’s: no picker, and ?point=all is ignored', () => {
+      workingPointMock.mockReturnValue({ pointId: 'p1', canPick: false, setPointId: vi.fn() });
+      pointParamMock.mockReturnValue('all');
+      render(<CostOfDayPage />);
+
+      expect(screen.queryByRole('combobox', { name: 'Точка' })).not.toBeInTheDocument();
+      expect(networkMock).toHaveBeenLastCalledWith(null);
+      expect(screen.getByText('Витрати дня')).toBeInTheDocument();
+    });
+  });
+});
+
+describe('CostOfDayPage — «Розподіл кошика» (spec 2026-10-24 §3.1)', () => {
+  it('offers three splits and starts by weight', () => {
+    render(<CostOfDayPage />);
+
+    const group = screen.getByRole('group', { name: 'Розподіл кошика' });
+    const options = within(group).getAllByRole('button');
+    expect(options.map((o) => o.textContent)).toEqual([
+      'По вазі',
+      'По сумі закупки',
+      'Своя недостача + % витрат',
+    ]);
+    expect(options.map((o) => o.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false']);
+    expect(daySplitMock).toHaveBeenLastCalledWith('weight');
+  });
+
+  it('writes the choice to the URL and remembers it', async () => {
+    const user = userEvent.setup();
+    render(<CostOfDayPage />);
+
+    await user.click(screen.getByRole('button', { name: 'По сумі закупки' }));
+
+    expect(setSplitParamMock).toHaveBeenCalledWith('value');
+    expect(getStoredCostSplit()).toBe('value');
+  });
+
+  it('asks the server for the split in the URL', () => {
+    splitParamMock.mockReturnValue('own');
+    render(<CostOfDayPage />);
+    expect(daySplitMock).toHaveBeenLastCalledWith('own');
+  });
+
+  it('keeps the split for «Усі точки»', () => {
+    splitParamMock.mockReturnValue('value');
+    pointParamMock.mockReturnValue('all');
+    render(<CostOfDayPage />);
+    expect(networkSplitMock).toHaveBeenLastCalledWith('value');
+  });
+
+  it('says so when a split by money fell back to weight', () => {
+    splitParamMock.mockReturnValue('value');
+    dayMock.mockReturnValue(ok({ ...day, split: 'value', split_applied: 'weight' }));
+    render(<CostOfDayPage />);
+    expect(screen.getByText('Нараховано 0 ₴ — розкладено по вазі')).toBeInTheDocument();
+  });
+
+  it('names the split on paper', () => {
+    splitParamMock.mockReturnValue('value');
+    const { container } = render(<CostOfDayPage />);
+    expect(container.querySelector('.printable .print-only')).toHaveTextContent(
+      /розподіл: по сумі закупки/,
+    );
+  });
+
+  it('marks the old split’s figures as busy while the new split loads, keeping the draft', async () => {
+    const user = userEvent.setup();
+    const { rerender, container } = render(<CostOfDayPage />);
+
+    await user.type(screen.getByPlaceholderText('Підпис витрати'), 'пальне');
+    await user.click(screen.getByRole('button', { name: 'По сумі закупки' }));
+    splitParamMock.mockReturnValue('value');
+    // `useCostOfDayQuery` keeps this shift's figures as a placeholder (its own test).
+    dayMock.mockReturnValue({ ...ok(day), isPlaceholderData: true });
+    rerender(<CostOfDayPage />);
+
+    expect(screen.getByPlaceholderText('Підпис витрати')).toHaveValue('пальне');
+    expect(container.querySelector('.printable')).toHaveAttribute('aria-busy', 'true');
+  });
+
+  it('keeps a half-typed expense when only the split changes', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<CostOfDayPage />);
+
+    await user.type(screen.getByPlaceholderText('Підпис витрати'), 'пальне');
+    await user.click(screen.getByRole('button', { name: 'Своя недостача + % витрат' }));
+    splitParamMock.mockReturnValue('own');
+    dayMock.mockReturnValue(ok({ ...day, split: 'own', split_applied: 'own' }));
+    rerender(<CostOfDayPage />);
+
+    expect(screen.getByPlaceholderText('Підпис витрати')).toHaveValue('пальне');
   });
 });

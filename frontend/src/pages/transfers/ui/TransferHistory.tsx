@@ -112,7 +112,10 @@ export function TransferHistory({
               {badge}
               <ChevronDown
                 aria-hidden="true"
-                className={cn('size-4 text-muted-foreground transition-transform', expanded ? undefined : '-rotate-90')}
+                className={cn(
+                  'size-4 text-muted-foreground transition-transform',
+                  expanded ? undefined : '-rotate-90',
+                )}
               />
             </button>
           );
@@ -152,7 +155,9 @@ export function TransferHistory({
           isDisputed(row) && openId === row.id ? (
             <DisputeList
               transfers={[row]}
-              label={t('transfers.dispute.listLabel', { point: pointName(row.collection_point_id) })}
+              label={t('transfers.dispute.listLabel', {
+                point: pointName(row.collection_point_id),
+              })}
               onResolve={onResolve}
             />
           ) : null

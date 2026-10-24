@@ -8,17 +8,7 @@ export interface LedgerIntake {
   voided_at: string | null;
 }
 
-/**
- * One line of `GET /payouts` the ledger cares about. Every payout in scope
- * counts, voided or not — the cash left the drawer and comes back only when a
- * human returns it (§9.3), which the server's `returns` term books.
- */
-export interface LedgerPayout {
-  business_date: string;
-  amount: string;
-}
-
-export type LedgerRowKey = 'accruedToday' | 'paidPast';
+type LedgerRowKey = 'accruedToday';
 
 export interface LedgerRow {
   key: LedgerRowKey;
@@ -33,16 +23,13 @@ export interface BuildLedgerInput {
   date: string;
   /**
    * The business date of the shift the total is made of — earlier than `date`
-   * for a shift left open since an earlier day (#114). Its own payouts are in
-   * the total, so they are not «past», and its receipts are what it accrued.
-   * Defaults to `date`.
+   * for a shift left open since an earlier day (#114): its receipts are what
+   * it accrued. Defaults to `date`.
    */
   shiftDate?: string;
   intakes: LedgerIntake[];
-  payouts: LedgerPayout[];
-  /** `total > data.length` on the fetched page (`PointCashPage` caps each read at 100). */
+  /** `total > data.length` on the fetched page (`PointCashPage` caps the read at 100). */
   intakesTruncated?: boolean;
-  payoutsTruncated?: boolean;
 }
 
 /**
@@ -57,17 +44,20 @@ export function shiftDateOf(breakdown: PointCashBreakdown | undefined, date: str
 }
 
 /**
- * The two INFORMATIONAL rows — berries accrued today and payouts of earlier
- * days. Neither moves today's cash, so neither is ever part of the total; the
- * rows that do come from `GET /point-cash/:pointId`'s `breakdown` (#73).
+ * The ONE informational row — berries accrued on the shift. It moves no cash,
+ * so it is never part of the total; the rows that do come from
+ * `GET /point-cash/:pointId`'s `breakdown` (#73).
+ *
+ * «Видано за минулі дні» used to sit beside it: every payout of every earlier
+ * day the capped page reached — a season-long running total that read like a
+ * figure of this day. Gone (audit 2026-10-24, C1): what the day paid down of
+ * old balances is «Звірка каси»'s to say.
  */
 export function buildLedger({
   date,
   shiftDate = date,
   intakes,
-  payouts,
   intakesTruncated = false,
-  payoutsTruncated = false,
 }: BuildLedgerInput): LedgerRow[] {
   const accruedToday = sum(
     intakes
@@ -76,10 +66,5 @@ export function buildLedger({
       )
       .map((i) => i.amount),
   );
-  const paidPast = sum(payouts.filter((p) => p.business_date < shiftDate).map((p) => p.amount));
-
-  return [
-    { key: 'accruedToday', value: accruedToday, truncated: intakesTruncated },
-    { key: 'paidPast', value: paidPast, truncated: payoutsTruncated },
-  ];
+  return [{ key: 'accruedToday', value: accruedToday, truncated: intakesTruncated }];
 }

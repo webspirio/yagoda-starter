@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { useForm, useWatch } from 'react-hook-form';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -14,13 +13,21 @@ import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
 import { SelectField } from '@/shared/ui/select-field';
 import { Button } from '@/shared/ui/button';
+import { TraceScope, TraceTerm } from '@/shared/ui/trace';
 import { toast } from '@/shared/ui/toast';
-import { cratesRules } from '@/shared/lib/money';
+import {
+  cratesRules,
+  formatCount,
+  formatUah,
+  isZero,
+  mulInt,
+  unbreakable,
+} from '@/shared/lib/money';
+import { cn } from '@/shared/lib/cn';
 import { toBannerError, type BannerError } from '@/shared/lib/api-error';
-import { ApiError } from '@/shared/api';
-import { queryKeys } from '@/shared/api/queryKeys';
 import { useSuppliersQuery, supplierName } from '@/entities/supplier';
 import { useCrateStandingQuery, type CrateIssuanceMode } from '@/entities/crate';
+import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { useIssueCratesMutation } from '../api/useIssueCrates';
 
 interface IssueFormValues {
@@ -39,9 +46,18 @@ interface IssueFormValues {
  * грошах» — and an operator who does not know which one they are choosing is
  * choosing whether the network is covered.
  *
+ * THE EMPTIES AT THE POINT ARE A HINT, NEVER A CAP. Since the 23.10.2026 call
+ * (§6.9) a point may hand out crates it does not have on paper: the minus is
+ * crates it owes people, who is owed goes in the operator's notebook, and the
+ * next transfer pays it off. So the dialog says where the point will land —
+ * amber below zero — and lets the issue through.
+ *
  * THE DEPOSIT PRICE IS NOT ENTERED HERE. It comes from whichever tare type is
  * marked as the crate, and the server reads it; a field would invite someone
- * to type a different number than the catalogue says.
+ * to type a different number than the catalogue says. The dialog SHOWS it —
+ * «Завдаток: 6 × 25,00 ₴ = 150,00 ₴», from the same catalogue row (audit
+ * 2026-10-24, F5) — and the toast prints what the server actually took
+ * (`deposit_taken`), so a price changed in between never goes unnoticed.
  */
 export function IssueCratesDialog({
   pointId,
@@ -54,14 +70,17 @@ export function IssueCratesDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const { t } = useTranslation();
-  const qc = useQueryClient();
+  const { t, i18n } = useTranslation();
+  // A count, not money; the true minus sign, as «Ящики» prints it.
+  const lang = i18n.language;
+  const n = (value: number) => formatCount(value, lang);
   const issue = useIssueCratesMutation();
   const suppliers = useSuppliersQuery('', pointId ?? null);
   const standing = useCrateStandingQuery({ pointId: pointId ?? null, isOwner: Boolean(pointId) });
   const onHand = standing.data?.on_hand;
   const inTransit = standing.data?.in_transit ?? 0;
-  const noneLeft = onHand !== undefined && onHand <= 0;
+  const tareTypes = useTareTypeOptionsQuery();
+  const depositPrice = tareTypes.data?.find((tt) => tt.is_crate)?.deposit_price;
 
   const {
     register,
@@ -76,24 +95,53 @@ export function IssueCratesDialog({
   // `useWatch`, not `watch()` — the same choice `PayoutDialog` makes, and the
   // one the react-hooks lint rule accepts.
   const mode = useWatch({ control, name: 'mode' });
+  const unitsText = useWatch({ control, name: 'units' });
+  // Where the point lands after this issue — only for a count the field itself would accept.
+  const unitsOk = cratesRules('crates.errors.unitsFormat').validate(unitsText) === true;
+  const units = unitsOk ? Number.parseInt(unitsText.trim(), 10) : undefined;
+  const after = onHand !== undefined && units !== undefined ? onHand - units : undefined;
+  // «Завдаток: 6 ящ. × 25,00 ₴ = 150,00 ₴», traced (client, 24.10): the count
+  // lights the «Ящиків» field it was typed in; the price is the catalogue's and
+  // shown nowhere else in the dialog, so its own term is its source; the total
+  // lights both.
+  const depositLine =
+    mode === 'deposit' && units !== undefined && depositPrice !== undefined ? (
+      <Trans
+        t={t}
+        i18nKey="crates.issue.depositLine"
+        values={{
+          units: n(units),
+          price: unbreakable(formatUah(depositPrice, lang)),
+          total: unbreakable(formatUah(mulInt(depositPrice, units), lang)),
+        }}
+        components={{
+          units: <TraceTerm refs="issue:units" hint={t('crates.issue.traceUnits')} />,
+          price: <TraceTerm refs="issue:price" hint={t('crates.issue.tracePrice')} />,
+          total: (
+            <TraceTerm refs={['issue:units', 'issue:price']} hint={t('crates.issue.traceTotal')} />
+          ),
+        }}
+      />
+    ) : null;
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
     try {
-      await issue.mutateAsync({
+      const issued = await issue.mutateAsync({
         ...(pointId ? { collection_point_id: pointId } : {}),
         supplier_id: values.supplier_id,
         // A row COUNT, not money — parsed as an integer, never through money.ts.
         units: Number.parseInt(values.units.trim(), 10),
         mode: values.mode,
       });
-      toast.success(t('crates.issue.toast'));
+      const taken = issued?.deposit_taken;
+      toast.success(
+        taken !== undefined && !isZero(taken)
+          ? t('crates.issue.toastDeposit', { amount: formatUah(taken, lang) })
+          : t('crates.issue.toast'),
+      );
       onClose();
     } catch (error) {
-      // The server counted differently from the hint — bring the hint up to its figure.
-      if (error instanceof ApiError && error.code === 'CRATES_ON_HAND_INSUFFICIENT') {
-        void qc.invalidateQueries({ queryKey: queryKeys.crateBalances });
-      }
       setFormError(
         toBannerError(error, 'crates.errors.issueFailed', {
           // Shared code, screen-specific consequence — see `apiErrorToBanner`.
@@ -113,90 +161,101 @@ export function IssueCratesDialog({
           <DialogDescription>{t('crates.issue.description')}</DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-          <Field
-            name="supplier_id"
-            label={t('crates.field.supplier')}
-            required
-            error={errors.supplier_id?.message}
-          >
-            {(a11y) => (
-              <SelectField
-                {...a11y}
-                {...register('supplier_id', { required: 'crates.errors.supplierRequired' })}
-              >
-                <option value="">{t('crates.field.supplierPlaceholder')}</option>
-                {rows.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {supplierName(s)}
-                  </option>
-                ))}
-              </SelectField>
-            )}
-          </Field>
+        <TraceScope>
+          <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+            <Field
+              name="supplier_id"
+              label={t('crates.field.supplier')}
+              required
+              error={errors.supplier_id?.message}
+            >
+              {(a11y) => (
+                <SelectField
+                  {...a11y}
+                  {...register('supplier_id', { required: 'crates.errors.supplierRequired' })}
+                >
+                  <option value="">{t('crates.field.supplierPlaceholder')}</option>
+                  {rows.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {supplierName(s)}
+                    </option>
+                  ))}
+                </SelectField>
+              )}
+            </Field>
 
-          <Field
-            name="units"
-            label={t('crates.field.units')}
-            required
-            error={errors.units?.message}
-            errorParams={{ on_hand: onHand }}
-          >
-            {(a11y) => (
-              <TextInput
-                {...a11y}
-                inputMode="numeric"
-                className="font-mono"
-                {...register('units', {
-                  ...cratesRules('crates.errors.unitsFormat'),
-                  // A hint, not the rule: the server's CrateStockGuard is the final word.
-                  validate: {
-                    format: cratesRules('crates.errors.unitsFormat').validate,
-                    onHand: (v: string) =>
-                      onHand === undefined ||
-                      Number.parseInt(v.trim(), 10) <= onHand ||
-                      'crates.errors.overOnHand',
-                  },
-                })}
-              />
-            )}
-          </Field>
-          {onHand !== undefined ? (
-            <p className={noneLeft ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}>
-              {t('crates.issue.onHandHint', { on_hand: onHand })}
-              {inTransit > 0 ? ` ${t('crates.issue.inTransitHint', { in_transit: inTransit })}` : null}
-            </p>
-          ) : null}
+            <Field
+              name="units"
+              label={t('crates.field.units')}
+              required
+              error={errors.units?.message}
+            >
+              {(a11y) => (
+                <TextInput
+                  {...a11y}
+                  inputMode="numeric"
+                  // The source the deposit line's count lights.
+                  data-trace="issue:units"
+                  className="font-mono"
+                  {...register('units', cratesRules('crates.errors.unitsFormat'))}
+                />
+              )}
+            </Field>
+            {onHand !== undefined ? (
+              <p className={cn('text-sm', onHand < 0 ? 'text-amber' : 'text-muted-foreground')}>
+                {t('crates.issue.onHandHint', { on_hand: n(onHand) })}
+                {inTransit > 0
+                  ? ` ${t('crates.issue.inTransitHint', { in_transit: n(inTransit) })}`
+                  : null}
+              </p>
+            ) : null}
+            {after !== undefined && after < 0 ? (
+              <p className="text-sm font-medium text-amber">
+                {t('crates.issue.goesNegativeHint', { after: n(after) })}
+              </p>
+            ) : null}
 
-          <Field name="mode" label={t('crates.field.mode')} required error={errors.mode?.message}>
-            {(a11y) => (
-              <SelectField {...a11y} {...register('mode', { required: true })}>
-                <option value="deposit">{t('crates.mode.deposit')}</option>
-                <option value="receipt">{t('crates.mode.receipt')}</option>
-              </SelectField>
-            )}
-          </Field>
+            <Field name="mode" label={t('crates.field.mode')} required error={errors.mode?.message}>
+              {(a11y) => (
+                <SelectField {...a11y} {...register('mode', { required: true })}>
+                  <option value="deposit">{t('crates.mode.deposit')}</option>
+                  <option value="receipt">{t('crates.mode.receipt')}</option>
+                </SelectField>
+              )}
+            </Field>
 
-          {/* The consequence of the choice, in words, next to the choice. */}
-          <p className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
-            {mode === 'receipt' ? t('crates.mode.receiptHint') : t('crates.mode.depositHint')}
-          </p>
+            {/* The consequence of the choice, in words, next to the choice — and for a
+              deposit, the money itself. */}
+            <div className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+              <p>
+                {mode === 'receipt' ? t('crates.mode.receiptHint') : t('crates.mode.depositHint')}
+              </p>
+              {depositLine ? (
+                <p
+                  data-deposit-line
+                  className="mt-1 font-medium whitespace-nowrap text-foreground tabular-nums"
+                >
+                  {depositLine}
+                </p>
+              ) : null}
+            </div>
 
-          {formError ? (
-            <p role="alert" className="text-sm text-destructive">
-              {t(formError.key, formError.params)}
-            </p>
-          ) : null}
+            {formError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {t(formError.key, formError.params)}
+              </p>
+            ) : null}
 
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
-              {t('common.cancel')}
-            </Button>
-            <Button type="submit" disabled={isSubmitting || noneLeft}>
-              {t('crates.issue.submit')}
-            </Button>
-          </DialogFooter>
-        </form>
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
+                {t('common.cancel')}
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {t('crates.issue.submit')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </TraceScope>
       </DialogContent>
     </Dialog>
   );

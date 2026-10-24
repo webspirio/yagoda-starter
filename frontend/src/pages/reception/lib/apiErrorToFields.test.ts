@@ -218,12 +218,3 @@ describe('apiErrorToFields', () => {
   });
 });
 
-describe('apiErrorToFields crates on hand', () => {
-  it('maps CRATES_ON_HAND_INSUFFICIENT to a banner carrying the numbers', () => {
-    const e = new ApiError(409, 'x', undefined, 'CRATES_ON_HAND_INSUFFICIENT', { available: 0, required: 12, in_transit: 0 });
-    expect(apiErrorToFields(e, 1)).toEqual({
-      fieldErrors: [], formErrorKey: 'crates.errors.onHandInsufficient',
-      formErrorParams: { available: 0, required: 12, in_transit: 0 },
-    });
-  });
-});

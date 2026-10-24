@@ -7,7 +7,6 @@ import { Shift } from '../shifts/shift.entity';
 import { AuditService } from '../audit/audit.service';
 import { AuditLog } from '../audit/audit-log.entity';
 import { TimeService } from '../time/time.service';
-import { CrateStockGuard } from '../crate-stock/crate-stock.guard';
 import { PointCashService } from '../point-cash/point-cash.service';
 import { CashCountsService } from './cash-counts.service';
 import type { CollectionPointsService } from '../collection-points/collection-points.service';
@@ -62,7 +61,6 @@ describe('count explanations and operator notes (Postgres)', () => {
       time,
       ds,
       cash,
-      new CrateStockGuard(),
     );
     counts = new CashCountsService(ds, shifts, cash, audit, time);
     run = randomUUID().slice(0, 8);

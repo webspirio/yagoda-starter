@@ -8,12 +8,24 @@ import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
 import { Spinner } from '@/shared/ui/spinner';
 import { formatShortDate, formatTime } from '@/shared/lib/date';
-import { formatKg } from '@/shared/lib/money';
+import { formatDecimal } from '@/shared/lib/money';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import { useVoidReweighItemMutation } from '@/entities/reweigh';
 import { useStaffQuery } from '@/entities/user';
 import type { DayLine } from '../api/useDayReweighs';
-import { netFormula } from '../lib/formula';
+import { TraceScope } from '@/shared/ui/trace';
+import { netFormula, netParts } from '../lib/formula';
+import { NetFormula, type NetTraceIds } from './NetFormula';
+
+/** A stored line's own figures — only its net is shown again, above the formula. */
+const lineTrace = (id: string): NetTraceIds => ({
+  gross: `dl:${id}:gross`,
+  pallet: `dl:${id}:pallet`,
+  units: (i) => `dl:${id}:units:${i}`,
+  weight: (i) => `dl:${id}:weight:${i}`,
+  tareKg: `dl:${id}:tareKg`,
+  net: `dl:${id}:net`,
+});
 
 const COLUMN_COUNT = 6;
 
@@ -76,187 +88,194 @@ export function DayLines({
   }
 
   return (
-    <div className="rounded-xl bg-card ring-1 ring-foreground/10">
-      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border/70 px-4 py-3">
-        <Eyebrow>{t('reweigh.day.title', { date: formatShortDate(date, locale) })}</Eyebrow>
-        <span className="text-xs text-muted-foreground">{t('reweigh.day.allPoints')}</span>
-      </div>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead scope="col">{t('reweigh.day.point')}</TableHead>
-            <TableHead scope="col">{t('reweigh.day.time')}</TableHead>
-            <TableHead scope="col">{t('reweigh.day.what')}</TableHead>
-            <TableHead scope="col" className="text-right">
-              {t('reweigh.day.ours')}
-            </TableHead>
-            <TableHead scope="col">{t('reweigh.day.status')}</TableHead>
-            <TableHead scope="col">
-              <span className="sr-only">{t('reweigh.day.actionHeader')}</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {isPending ? (
+    <TraceScope>
+      <div className="rounded-xl border border-line2 bg-card">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border/70 px-4 py-3">
+          <Eyebrow>{t('reweigh.day.title', { date: formatShortDate(date, locale) })}</Eyebrow>
+          <span className="text-xs text-muted-foreground">{t('reweigh.day.allPoints')}</span>
+        </div>
+        <Table>
+          <TableHeader>
             <TableRow>
-              <TableCell colSpan={COLUMN_COUNT}>
-                <div className="flex justify-center py-6">
-                  <Spinner />
-                </div>
-              </TableCell>
+              <TableHead scope="col">{t('reweigh.day.point')}</TableHead>
+              <TableHead scope="col">{t('reweigh.day.time')}</TableHead>
+              <TableHead scope="col">{t('reweigh.day.what')}</TableHead>
+              <TableHead scope="col" className="text-right">
+                {t('reweigh.day.ours')}
+              </TableHead>
+              <TableHead scope="col">{t('reweigh.day.status')}</TableHead>
+              <TableHead scope="col">
+                <span className="sr-only">{t('reweigh.day.actionHeader')}</span>
+              </TableHead>
             </TableRow>
-          ) : isError ? (
-            <TableRow>
-              <TableCell colSpan={COLUMN_COUNT}>
-                <p role="alert" className="py-6 text-center text-destructive">
-                  {t('common.somethingWentWrong')}
-                </p>
-              </TableCell>
-            </TableRow>
-          ) : lines.length ? (
-            lines.map(({ item, pointName }) => {
-              const voided = item.voided_at !== null;
-              const authorName =
-                item.voided_by_user_id !== null ? (staff.data?.get(item.voided_by_user_id) ?? '') : '';
-              // The visible button text is the same «Анулювати»/"Void" on
-              // every row — this table can carry every weighing recorded
-              // NETWORK-WIDE for the day, so a screen reader landing on one
-              // of N identical "Void" buttons (with an EMPTY action-column
-              // header to fall back on, until the fix just above) has no way
-              // to tell which line it is about to storno. The accessible
-              // name, not the visible one, carries the point and the time —
-              // see `reweigh.day.voidLine`.
-              const voidLabel = t('reweigh.day.voidLine', {
-                point: pointName,
-                time: formatTime(item.created_at, locale),
-              });
-              // The trigger and the confirm below it BOTH say «Анулювати»
-              // visibly, and both are on screen at once once the reason row
-              // opens. Giving them the same accessible name leaves a screen
-              // reader with two identically-named buttons where one opens a
-              // form and the other commits the void — axe does not flag a
-              // duplicate button name, so only this split catches it.
-              const confirmVoidLabel = t('reweigh.day.confirmVoidLine', {
-                point: pointName,
-                time: formatTime(item.created_at, locale),
-              });
-              // A grade name alone is ambiguous — «Стандарт» is the grade
-              // of eight different products in this catalogue (see the
-              // seed data), so «Товар» has to carry the product too. Either
-              // half can be missing (both come from loaded relations); a
-              // dangling separator when only one half is there would be
-              // worse than the ambiguity this fixes.
-              const product = item.product_name ?? '';
-              const grade = item.product_grade_name ?? '';
-              const productGrade =
-                product && grade ? t('reweigh.productGrade', { product, grade }) : product || grade;
-              // W4 — the stored line as its own formula. Per-unit weights come
-              // from the server (`unit_weight_kg`, proven against the stored
-              // tare); without them it prints the stored tare total.
-              const formula = netFormula(t, locale, {
-                gross: item.gross_kg,
-                pallet: item.pallet_kg,
-                tare: item.tare.map((term) => ({
-                  units: term.units,
-                  unitWeightKg: term.unit_weight_kg,
-                })),
-                tareKg: item.tare_weight_kg,
-                net: item.net_kg,
-              });
-              return (
-                <Fragment key={item.id}>
-                  <TableRow
-                    title={formula ?? undefined}
-                    className={voided ? 'text-muted-foreground' : undefined}
-                  >
-                    <TableCell className="font-medium">{pointName}</TableCell>
-                    <TableCell className="font-mono text-xs">{formatTime(item.created_at, locale)}</TableCell>
-                    <TableCell>{productGrade}</TableCell>
-                    <TableCell className="text-right font-mono tabular-nums">
-                      <span className="whitespace-nowrap">{formatKg(item.net_kg, locale)}</span>
-                      {formula ? (
-                        <span className="block text-xs font-normal whitespace-nowrap text-muted-foreground">
-                          {formula}
+          </TableHeader>
+          <TableBody>
+            {isPending ? (
+              <TableRow>
+                <TableCell colSpan={COLUMN_COUNT}>
+                  <div className="flex justify-center py-6">
+                    <Spinner />
+                  </div>
+                </TableCell>
+              </TableRow>
+            ) : isError ? (
+              <TableRow>
+                <TableCell colSpan={COLUMN_COUNT}>
+                  <p role="alert" className="py-6 text-center text-destructive">
+                    {t('common.somethingWentWrong')}
+                  </p>
+                </TableCell>
+              </TableRow>
+            ) : lines.length ? (
+              lines.map(({ item, pointName }) => {
+                const voided = item.voided_at !== null;
+                const authorName =
+                  item.voided_by_user_id !== null ? (staff.data?.get(item.voided_by_user_id) ?? '') : '';
+                // The visible button text is the same «Анулювати»/"Void" on
+                // every row — this table can carry every weighing recorded
+                // NETWORK-WIDE for the day, so a screen reader landing on one
+                // of N identical "Void" buttons (with an EMPTY action-column
+                // header to fall back on, until the fix just above) has no way
+                // to tell which line it is about to storno. The accessible
+                // name, not the visible one, carries the point and the time —
+                // see `reweigh.day.voidLine`.
+                const voidLabel = t('reweigh.day.voidLine', {
+                  point: pointName,
+                  time: formatTime(item.created_at, locale),
+                });
+                // The trigger and the confirm below it BOTH say «Анулювати»
+                // visibly, and both are on screen at once once the reason row
+                // opens. Giving them the same accessible name leaves a screen
+                // reader with two identically-named buttons where one opens a
+                // form and the other commits the void — axe does not flag a
+                // duplicate button name, so only this split catches it.
+                const confirmVoidLabel = t('reweigh.day.confirmVoidLine', {
+                  point: pointName,
+                  time: formatTime(item.created_at, locale),
+                });
+                // A grade name alone is ambiguous — «Стандарт» is the grade
+                // of eight different products in this catalogue (see the
+                // seed data), so «Товар» has to carry the product too. Either
+                // half can be missing (both come from loaded relations); a
+                // dangling separator when only one half is there would be
+                // worse than the ambiguity this fixes.
+                const product = item.product_name ?? '';
+                const grade = item.product_grade_name ?? '';
+                const productGrade =
+                  product && grade ? t('reweigh.productGrade', { product, grade }) : product || grade;
+                // W4 — the stored line as its own formula. Per-unit weights come
+                // from the server (`unit_weight_kg`, proven against the stored
+                // tare); without them it prints the stored tare total.
+                const line = {
+                  gross: item.gross_kg,
+                  pallet: item.pallet_kg,
+                  tare: item.tare.map((term) => ({
+                    units: term.units,
+                    unitWeightKg: term.unit_weight_kg,
+                  })),
+                  tareKg: item.tare_weight_kg,
+                  net: item.net_kg,
+                };
+                const formula = netFormula(t, locale, line);
+                const parts = netParts(line);
+                const ids = lineTrace(item.id);
+                return (
+                  <Fragment key={item.id}>
+                    <TableRow
+                      title={formula ?? undefined}
+                      className={voided ? 'text-muted-foreground' : undefined}
+                    >
+                      <TableCell className="font-medium">{pointName}</TableCell>
+                      <TableCell className="font-mono text-xs">{formatTime(item.created_at, locale)}</TableCell>
+                      <TableCell>{productGrade}</TableCell>
+                      <TableCell className="text-right font-mono tabular-nums">
+                        <span data-trace={ids.net} className="rounded-md whitespace-nowrap">
+                          {formatDecimal(item.net_kg, locale)}
                         </span>
-                      ) : null}
-                    </TableCell>
-                    <TableCell>
-                      {item.voided_at !== null ? (
-                        <span className="flex flex-wrap items-center gap-1.5 text-xs">
-                          <Badge variant="outline">{t('reweigh.day.voided')}</Badge>
-                          <span className="font-mono">{formatTime(item.voided_at, locale)}</span>
-                          <span>· {authorName} ·</span>
-                          <span className="italic">«{item.void_reason}»</span>
-                        </span>
-                      ) : (
-                        <Badge variant="secondary">{t('reweigh.day.posted')}</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {voided ? null : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          aria-label={voidLabel}
-                          onClick={() => startVoid(item.id)}
-                        >
-                          {t('reweigh.day.void')}
-                        </Button>
-                      )}
-                    </TableCell>
-                  </TableRow>
-                  {voidingId === item.id ? (
-                    <TableRow className="bg-destructive/8 hover:bg-destructive/8">
-                      <TableCell colSpan={COLUMN_COUNT}>
-                        <div className="flex flex-wrap items-end gap-2">
-                          <Field
-                            name={`rw-reason-${item.id}`}
-                            label={t('reweigh.day.reason')}
-                            className="min-w-[240px] flex-1"
-                          >
-                            {(a11y) => (
-                              <TextInput
-                                {...a11y}
-                                autoFocus
-                                value={reason}
-                                onChange={(e) => setReason(e.target.value)}
-                                placeholder={t('reweigh.day.reasonPlaceholder')}
-                                className="h-9"
-                              />
-                            )}
-                          </Field>
+                        {parts ? (
+                          <span className="block text-xs font-normal whitespace-nowrap text-muted-foreground">
+                            <NetFormula line={line} parts={parts} ids={ids} />
+                          </span>
+                        ) : null}
+                      </TableCell>
+                      {/* Only a voided line is marked: a «проведено» badge on
+                          every live row said nothing (audit 2026-10-24 E11). */}
+                      <TableCell>
+                        {item.voided_at !== null ? (
+                          <span className="flex flex-wrap items-center gap-1.5 text-xs">
+                            <Badge variant="outline">{t('reweigh.day.voided')}</Badge>
+                            <span className="font-mono">{formatTime(item.voided_at, locale)}</span>
+                            <span>· {authorName} ·</span>
+                            <span className="italic">«{item.void_reason}»</span>
+                          </span>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {voided ? null : (
                           <Button
-                            variant="destructive"
-                            aria-label={confirmVoidLabel}
-                            disabled={!reason.trim() || voidItem.isPending}
-                            onClick={() => confirmVoid(item.id)}
+                            variant="ghost"
+                            size="sm"
+                            aria-label={voidLabel}
+                            onClick={() => startVoid(item.id)}
                           >
                             {t('reweigh.day.void')}
                           </Button>
-                          <Button variant="ghost" onClick={cancelVoid}>
-                            {t('reweigh.day.cancel')}
-                          </Button>
-                        </div>
-                        {banner ? (
-                          <p role="alert" className="mt-2 text-sm text-destructive">
-                            {t(banner)}
-                          </p>
-                        ) : null}
+                        )}
                       </TableCell>
                     </TableRow>
-                  ) : null}
-                </Fragment>
-              );
-            })
-          ) : (
-            <TableRow>
-              <TableCell colSpan={COLUMN_COUNT} className="text-sm text-muted-foreground">
-                {t('reweigh.day.empty')}
-              </TableCell>
-            </TableRow>
-          )}
-        </TableBody>
-      </Table>
-    </div>
+                    {voidingId === item.id ? (
+                      <TableRow className="bg-destructive/8 hover:bg-destructive/8">
+                        <TableCell colSpan={COLUMN_COUNT}>
+                          <div className="flex flex-wrap items-end gap-2">
+                            <Field
+                              name={`rw-reason-${item.id}`}
+                              label={t('reweigh.day.reason')}
+                              className="min-w-[240px] flex-1"
+                            >
+                              {(a11y) => (
+                                <TextInput
+                                  {...a11y}
+                                  autoFocus
+                                  value={reason}
+                                  onChange={(e) => setReason(e.target.value)}
+                                  placeholder={t('reweigh.day.reasonPlaceholder')}
+                                  className="h-9"
+                                />
+                              )}
+                            </Field>
+                            <Button
+                              variant="destructive"
+                              aria-label={confirmVoidLabel}
+                              disabled={!reason.trim() || voidItem.isPending}
+                              onClick={() => confirmVoid(item.id)}
+                            >
+                              {t('reweigh.day.void')}
+                            </Button>
+                            <Button variant="ghost" onClick={cancelVoid}>
+                              {t('reweigh.day.cancel')}
+                            </Button>
+                          </div>
+                          {banner ? (
+                            <p role="alert" className="mt-2 text-sm text-destructive">
+                              {t(banner)}
+                            </p>
+                          ) : null}
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </Fragment>
+                );
+              })
+            ) : (
+              <TableRow>
+                <TableCell colSpan={COLUMN_COUNT} className="text-sm text-muted-foreground">
+                  {t('reweigh.day.empty')}
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </TraceScope>
   );
 }

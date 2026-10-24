@@ -5,7 +5,8 @@ import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { formatShortDate } from '@/shared/lib/date';
-import { formatUah } from '@/shared/lib/money';
+import { formatDecimal } from '@/shared/lib/money';
+import { cn } from '@/shared/lib/cn';
 import { canVoidIntake, type Intake } from '@/entities/intake';
 import type { Me } from '@/entities/user';
 import { ReceiptVoidButton } from '@/widgets/receipt';
@@ -47,6 +48,7 @@ export function JournalTable({
   page,
   limit,
   onPageChange,
+  codeHeader,
   onRowClick,
   rowClickable,
   me,
@@ -59,6 +61,8 @@ export function JournalTable({
   page: number;
   limit: number;
   onPageChange: (page: number) => void;
+  /** «Квитанція» on the receipts tab, «Документ» on the payouts tab (audit D9). */
+  codeHeader: string;
   onRowClick?: (row: JournalRow) => void;
   rowClickable?: (row: JournalRow) => boolean;
   me?: Me;
@@ -105,7 +109,7 @@ export function JournalTable({
     },
     {
       id: 'code',
-      header: t('journal.col.code'),
+      header: codeHeader,
       className: 'font-mono',
       cell: (r) => r.code,
     },
@@ -122,12 +126,19 @@ export function JournalTable({
     },
     {
       id: 'amount',
+      // The unit lives in the header; a voided sum is struck through — it
+      // counts for nothing, and the tiles above already leave it out.
       header: t('journal.col.amount'),
       align: 'right',
-      className: 'font-mono tabular-nums',
-      cell: (r) => formatUah(r.amount, i18n.language),
+      className: 'font-mono tabular-nums whitespace-nowrap',
+      cell: (r) => (
+        <span className={cn(r.voided && 'text-muted-foreground line-through')}>
+          {formatDecimal(r.amount, i18n.language)}
+        </span>
+      ),
     },
     {
+      // Empty for a live row: «—» in every cell of a column only says nothing louder.
       id: 'status',
       header: t('journal.col.status'),
       align: 'right',
@@ -136,9 +147,7 @@ export function JournalTable({
           <Badge variant="secondary" title={r.reason ?? undefined}>
             {t('journal.voided')}
           </Badge>
-        ) : (
-          <span className="text-muted-foreground">—</span>
-        ),
+        ) : null,
     },
   ];
   if (onVoid) {

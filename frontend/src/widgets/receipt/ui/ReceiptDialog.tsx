@@ -11,17 +11,16 @@ import {
 import { Button } from '@/shared/ui/button';
 import { ReceiptView } from '@/shared/ui/receipt';
 import { canVoidIntake, useIntakeQuery } from '@/entities/intake';
-import {
-  useSupplierBalanceQuery,
-  useSupplierQuery,
-  useSupplierSettlementQuery,
-  supplierName,
-} from '@/entities/supplier';
+import { useSupplierQuery, useSupplierSettlementQuery, supplierName } from '@/entities/supplier';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { useMeQuery } from '@/entities/user';
+import { useIntakeTopUpsQuery } from '@/entities/intake-top-up';
+import { add, isZero, sum } from '@/shared/lib/money';
 import { useNetworkSettingsQuery } from '@/entities/network-settings';
 import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
 import { buildIntakeReceipt } from '../model/buildIntakeReceipt';
+import { RECEIPT_DIALOG_CLASS, RECEIPT_SCROLL_CLASS } from './receiptDialogLayout';
+import { ReceiptTopUps } from './ReceiptTopUps';
 
 /**
  * The receipt for one intake — `GET /intakes/:id` composed with the names a
@@ -70,14 +69,18 @@ export function ReceiptDialog({
   const supplierQuery = useSupplierQuery(intake?.supplier_id ?? null);
   const supplier = supplierQuery.data;
 
-  const balanceQuery = useSupplierBalanceQuery(intake?.supplier_id ?? null);
-  const balance = balanceQuery.data;
-
   const tareTypesQuery = useTareTypeOptionsQuery();
   const tareTypes = tareTypesQuery.data;
 
   const meQuery = useMeQuery();
   const me = meQuery.data;
+
+  // The receipt's top-ups (#61), read for BOTH roles: voiding the receipt takes its live
+  // top-ups off the balance with it, so the void's «зменшиться на …» must count them
+  // (review 2026-10-24 #2). Only the owner is TOLD about them — the screen-only block and
+  // the void's own box — while the client decides whether operators see top-ups at all.
+  const topUpsQuery = useIntakeTopUpsQuery({ intakeId: intakeId ?? undefined });
+  const topUps = topUpsQuery.data?.data;
 
   // Not part of `isError`: a missing note must never stop a supplier's receipt.
   const settingsQuery = useNetworkSettingsQuery();
@@ -103,9 +106,9 @@ export function ReceiptDialog({
   const isError =
     intakeQuery.isError ||
     supplierQuery.isError ||
-    balanceQuery.isError ||
     tareTypesQuery.isError ||
-    meQuery.isError;
+    meQuery.isError ||
+    topUpsQuery.isError;
 
   // VoidDocumentDialog keeps its form state for its lifetime (react-hook-form's
   // `defaultValues` only apply on mount, and it stays mounted here so `open`
@@ -135,7 +138,9 @@ export function ReceiptDialog({
   // the receipt actually resolved.
   let actions: ReactNode = null;
   let dialogs: ReactNode = null;
-  let title = t('receipt.title', { code: intake?.code ?? '' });
+  // Trimmed: before the intake loads there is no code to end the title with.
+  const title = t('receipt.title', { code: intake?.code ?? '' }).trim();
+  let subtitle: string | null = null;
 
   if (isError) {
     content = (
@@ -143,13 +148,16 @@ export function ReceiptDialog({
         {t('common.somethingWentWrong')}
       </p>
     );
-  } else if (intake && supplier && balance && tareTypes && me) {
-    // §3 quotes «· 1 позиція» — the count rides on every receipt, not only
-    // once there is more than one line; `titleLines_one` carries the singular
-    // form (M4).
-    title = t('receipt.titleLines', { code: intake.code, count: intake.items.length });
-
+  } else if (intake && supplier && tareTypes && me && topUps) {
     const showVoid = canVoidIntake(me, intake);
+    const isOwner = me.role === 'network_owner';
+    // Live = `counts_toward_balance`: neither the top-up nor (a voidable) receipt voided.
+    const liveTopUps = sum(topUps.filter((u) => u.counts_toward_balance).map((u) => u.amount));
+    // The line count rides under the code on every receipt, the single line
+    // too (M4); the void hint only where «Анулювати» is actually there (A4).
+    subtitle = t(showVoid ? 'receipt.subtitleVoidable' : 'receipt.subtitle', {
+      count: intake.items.length,
+    });
 
     content = (
       <>
@@ -159,7 +167,6 @@ export function ReceiptDialog({
             supplierName: supplierName(supplier),
             tareNameById: new Map(tareTypes.map((tt) => [tt.id, tt.name])),
             note: settingsQuery.data?.receipt_note ?? null,
-            balance: balance.debt,
             t,
             locale,
           })}
@@ -167,6 +174,7 @@ export function ReceiptDialog({
         {settingsQuery.isError && !settingsQuery.data ? (
           <p className="print-hide text-sm text-muted-foreground">{t('receipt.noteLoadFailed')}</p>
         ) : null}
+        {isOwner ? <ReceiptTopUps topUps={topUps} /> : null}
       </>
     );
 
@@ -207,22 +215,24 @@ export function ReceiptDialog({
               }
             : undefined
         }
-        intakeAmount={intake.amount}
+        intakeAmount={add(intake.amount, liveTopUps)}
+        intakeTopUps={isOwner && !isZero(liveTopUps) ? liveTopUps : undefined}
       />
     );
   }
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:w-[420px] sm:max-w-[420px]" showCloseButton={false}>
-        <DialogHeader>
+      <DialogContent className={RECEIPT_DIALOG_CLASS} showCloseButton={false}>
+        <DialogHeader className="shrink-0">
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{t('receipt.description')}</DialogDescription>
+          {/* Radix wants a description; before the receipt resolves it is empty. */}
+          <DialogDescription>{subtitle}</DialogDescription>
         </DialogHeader>
 
-        {content}
+        <div className={RECEIPT_SCROLL_CLASS}>{content}</div>
 
-        <DialogFooter className="print-hide">
+        <DialogFooter className="print-hide shrink-0">
           <Button type="button" variant="ghost" onClick={onClose}>
             {t('common.close')}
           </Button>

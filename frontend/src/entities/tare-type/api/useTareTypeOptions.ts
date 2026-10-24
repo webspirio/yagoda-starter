@@ -10,14 +10,21 @@ import type { TareTypeOption } from '../model/tare-type';
  * `is_crate`) is read here.
  */
 interface TareTypeListEnvelope {
-  data: Array<{ id: string; name: string; weight_kg: string; is_crate: boolean }>;
+  data: Array<{
+    id: string;
+    name: string;
+    weight_kg: string;
+    is_crate: boolean;
+    deposit_price: string;
+  }>;
   total: number;
   page: number;
   limit: number;
 }
 
 /**
- * Active-only tare types for the reception form's tare picker. Mirrors
+ * Active-only tare types for the reception form's tare picker (and the crate's
+ * deposit price for «Видати ящики»). Mirrors
  * `entities/collection-point/api/usePointOptions.ts`'s options-hook pattern:
  * a shared `entities/` hook so a page never reaches into another page for its
  * option list, `include_inactive: false` since a form should never offer a
@@ -40,6 +47,7 @@ export function useTareTypeOptionsQuery() {
         name: t.name,
         weight_kg: t.weight_kg,
         is_crate: t.is_crate,
+        deposit_price: t.deposit_price,
       }));
     },
     staleTime: STALE.reference,

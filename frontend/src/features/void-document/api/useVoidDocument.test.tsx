@@ -91,6 +91,24 @@ describe('useVoidDocumentMutation', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakes });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakeTopUps });
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.supplierBalances });
+      // Review 2026-10-24 I1: the receipt day's cost and the reweigh shortfall price count it.
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.costOfDay });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.reweighs });
+    });
+  });
+
+  it("voiding a receipt refreshes its top-ups, the day's cost and the reweigh", async () => {
+    mock.onPost('/intakes/i1/void').reply(200);
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
+    const { result } = renderHook(() => useVoidDocumentMutation(), { wrapper });
+
+    await result.current.mutateAsync({ kind: 'intake', id: 'i1', reason: 'mistake' });
+
+    await waitFor(() => {
+      // Its top-ups stop counting (`counts_toward_balance` folds in the parent's void).
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakeTopUps });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.costOfDay });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.reweighs });
     });
   });
 

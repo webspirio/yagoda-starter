@@ -29,8 +29,8 @@ describe('payouts.balance_after (Postgres)', () => {
   ) =>
     (
       await q.query(
-        `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id, created_at, voided_at, voided_by_user_id, void_reason)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, CASE WHEN $7::timestamptz IS NOT NULL THEN $5::uuid END,
+        `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id, created_at, voided_at, voided_by_user_id, void_reason)
+         VALUES ($1, $2, $3, $4, '0.00', $5, $6, $7, CASE WHEN $7::timestamptz IS NOT NULL THEN $5::uuid END,
                  CASE WHEN $7::timestamptz IS NOT NULL THEN 'test' END) RETURNING id`,
         [
           `IN-${randomUUID().slice(0, 12)}`,

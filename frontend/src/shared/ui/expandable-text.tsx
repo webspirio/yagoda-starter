@@ -36,7 +36,7 @@ export function ExpandableText({
       {overflows ? (
         <button
           type="button"
-          className="text-xs text-primary underline-offset-2 hover:underline"
+          className="text-xs text-brand underline-offset-2 hover:underline"
           aria-expanded={expanded}
           aria-controls={id}
           aria-label={label ? t(expanded ? 'actions.collapseOf' : 'actions.showMoreOf', { what: label }) : undefined}

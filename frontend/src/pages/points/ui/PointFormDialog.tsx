@@ -9,7 +9,7 @@ import { SelectField } from '@/shared/ui/select-field';
 import { Switch } from '@/shared/ui/switch';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { decimalRules } from '@/shared/lib/money';
+import { decimalRules, parseDecimal, toDecimalField } from '@/shared/lib/money';
 import {
   useCreateCollectionPointMutation,
   useUpdateCollectionPointMutation,
@@ -20,12 +20,14 @@ import type { CollectionPoint, CollectionPointFormValues } from '../model/collec
 const INTEGER = /^\d+$/;
 const FIELD_NAMES = ['name', 'kind', 'target_cash', 'target_crates', 'is_active', 'code'] as const;
 
-function toDefaults(point: CollectionPoint | null): CollectionPointFormValues {
+/** `target_cash` is shown the way the screen prints money («15000,00» in uk);
+ *  a prefill is stored as given, so the submit reads it back through `parseDecimal`. */
+function toDefaults(point: CollectionPoint | null, locale?: string): CollectionPointFormValues {
   return {
     name: point?.name ?? '',
     code: point?.code ?? '',
     kind: point?.kind ?? 'reception',
-    target_cash: point?.target_cash ?? '',
+    target_cash: toDecimalField(point?.target_cash ?? '', locale),
     target_crates: point?.target_crates == null ? '' : String(point.target_crates),
     is_active: point?.is_active ?? true,
   };
@@ -46,7 +48,7 @@ export function PointFormDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const create = useCreateCollectionPointMutation();
   const update = useUpdateCollectionPointMutation();
 
@@ -56,13 +58,16 @@ export function PointFormDialog({
     control,
     setError,
     formState: { errors, isSubmitting },
-  } = useForm<CollectionPointFormValues>({ defaultValues: toDefaults(point) });
+  } = useForm<CollectionPointFormValues>({
+    defaultValues: toDefaults(point, i18n.resolvedLanguage),
+  });
 
   const [formError, setFormError] = useState<string | null>(null);
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
-    const cash = values.target_cash;
+    // `validate` refused anything `parseDecimal` cannot read.
+    const cash = parseDecimal(values.target_cash) ?? values.target_cash;
     const crates = values.target_crates.trim();
     const targets = {
       target_cash: cash === '' ? null : cash,

@@ -95,6 +95,11 @@ interface IntakeCrateReturn {
  *  catalog lookup. */
 export interface IntakeDetail extends Intake {
   items: IntakeItem[];
+  /** The supplier's debt right AFTER this receipt and the cash handed over with
+   *  it, frozen at write (audit 2026-10-24 A1) — the receipt's «Залишок», so a
+   *  reprint never moves. A record of the paper, never a debt source. The list
+   *  rows carry it too; only the receipt reads it, so only this type names it. */
+  balance_after: string;
   payouts: IntakePayout[];
   /** The receiver's name — the void dialog's «видано … ким». */
   received_by_name: string | null;

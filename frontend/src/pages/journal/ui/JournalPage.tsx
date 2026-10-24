@@ -9,7 +9,7 @@ import { formatUah } from '@/shared/lib/money';
 import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useIntakesQuery, type DocumentFilter } from '@/entities/intake';
 import { usePayoutsQuery } from '@/entities/payout';
-import { useSuppliersQuery, useSupplierBalancesQuery, supplierName } from '@/entities/supplier';
+import { useSupplierTotalsQuery, supplierName } from '@/entities/supplier';
 import { useMeQuery } from '@/entities/user';
 import { PayoutReceiptDialog, ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
 import { parseFilters, PAGE_SIZE } from '../model/journalFilters';
@@ -82,16 +82,19 @@ export function JournalPage() {
   const { data: points } = usePointOptionsQuery();
   const pointName = new Map((points ?? []).map((p) => [p.id, p.name]));
 
-  const suppliersQuery = useSuppliersQuery('', filters.pointId);
-  const suppliers = suppliersQuery.data?.data ?? [];
-
-  // Name source for TABLE ROWS — every supplier at the scope, one call,
-  // never the browsable-suppliers picker above: a voided or long-inactive
-  // supplier can still own a historic document this journal has to label.
-  const balancesQuery = useSupplierBalancesQuery({ pointId: filters.pointId, includeZero: true });
-  const supplierNameById = new Map(
-    (balancesQuery.data?.data ?? []).map((r) => [r.supplier_id, supplierName(r)]),
-  );
+  // ONE name source for the picker AND the table rows (audit D7): every
+  // supplier at the scope in one UNPAGED read, inactive ones included — a
+  // long-inactive supplier can still own a historic document this journal
+  // has to label, and a paged read stopped naming rows past its 100th.
+  const suppliersQuery = useSupplierTotalsQuery({
+    search: '',
+    sort: 'name',
+    order: 'asc',
+    status: 'all',
+    pointId: filters.pointId,
+  });
+  const suppliers = suppliersQuery.data ?? [];
+  const supplierNameById = new Map(suppliers.map((r) => [r.id, supplierName(r)]));
   const supplierLabel = (supplierId: string) =>
     supplierNameById.get(supplierId) ?? supplierId.slice(0, 8);
 
@@ -152,7 +155,12 @@ export function JournalPage() {
           }
           stats={
             <StatGrid columns={2}>
-              <StatTile label={t('journal.tiles.accrued')} value={totalTile(totalsQuery.data?.accrued)} />
+              {/* Receipts only — доплати are not in this sum (#102), and it says so. */}
+              <StatTile
+                label={t('journal.tiles.accrued')}
+                value={totalTile(totalsQuery.data?.accrued)}
+                hint={t('journal.tiles.accruedHint')}
+              />
               <StatTile label={t('journal.tiles.paid')} value={totalTile(totalsQuery.data?.paid)} />
             </StatGrid>
           }
@@ -169,6 +177,7 @@ export function JournalPage() {
               page={filters.page}
               limit={PAGE_SIZE}
               onPageChange={setPage}
+              codeHeader={t('journal.col.code')}
               onRowClick={(row) => openReceipt(row.id)}
               me={me}
               onVoid={(row) => openReceipt(row.id, { void: true })}
@@ -186,6 +195,7 @@ export function JournalPage() {
               page={filters.page}
               limit={PAGE_SIZE}
               onPageChange={setPage}
+              codeHeader={t('journal.col.document')}
               onRowClick={(row) => payoutReceipt.openReceipt(row.id)}
               rowClickable={(row) => row.standalonePayout === true}
             />

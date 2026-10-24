@@ -15,7 +15,7 @@ import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Textarea } from '@/shared/ui/textarea';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { decimalRules } from '@/shared/lib/money';
+import { cmp, decimalRules, parseDecimal, toDecimalField } from '@/shared/lib/money';
 import type { GradeCatalogItem } from '@/entities/product-grade';
 import { useSetPriceMutation } from '../api/gradePrices';
 import { useBulkSetPriceMutation } from '../api/priceSheet';
@@ -64,7 +64,8 @@ export function SetPriceDialog({
    *  per (point, grade), so it has no meaning for a bulk write spanning five. */
   onShowHistory?: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.resolvedLanguage;
   const setPrice = useSetPriceMutation();
   const setEverywhere = useBulkSetPriceMutation();
   const isBulk = pointIds.length > 1;
@@ -75,10 +76,12 @@ export function SetPriceDialog({
     setError,
     formState: { errors, isSubmitting },
   } = useForm<PriceFormValues>({
+    // Shown the way the screen prints money («150,00» in uk); a prefill is
+    // stored as given, so the submit reads each field back through `parseDecimal`.
     defaultValues: {
-      base_price: current?.base_price ?? '',
-      max_markup: current?.max_markup ?? '',
-      max_discount: current?.max_discount ?? '',
+      base_price: toDecimalField(current?.base_price ?? '', locale),
+      max_markup: toDecimalField(current?.max_markup ?? '', locale),
+      max_discount: toDecimalField(current?.max_discount ?? '', locale),
       reason: '',
     },
   });
@@ -88,12 +91,27 @@ export function SetPriceDialog({
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
     const reason = values.reason.trim();
+    // `validate` refused anything `parseDecimal` cannot read.
     const numbers = {
-      base_price: values.base_price,
-      max_markup: values.max_markup,
-      max_discount: values.max_discount,
+      base_price: parseDecimal(values.base_price) ?? values.base_price,
+      max_markup: parseDecimal(values.max_markup) ?? values.max_markup,
+      max_discount: parseDecimal(values.max_discount) ?? values.max_discount,
       ...(reason ? { reason } : {}),
     };
+    // The same three numbers on the same ONE point is not a change: writing it would
+    // put a «150,00 → 150,00» line into the day's feed (audit 2026-10-24, F7). A bulk
+    // write cannot tell — `current` is one of several points — so it always writes.
+    if (
+      !isBulk &&
+      current !== null &&
+      cmp(numbers.base_price, current.base_price) === 0 &&
+      cmp(numbers.max_markup, current.max_markup) === 0 &&
+      cmp(numbers.max_discount, current.max_discount) === 0
+    ) {
+      toast(t('prices.toast.unchanged'));
+      onClose();
+      return;
+    }
     try {
       if (isBulk) {
         const { created } = await setEverywhere.mutateAsync({
@@ -205,12 +223,7 @@ export function SetPriceDialog({
               {t('common.cancel')}
             </Button>
             {!isBulk && current && onShowHistory ? (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={onShowHistory}
-                disabled={isSubmitting}
-              >
+              <Button type="button" variant="ghost" onClick={onShowHistory} disabled={isSubmitting}>
                 <History className="size-3.5" />
                 {t('prices.history.button')}
               </Button>

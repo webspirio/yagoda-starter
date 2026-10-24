@@ -12,6 +12,8 @@ import type { DaySummary } from '../lib/daySummary';
  * Rendered only once the page has a shift and both journals (`figuresVisible`
  * on the page) — a zero here over an unread journal would read as «nothing
  * happened».
+ *
+ * The money values are `data-trace` sources (`day:*`) for «Звірка каси»'s terms.
  */
 export function DayTiles({
   summary,
@@ -41,14 +43,14 @@ export function DayTiles({
         />
         <StatTile
           label={t('day.tiles.accrued')}
-          value={formatUah(summary.accrued, locale)}
+          value={<span data-trace="day:accrued">{formatUah(summary.accrued, locale)}</span>}
           hint={t('day.tiles.accruedHint')}
         />
         <StatTile
           label={t('day.tiles.cashOut')}
-          value={formatUah(summary.cashOut, locale)}
+          value={<span data-trace="day:cashOut">{formatUah(summary.cashOut, locale)}</span>}
           hint={t('day.tiles.cashOutHint')}
-          tone="berry"
+          // C9 — plain cash is neutral ink, not berry.
         />
         {/* The corrected «Інваріант дня» shows the GROWTH of the debt, which
             goes below zero when old balances were paid down OR when a receipt
@@ -58,13 +60,15 @@ export function DayTiles({
         {summary.paidDown ? (
           <StatTile
             label={t('day.tiles.debtPaidDown')}
-            value={formatUah(sub('0', summary.debtGrowth), locale)}
+            value={
+              <span data-trace="day:debt">{formatUah(sub('0', summary.debtGrowth), locale)}</span>
+            }
             hint={t('day.tiles.debtPaidDownHint')}
           />
         ) : (
           <StatTile
             label={t('day.tiles.debtCreated')}
-            value={formatUah(summary.debtGrowth, locale)}
+            value={<span data-trace="day:debt">{formatUah(summary.debtGrowth, locale)}</span>}
             hint={t('day.tiles.debtCreatedHint')}
             // §5.1: amber only while something is actually owed.
             tone={isZero(summary.debtGrowth) ? 'default' : 'amber'}

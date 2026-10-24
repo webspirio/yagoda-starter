@@ -25,8 +25,10 @@ interface MoneyFieldRules {
  * `setValueAs` stores `parseDecimal`'s canonical form in the form values, so a
  * submit handler sends `values.amount` as it is — there is no second
  * normalisation to forget. A refused text is stored as typed, so `validate`
- * still sees (and refuses) it. Defaults are not passed through `setValueAs`
- * until edited; they come from the server already canonical.
+ * still sees (and refuses) it. Defaults and `setValue` are not passed through
+ * `setValueAs` until edited: a prefill goes in as `toDecimalField` shows it
+ * («500,00» in uk), so a form that prefills reads its values back through
+ * `parseDecimal` before comparing or sending them.
  */
 export function decimalRules({
   required = true,

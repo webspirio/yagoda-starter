@@ -14,9 +14,13 @@ export interface IntakeTopUpResponse {
   counts_toward_balance: boolean;
   intake: { id: string; code: string; voided_at: string | null };
   created_by_user_id: string;
+  /** «Додано: …» — who wrote it, `displayNameOf` batched (D-8); null when no user row is found. */
+  created_by_name: string | null;
   created_at: string;
   voided_at: string | null;
   voided_by_user_id: string | null;
+  /** «Анульовано … · …» — null while live, or when no user row is found. */
+  voided_by_name: string | null;
   void_reason: string | null;
 }
 
@@ -33,10 +37,14 @@ export interface IntakeTopUpResponse {
  *
  * The flag says WHAT; the embedded `intake` says WHY, so a reader looking at a
  * neutralised 2 000 ₴ row can see which receipt killed it.
+ *
+ * `names` is the caller's `loadDisplayNames` map (D-8, as `counted_by_name`):
+ * ONE batched read per page, and the mapper itself does no I/O.
  */
 export function toIntakeTopUpResponse(
   topUp: IntakeTopUp,
   intake: ParentIntakeRef,
+  names: ReadonlyMap<string, string>,
 ): IntakeTopUpResponse {
   return {
     id: topUp.id,
@@ -49,9 +57,20 @@ export function toIntakeTopUpResponse(
       voided_at: intake.voided_at ? intake.voided_at.toISOString() : null,
     },
     created_by_user_id: topUp.created_by_user_id,
+    created_by_name: names.get(topUp.created_by_user_id) ?? null,
     created_at: topUp.created_at.toISOString(),
     voided_at: topUp.voided_at ? topUp.voided_at.toISOString() : null,
     voided_by_user_id: topUp.voided_by_user_id,
+    voided_by_name: topUp.voided_by_user_id ? (names.get(topUp.voided_by_user_id) ?? null) : null,
     void_reason: topUp.void_reason,
   };
+}
+
+/** Every user id a page of top-ups names — the one `loadDisplayNames` read it needs. */
+export function topUpUserIds(
+  rows: readonly Pick<IntakeTopUp, 'created_by_user_id' | 'voided_by_user_id'>[],
+): string[] {
+  return rows.flatMap((r) =>
+    r.voided_by_user_id ? [r.created_by_user_id, r.voided_by_user_id] : [r.created_by_user_id],
+  );
 }

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { TraceScope } from '@/shared/ui/trace';
 import { DraftLines } from './DraftLines';
 import type { Draft } from '../model/draft';
 
@@ -30,7 +31,6 @@ const props = {
   onPost: vi.fn(),
   posting: false,
   canPost: true,
-  note: null,
 };
 
 beforeEach(() => {
@@ -97,7 +97,31 @@ describe('DraftLines', () => {
         ]}
       />,
     );
-    expect(screen.getByText('300.60 − 15.60 − 48 × 1.20 = 227.40')).toBeInTheDocument();
+    // The figures are `TraceTerm`s: the formula's text is split across elements.
+    expect(screen.getByText('300.60 kg').parentElement?.textContent?.replace(/\s+/g, ' ')).toBe(
+      '300.60 kg − 15.60 kg − 48 pcs × 1.20 kg = 227.40 kg',
+    );
+  });
+
+  // «Звідки це число» (client, 24.10): the formula's result is the row's net figure.
+  it('lights the draft’s net figure from the formula’s result', () => {
+    tareMock.mockReturnValue({
+      data: [{ id: 't1', name: 'Ящик', weight_kg: '1.20', is_crate: true }],
+      isPending: false,
+    });
+    render(
+      <TraceScope>
+        <DraftLines
+          {...props}
+          drafts={[
+            draft({ tare: [{ tare_type_id: 't1', units: 10 }], tare_weight_kg: '12.00', net_kg: '108.50' }),
+          ]}
+        />
+      </TraceScope>,
+    );
+    const [term, figure] = screen.getAllByText('108.50 kg');
+    fireEvent.pointerEnter(term);
+    expect(figure).toHaveAttribute('data-trace-hit', 'neutral');
   });
 
   it('posts from its own footer, and only while there is something to post', async () => {

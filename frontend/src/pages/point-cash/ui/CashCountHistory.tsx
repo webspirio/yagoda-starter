@@ -7,12 +7,12 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { ExpandableText } from '@/shared/ui/expandable-text';
 import { Spinner } from '@/shared/ui/spinner';
 import { cn } from '@/shared/lib/cn';
-import { formatUah } from '@/shared/lib/money';
+import { formatDecimal, isZero } from '@/shared/lib/money';
+import { isTruncated } from '@/shared/api';
 import { formatShortDate } from '@/shared/lib/date';
-import { useCashCountsQuery, type CashCount } from '@/entities/cash-count';
+import { useCashCountsQuery, DiscrepancyText, type CashCount } from '@/entities/cash-count';
 import { ExplainDiscrepancyDialog } from '@/features/set-cash-explanation';
 import { OperatorNoteDialog } from '@/features/set-operator-note';
-import { discrepancyTone } from '@/features/count-shift';
 
 /**
  * §7.6's journal for one point — every drawer count, opening/midday/closing
@@ -59,27 +59,32 @@ export function CashCountHistory({
     },
     {
       id: 'counted',
+      // Rule 4 — in a table the unit lives in the header, the cells are plain.
       header: t('pointCash.countHistory.columns.counted'),
       align: 'right',
-      className: 'font-mono tabular-nums',
-      cell: (row) => formatUah(row.counted_amount, i18n.resolvedLanguage),
+      className: 'font-mono tabular-nums whitespace-nowrap',
+      cell: (row) => formatDecimal(row.counted_amount, i18n.resolvedLanguage),
     },
     {
       id: 'expected',
       header: t('pointCash.countHistory.columns.expected'),
       align: 'right',
-      className: 'font-mono tabular-nums',
-      cell: (row) => formatUah(row.expected_amount, i18n.resolvedLanguage),
+      className: 'font-mono tabular-nums whitespace-nowrap',
+      cell: (row) => formatDecimal(row.expected_amount, i18n.resolvedLanguage),
     },
     {
       id: 'discrepancy',
       header: t('pointCash.countHistory.columns.discrepancy'),
       align: 'right',
       className: 'font-mono tabular-nums',
+      // C7 — «Недостача 90,00 ₴» / «Надлишок 50,00 ₴» / «Зійшлося», the one
+      // shared reading; the ⚠ marks an incident still waiting on the owner.
       cell: (row) => (
-        <span className={cn(row.is_open && 'font-medium text-destructive')}>
-          {row.is_open ? <TriangleAlert className="mr-1 inline size-3.5" aria-hidden="true" /> : null}
-          {formatUah(row.discrepancy, i18n.resolvedLanguage)}
+        <span className={cn('whitespace-nowrap', row.is_open && 'font-medium')}>
+          {row.is_open ? (
+            <TriangleAlert className="mr-1 inline size-3.5 text-destructive" aria-hidden="true" />
+          ) : null}
+          <DiscrepancyText difference={row.discrepancy} />
         </span>
       ),
     },
@@ -115,19 +120,17 @@ export function CashCountHistory({
                   {row.explanation}
                 </ExpandableText>
               ) : (
-                <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.settled')}</span>
+                <span className="text-xs text-muted-foreground">
+                  {t('pointCash.countHistory.settled')}
+                </span>
               )}
               {operatorNote}
             </div>
           );
         }
-        if (discrepancyTone(row.discrepancy) === 'leaf') {
-          return (
-            <div className="flex flex-col items-start gap-1">
-              <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.matched')}</span>
-              {operatorNote}
-            </div>
-          );
+        // A match is already said in «Різниця» beside it — nothing to repeat.
+        if (isZero(row.discrepancy)) {
+          return operatorNote;
         }
         if (row.is_open) {
           // The operator's note informs; the incident stays open until the owner explains it.
@@ -137,7 +140,9 @@ export function CashCountHistory({
                 {t('pointCash.countHistory.explain')}
               </Button>
             ) : (
-              <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.open')}</span>
+              <span className="text-xs text-muted-foreground">
+                {t('pointCash.countHistory.open')}
+              </span>
             )
           ) : row.operator_note_editable ? (
             <Button size="xs" variant="outline" onClick={() => setNoteTarget(row)}>
@@ -189,7 +194,15 @@ export function CashCountHistory({
       ) : rows.length === 0 ? (
         <EmptyState title={t('pointCash.countHistory.empty')} />
       ) : (
-        <DataTable columns={columns} rows={rows} rowKey={(row) => row.id} frame={false} />
+        <>
+          <DataTable columns={columns} rows={rows} rowKey={(row) => row.id} frame={false} />
+          {/* The read is capped (newest first); a cut page says so (C14). */}
+          {isTruncated(counts.data) ? (
+            <p className="pt-2 text-xs text-muted-foreground">
+              {t('pointCash.countHistory.truncated', { count: rows.length })}
+            </p>
+          ) : null}
+        </>
       )}
 
       {explainTarget ? (
@@ -200,11 +213,7 @@ export function CashCountHistory({
         />
       ) : null}
       {noteTarget ? (
-        <OperatorNoteDialog
-          count={noteTarget}
-          open
-          onClose={() => setNoteTarget(null)}
-        />
+        <OperatorNoteDialog count={noteTarget} open onClose={() => setNoteTarget(null)} />
       ) : null}
     </>
   );

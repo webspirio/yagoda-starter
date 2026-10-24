@@ -20,7 +20,7 @@ beforeEach(() => {
 afterEach(() => mock.restore());
 
 describe('useCreateTopUpMutation', () => {
-  it('posts the top-up and invalidates top-ups, balances and intakes', async () => {
+  it('posts the top-up and invalidates top-ups, balances, intakes, cost of day and reweighs', async () => {
     mock.onPost('/intake-top-ups').reply(201, { id: 't1' });
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
     const { result } = renderHook(() => useCreateTopUpMutation(), { wrapper });
@@ -33,6 +33,10 @@ describe('useCreateTopUpMutation', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.supplierBalances });
       // The parent receipt's open_amount now includes this top-up.
       expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.intakes });
+      // Review 2026-10-24 I1: the receipt day's «Собівартість дня» and the shortfall price
+      // on «Переважування» both count top-ups, and their caches outlive a write here.
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.costOfDay });
+      expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: queryKeys.reweighs });
     });
   });
 });

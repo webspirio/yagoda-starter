@@ -3,6 +3,7 @@ import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { IntakeDetail } from '@/entities/intake';
+import type { IntakeTopUp } from '@/entities/intake-top-up';
 import { ReceiptDialog } from './ReceiptDialog';
 
 const {
@@ -15,7 +16,9 @@ const {
   meMock,
   voidDialogMock,
   settingsMock,
+  topUpsMock,
 } = vi.hoisted(() => ({
+  topUpsMock: vi.fn(),
   intakeMock: vi.fn(),
   supplierMock: vi.fn(),
   balanceMock: vi.fn(),
@@ -56,6 +59,10 @@ vi.mock('@/entities/tare-type', () => ({
 // re-wiring the dialog to it turns every receipt test below into «Something went wrong».
 vi.mock('@/entities/collection-point', () => ({
   usePointOptionsQuery: () => ({ data: undefined, isPending: false, isError: true }),
+}));
+
+vi.mock('@/entities/intake-top-up', () => ({
+  useIntakeTopUpsQuery: (filter: unknown) => topUpsMock(filter),
 }));
 
 vi.mock('@/entities/user', () => ({
@@ -125,6 +132,7 @@ function buildIntake(overrides: Partial<IntakeDetail> = {}): IntakeDetail {
     business_date: '2026-09-08',
     supplier_id: 'supplier-1',
     amount: '14560.00',
+    balance_after: '9000.00',
     received_by_user_id: 'user-1',
     voided_at: null,
     voided_by_user_id: null,
@@ -182,15 +190,18 @@ function settingsState(over: {
 
 function setUp({
   intake = buildIntake(),
-  debt = '9000.00',
+  liveDebt = '9000.00',
   me = OPERATOR_OTHER,
   intakeIsError = false,
   grades = [GRADE_1],
   gradesIsError = false,
   note = null,
+  topUps = [],
 }: {
+  topUps?: IntakeTopUp[];
   intake?: IntakeDetail | null;
-  debt?: string;
+  /** The supplier's LIVE debt — which the receipt must NOT print (A1). */
+  liveDebt?: string;
   me?: typeof OPERATOR_AUTHOR | typeof OPERATOR_OTHER | typeof OWNER;
   intakeIsError?: boolean;
   grades?: Array<typeof GRADE_1>;
@@ -204,7 +215,7 @@ function setUp({
   });
   supplierMock.mockReturnValue({ data: SUPPLIER, isPending: false, isError: false });
   balanceMock.mockReturnValue({
-    data: { supplier_id: 'supplier-1', debt },
+    data: { supplier_id: 'supplier-1', debt: liveDebt },
     isPending: false,
     isError: false,
   });
@@ -221,10 +232,34 @@ function setUp({
   meMock.mockReturnValue({ data: me, isPending: false, isError: false });
   settlementMock.mockReturnValue({ data: undefined, isPending: false, isError: false });
   settingsMock.mockReturnValue(settingsState({ data: { receipt_note: note, updated_at: AT } }));
+  topUpsMock.mockReturnValue({
+    data: { data: topUps, total: topUps.length, page: 1, limit: 100 },
+    isPending: false,
+    isError: false,
+  });
+}
+
+function topUp(over: Partial<IntakeTopUp> = {}): IntakeTopUp {
+  return {
+    id: 'top-up-1',
+    amount: '750.00',
+    reason: 'домовились про 48 замість 45',
+    counts_toward_balance: true,
+    intake: { id: 'intake-1', code: 'SHP-IN-20260908-00412', voided_at: null },
+    created_by_user_id: 'user-9',
+    created_by_name: 'Мережевий Власник',
+    created_at: '2026-09-10T09:00:00.000Z',
+    voided_at: null,
+    voided_by_user_id: null,
+    voided_by_name: null,
+    void_reason: null,
+    ...over,
+  };
 }
 
 beforeEach(() => {
   voidDialogMock.mockReset();
+  balanceMock.mockClear();
   settlementMock.mockReset();
 });
 
@@ -370,8 +405,8 @@ describe('ReceiptDialog', () => {
   });
 
   it('prints the agreed footer in order and ends with the tare tally', () => {
-    // 14 560 accrued, nothing paid, the live balance 20 000: owed 5 440 before.
-    setUp({ debt: '20000.00' });
+    // 14 560 accrued, nothing paid, the frozen balance 20 000: owed 5 440 before.
+    setUp({ intake: buildIntake({ balance_after: '20000.00' }) });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
     const last = (text: string) => {
@@ -490,14 +525,57 @@ describe('ReceiptDialog', () => {
     expect(screen.queryByText(/September 8, 2026/)).not.toBeInTheDocument();
   });
 
-  it('counts the single line too — «· 1 line», not the bare code (M4)', () => {
+  // Audit 2026-10-24 A1: a later document of the supplier moved every reprint.
+  it('prints the frozen balance_after, never the live debt, and does not read the live balance', () => {
+    setUp({ intake: buildIntake({ balance_after: '20000.00' }), liveDebt: '99999.00' });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    const balance = screen.getAllByText('Balance');
+    expect(balance[balance.length - 1].parentElement).toHaveTextContent('20,000.00 ₴');
+    expect(screen.queryByText(/99,999\.00/)).not.toBeInTheDocument();
+    expect(balanceMock).not.toHaveBeenCalled();
+  });
+
+  it('prints a voided receipt without the balance block (A2)', () => {
+    setUp({
+      intake: buildIntake({
+        voided_at: '2026-09-08T10:00:00.000Z',
+        voided_by_user_id: 'user-9',
+        void_reason: 'Помилка ваги',
+      }),
+      me: OWNER,
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText('Voided — not counted in the balance')).toBeInTheDocument();
+    for (const label of ['Debt', 'Total', 'Paid out', 'Balance']) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
+    }
+  });
+
+  it('titles the dialog with the code alone and counts the single line underneath (M4, A4)', () => {
     setUp();
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText('Receipt SHP-IN-20260908-00412 · 1 line')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Receipt SHP-IN-20260908-00412' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('1 line')).toBeInTheDocument();
   });
 
-  it('shows the plural title when the intake has more than one line', () => {
+  it('says the document can be voided here only when «Void» is shown (A4)', () => {
+    setUp({ me: OWNER });
+    const { unmount } = render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+    expect(screen.getByText('1 line · you can void the document here')).toBeInTheDocument();
+    unmount();
+
+    setUp({ me: OPERATOR_OTHER });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+    expect(screen.getByText('1 line')).toBeInTheDocument();
+    expect(screen.queryByText(/you can void/)).not.toBeInTheDocument();
+  });
+
+  it('shows the plural line count when the intake has more than one line', () => {
     const base = buildIntake();
     setUp({
       intake: buildIntake({
@@ -506,7 +584,7 @@ describe('ReceiptDialog', () => {
     });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText('Receipt SHP-IN-20260908-00412 · 2 lines')).toBeInTheDocument();
+    expect(screen.getByText('2 lines')).toBeInTheDocument();
   });
 
   it('has no Pay out button — the payout now happens from the reception screen (#116)', () => {
@@ -883,5 +961,76 @@ describe('ReceiptDialog startWithVoid — the row action opens straight into the
     rerender(<ReceiptDialog intakeId="intake-1" open startWithVoid onClose={vi.fn()} />);
 
     expect(screen.getByTestId('void-dialog-mock')).toBeInTheDocument();
+  });
+});
+
+describe('ReceiptDialog — its top-ups (review 2026-10-24 #2, #6)', () => {
+  const voidProps = () => voidDialogMock.mock.calls[voidDialogMock.mock.calls.length - 1][0] as Record<string, unknown>;
+
+  it('reads the top-ups of THIS receipt', () => {
+    setUp();
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+    expect(topUpsMock).toHaveBeenCalledWith({ intakeId: 'intake-1' });
+  });
+
+  it('owner: the void takes receipt + live top-ups off, and names the top-ups in a box of their own', () => {
+    setUp({
+      me: OWNER,
+      topUps: [
+        topUp(),
+        topUp({ id: 'top-up-2', amount: '100.00' }),
+        topUp({ id: 'top-up-3', amount: '999.00', counts_toward_balance: false, voided_at: AT }),
+      ],
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+    // 14 560,00 + 750,00 + 100,00 — the voided 999,00 counts for nothing already.
+    expect(voidProps()).toMatchObject({ intakeAmount: '15410.00', intakeTopUps: '850.00' });
+  });
+
+  it('operator: only the corrected total — no top-ups box, no block', () => {
+    setUp({ me: OPERATOR_AUTHOR, topUps: [topUp()] });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+    expect(voidProps()).toMatchObject({ intakeAmount: '15310.00', intakeTopUps: undefined });
+    expect(screen.queryByText('Top-ups on this receipt (not printed)')).not.toBeInTheDocument();
+  });
+
+  it('no top-ups: the drop is the receipt alone and there is no second box', () => {
+    setUp({ me: OWNER });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+    expect(voidProps()).toMatchObject({ intakeAmount: '14560.00', intakeTopUps: undefined });
+    expect(screen.queryByText('Top-ups on this receipt (not printed)')).not.toBeInTheDocument();
+  });
+
+  it('owner: lists every top-up on screen only — amount, reason, author — a voided one struck', () => {
+    setUp({
+      me: OWNER,
+      topUps: [
+        topUp(),
+        topUp({
+          id: 'top-up-2',
+          amount: '100.00',
+          reason: 'двічі',
+          counts_toward_balance: false,
+          voided_at: AT,
+          void_reason: 'помилка',
+        }),
+      ],
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+    const block = screen.getByRole('region', { name: 'Top-ups on this receipt (not printed)' });
+    expect(block).toHaveClass('print-hide');
+    expect(block).toHaveTextContent('750.00 ₴');
+    expect(block).toHaveTextContent('домовились про 48 замість 45');
+    expect(block).toHaveTextContent('Мережевий Власник');
+    const voided = screen.getByText(/двічі/).closest('li')!;
+    expect(voided).toHaveClass('line-through');
+    expect(voided).toHaveTextContent('voided: помилка');
+  });
+
+  it('waits for the top-ups before it shows the receipt (the void amount depends on them)', () => {
+    setUp({ me: OWNER });
+    topUpsMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+    expect(screen.getByText('Loading…')).toBeInTheDocument();
   });
 });

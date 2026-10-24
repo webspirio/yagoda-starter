@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useState, type KeyboardEvent } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Eyebrow } from '@/shared/ui/eyebrow';
@@ -8,7 +8,7 @@ import { TextInput } from '@/shared/ui/text-input';
 import { DecimalInput } from '@/shared/ui/decimal-input';
 import { useDecimalField } from '@/shared/ui/use-decimal-field';
 import { toast } from '@/shared/ui/toast';
-import { formatDecimal, formatUah } from '@/shared/lib/money';
+import { cmp, formatDecimal, formatUah, toDecimalField } from '@/shared/lib/money';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import {
   useCreateDayExpenseMutation,
@@ -17,6 +17,7 @@ import {
   type DayExpense,
 } from '@/entities/day-expense';
 import type { CostOfDay } from '@/entities/cost-of-day';
+import { DAY } from './trace-ids';
 
 // Why the amount inputs gate on the grammar, not the mask (#72):
 // `DecimalInput`'s mask is a TYPING mask, not a validator: '.' and '12.' both
@@ -29,6 +30,18 @@ import type { CostOfDay } from '@/entities/cost-of-day';
 // why: 99 999 999,99 ₴ of пальне is a missed key, not a day.) What is sent is
 // `parseDecimal`'s canonical output (`useDecimalField`'s `parsed`), never the
 // raw text.
+
+/** A parsed amount the server would accept: above zero (`amountPositive`). */
+const positive = (parsed: string | null): parsed is string =>
+  parsed !== null && cmp(parsed, '0.00') > 0;
+
+/** Enter in a field of the row presses that row's button (audit E11). */
+const onEnter = (run: () => void) => (e: KeyboardEvent<HTMLInputElement>) => {
+  if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+    e.preventDefault();
+    run();
+  }
+};
 
 /** `Field`'s error line, for the two amount inputs that sit outside a `Field`. */
 function FormatError({ id }: { id: string }) {
@@ -77,6 +90,9 @@ export function ExpensesStrip({
   const [editing, setEditing] = useState<string | null>(null);
   const [draftLabel, setDraftLabel] = useState('');
   const [draftAmount, setDraftAmount] = useState('');
+  // The line whose «Прибрати» was pressed and awaits a yes — a stray click on
+  // the trash can no longer takes money out of the day (audit E11).
+  const [removing, setRemoving] = useState<string | null>(null);
   // #72 — parse, the shared message (once the field is left) and the aria
   // wiring: these inputs sit outside a `Field`, so the hook carries it.
   const addAmount = useDecimalField(amount, { errorId: 'expense-amount-error' });
@@ -85,7 +101,7 @@ export function ExpensesStrip({
   async function add() {
     const trimmed = label.trim();
     const canonical = addAmount.parsed;
-    if (!trimmed || canonical === null) return;
+    if (!trimmed || !positive(canonical) || create.isPending) return;
     try {
       await create.mutateAsync({ shiftId, label: trimmed, amount: canonical });
       setLabel('');
@@ -100,7 +116,9 @@ export function ExpensesStrip({
   function startEdit(line: DayExpense) {
     setEditing(line.id);
     setDraftLabel(line.label);
-    setDraftAmount(line.amount);
+    // The way the screen prints it («1000,00» in uk); `editAmount.parsed` reads
+    // it back canonical, so an untouched amount still compares equal below.
+    setDraftAmount(toDecimalField(line.amount, locale));
   }
 
   async function saveEdit(line: DayExpense) {
@@ -109,7 +127,8 @@ export function ExpensesStrip({
     const trimmed = draftLabel.trim();
     if (trimmed && trimmed !== line.label) patch.label = trimmed;
     const canonical = editAmount.parsed;
-    if (canonical !== null && canonical !== line.amount) patch.amount = canonical;
+    if (!trimmed || !positive(canonical) || update.isPending) return;
+    if (canonical !== line.amount) patch.amount = canonical;
 
     if (patch.label === undefined && patch.amount === undefined) {
       setEditing(null);
@@ -126,6 +145,7 @@ export function ExpensesStrip({
   }
 
   async function removeLine(line: DayExpense) {
+    setRemoving(null);
     try {
       await remove.mutateAsync({ id: line.id });
     } catch (error) {
@@ -146,15 +166,31 @@ export function ExpensesStrip({
     <div className="max-w-2xl overflow-hidden rounded-lg ring-1 ring-[var(--plum)]/40">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 pt-3 pb-2">
         <Eyebrow className="text-[var(--plum)]">{t('costOfDay.expenses.title')}</Eyebrow>
+        {/* The two figures the table's formulas cite (`shared/ui/trace`): the
+            day's expenses, and their per-kg half down the «₴/кг» column. Under a
+            split by money that half is each row's own, so the strip names the
+            percentage instead — a caption with «≈», never an operand (spec
+            2026-10-24 §2.2). */}
         <span className="font-mono text-sm font-semibold tabular-nums text-[var(--plum)]">
-          {day.expenses_per_kg === null
-            ? t('costOfDay.expenses.totalNoRate', {
-                amount: formatUah(day.expenses_amount, locale),
-              })
-            : t('costOfDay.expenses.total', {
-                amount: formatUah(day.expenses_amount, locale),
-                perKg: formatDecimal(day.expenses_per_kg, locale),
-              })}
+          <Trans
+            t={t}
+            i18nKey={
+              day.expenses_pct !== null
+                ? 'costOfDay.expenses.totalPct'
+                : day.expenses_per_kg === null
+                  ? 'costOfDay.expenses.totalNoRate'
+                  : 'costOfDay.expenses.total'
+            }
+            values={{
+              amount: formatUah(day.expenses_amount, locale),
+              perKg: day.expenses_per_kg === null ? '' : formatDecimal(day.expenses_per_kg, locale),
+              pct: day.expenses_pct === null ? '' : formatDecimal(day.expenses_pct, locale),
+            }}
+            components={{
+              amount: <span data-trace={DAY.expenses} />,
+              rate: <span data-trace={DAY.expensesPerKg} />,
+            }}
+          />
         </span>
       </div>
 
@@ -174,6 +210,7 @@ export function ExpensesStrip({
                     <TextInput
                       value={draftLabel}
                       onChange={(e) => setDraftLabel(e.target.value)}
+                      onKeyDown={onEnter(() => void saveEdit(line))}
                       aria-label={t('costOfDay.expenses.labelField')}
                       className="h-8 text-xs"
                     />
@@ -182,6 +219,7 @@ export function ExpensesStrip({
                     <DecimalInput
                       value={draftAmount}
                       onChange={(e) => setDraftAmount(e.target.value)}
+                      onKeyDown={onEnter(() => void saveEdit(line))}
                       {...editAmount.inputProps}
                       aria-label={t('costOfDay.expenses.amountField')}
                       className="h-8 text-right font-mono text-xs"
@@ -194,7 +232,7 @@ export function ExpensesStrip({
                         size="sm"
                         onClick={() => void saveEdit(line)}
                         disabled={
-                          !draftLabel.trim() || editAmount.parsed === null || update.isPending
+                          !draftLabel.trim() || !positive(editAmount.parsed) || update.isPending
                         }
                       >
                         <Check className="size-3.5" />
@@ -211,6 +249,28 @@ export function ExpensesStrip({
                       </Button>
                     </div>
                     {editAmount.error ? <FormatError id="expense-edit-amount-error" /> : null}
+                  </TableCell>
+                </TableRow>
+              ) : removing === line.id ? (
+                <TableRow key={line.id} className="bg-destructive/8 hover:bg-destructive/8">
+                  <TableCell colSpan={2} className="text-sm">
+                    {t('costOfDay.expenses.removeConfirm', { label: line.label })}
+                  </TableCell>
+                  <TableCell className={actionsCell}>
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        autoFocus
+                        disabled={remove.isPending}
+                        onClick={() => void removeLine(line)}
+                      >
+                        {t('costOfDay.expenses.removeYes')}
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setRemoving(null)}>
+                        {t('costOfDay.expenses.cancel')}
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ) : (
@@ -237,7 +297,7 @@ export function ExpensesStrip({
                         size="icon"
                         className="size-7 text-muted-foreground"
                         aria-label={t('costOfDay.expenses.remove', { label: line.label })}
-                        onClick={() => void removeLine(line)}
+                        onClick={() => setRemoving(line.id)}
                       >
                         <Trash2 className="size-3.5" />
                       </Button>
@@ -253,6 +313,7 @@ export function ExpensesStrip({
               <TextInput
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
+                onKeyDown={onEnter(() => void add())}
                 placeholder={t('costOfDay.expenses.labelField')}
                 aria-label={t('costOfDay.expenses.labelField')}
                 className="h-8 text-xs"
@@ -262,8 +323,9 @@ export function ExpensesStrip({
               <DecimalInput
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
+                onKeyDown={onEnter(() => void add())}
                 {...addAmount.inputProps}
-                placeholder={t('costOfDay.expenses.amountField')}
+                placeholder={formatDecimal('0.00', locale)}
                 aria-label={t('costOfDay.expenses.amountField')}
                 className="h-8 text-right font-mono text-xs"
               />
@@ -274,7 +336,7 @@ export function ExpensesStrip({
                 variant="secondary"
                 size="sm"
                 onClick={() => void add()}
-                disabled={!label.trim() || addAmount.parsed === null || create.isPending}
+                disabled={!label.trim() || !positive(addAmount.parsed) || create.isPending}
               >
                 <Plus className="size-3.5" />
                 {t('costOfDay.expenses.addLine')}

@@ -2,6 +2,7 @@ import { afterEach } from 'vitest';
 import '@testing-library/jest-dom/vitest';
 import { configure } from '@testing-library/dom';
 import { i18n, initI18n } from './shared/lib/i18n';
+import { addOwnerTranslations } from './shared/lib/i18n/owner';
 import en from './shared/lib/i18n/locales/en.json';
 
 /**
@@ -27,6 +28,9 @@ configure({ asyncUtilTimeout: 5000 });
 // Production fetches en.json on demand; tests register it statically so the
 // switch to English below stays synchronous and no test has to await it.
 void initI18n();
+// The owner chunk registers its own uk strings when it loads; tests render owner
+// screens without that chunk, so they get them up front.
+addOwnerTranslations();
 i18n.addResourceBundle('en', 'translation', en);
 void i18n.changeLanguage('en');
 

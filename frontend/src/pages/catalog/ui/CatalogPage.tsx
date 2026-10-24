@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/shared/lib/cn';
+import { formatDecimal } from '@/shared/lib/money';
 import { useUrlParam } from '@/shared/lib/url-state';
 import { PageHeader } from '@/shared/ui/page-header';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs';
@@ -158,11 +159,9 @@ function ProductsPanel() {
       id: 'is_active',
       header: t('catalog.grades.col.status'),
       align: 'right',
-      cell: (g) => (
-        <Badge variant={g.is_active ? 'default' : 'secondary'}>
-          {g.is_active ? t('catalog.grades.active') : t('catalog.grades.inactive')}
-        </Badge>
-      ),
+      // Rule 1 of the 2026-10-24 audit: an active grade is the normal case — no badge.
+      cell: (g) =>
+        g.is_active ? null : <Badge variant="outline">{t('catalog.grades.inactive')}</Badge>,
     },
   ];
 
@@ -197,7 +196,7 @@ function ProductsPanel() {
                 aria-label={t('catalog.products.search')}
                 className="min-w-0"
               />
-              <Button className="h-[46px] shrink-0" onClick={() => openProduct(null)}>
+              <Button className="h-11.5 shrink-0" onClick={() => openProduct(null)}>
                 <Plus className="size-4" />
                 {t('catalog.products.new')}
               </Button>
@@ -304,7 +303,7 @@ function ProductsPanel() {
 }
 
 function TareTypesPanel() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { data, isPending, isError } = useTareTypesQuery();
 
   const [editing, setEditing] = useState<TareType | null>(null);
@@ -324,8 +323,9 @@ function TareTypesPanel() {
 
   const rows = data?.data ?? [];
 
-  // Money/weight are decimal STRINGS from the wire — rendered raw, never through
-  // toFixed or Number, so no value ever passes through a binary float here.
+  // Money/weight are decimal STRINGS from the wire — formatted by `formatDecimal`
+  // (strings in, strings out), never through toFixed or Number. The unit is in the
+  // header («Вага, кг», «Завдаток, ₴»), the cell is a plain figure.
   const columns: Column<TareType>[] = [
     {
       id: 'name',
@@ -337,14 +337,14 @@ function TareTypesPanel() {
       header: t('catalog.tareTypes.col.weight'),
       align: 'right',
       className: 'font-mono tabular-nums',
-      cell: (x) => x.weight_kg || '—',
+      cell: (x) => (x.weight_kg ? formatDecimal(x.weight_kg, i18n.language) : '—'),
     },
     {
       id: 'deposit_price',
       header: t('catalog.tareTypes.col.deposit'),
       align: 'right',
       className: 'font-mono tabular-nums',
-      cell: (x) => x.deposit_price || '—',
+      cell: (x) => (x.deposit_price ? formatDecimal(x.deposit_price, i18n.language) : '—'),
     },
     {
       id: 'is_crate',
@@ -361,11 +361,8 @@ function TareTypesPanel() {
       id: 'is_active',
       header: t('catalog.tareTypes.col.status'),
       align: 'right',
-      cell: (x) => (
-        <Badge variant={x.is_active ? 'default' : 'secondary'}>
-          {x.is_active ? t('catalog.tareTypes.active') : t('catalog.tareTypes.inactive')}
-        </Badge>
-      ),
+      cell: (x) =>
+        x.is_active ? null : <Badge variant="outline">{t('catalog.tareTypes.inactive')}</Badge>,
     },
   ];
 

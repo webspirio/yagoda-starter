@@ -19,6 +19,7 @@ import { CredentialsService } from '../users/credentials.service';
 import { LOCAL_PROVIDER } from '../users/user-identity.entity';
 import { UserRole } from '../users/user-role.enum';
 import { stockPoint } from '../testing/crate-stock-fixture';
+import { listenOnLoopback } from '../testing/listen-on-loopback';
 
 const pointCode = (): string => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -78,10 +79,13 @@ describe('payout cash race: two suppliers, one drawer (HTTP, Postgres)', () => {
       new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
     app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
-    // Listening once is what lets `racingAgent`'s sockets be reused: handed a server that is
-    // not listening, supertest listens on a fresh port per request, and its end() waits on
-    // server.close(), which holds until the agent's idle keep-alive sockets time out.
-    await app.listen(0);
+    // LISTENING ONCE, HERE, rather than letting supertest do it per request. Handed a server
+    // with no address, supertest calls `listen(0)` before every request and `close()` after
+    // it — and `close()` waits out every idle keep-alive socket `racingAgent` holds, Node's
+    // `keepAliveTimeout` of 5s apiece, which once cost this file 18s of a 20s run. One
+    // listening server is also what lets the racing pair reuse the sockets the warm-up opened.
+    // On 127.0.0.1 too — see `listenOnLoopback` for why a wildcard listen is a flake on macOS.
+    await listenOnLoopback(app);
 
     const users = app.get(UsersService);
     const credentials = app.get(CredentialsService);
@@ -314,7 +318,14 @@ describe('payout cash race: two suppliers, one drawer (HTTP, Postgres)', () => {
     // spec: 0/5 runs against the pre-fix code overlapped with a bare
     // `Promise.all`). This head start is what puts the two requests' cash
     // reads back in the SAME window a real two-operator scramble would.
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    //
+    // THE NUMBER IS A MEASUREMENT, NOT A MARGIN. Against the pre-fix writer (the cash read
+    // moved back above the `PO` lock), with the app listening once as `beforeAll` arranges,
+    // a laptop sweep caught the race 4/4 at every head start from 5 to 18ms, and 0/4 at 0, 2
+    // and 25ms; 10ms sits inside that window. The window moves with the request path's cost,
+    // so a change to how these requests reach the app means sweeping it again — 25ms was right
+    // only while supertest re-listened per request, and silently stopped catching the race.
+    await new Promise((resolve) => setTimeout(resolve, 10));
     const standalonePayoutForB = request(app.getHttpServer())
       .post('/payouts')
       .agent(agent as never)

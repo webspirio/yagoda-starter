@@ -15,21 +15,34 @@ import type {
  * UNDER THE `supplierBalances` PREFIX on purpose — every receipt, payout and
  * top-up write (and its void) already invalidates it, so a new receipt moves
  * the weight here with no new invalidation.
+ *
+ * `pointId` narrows it to one point (ignored server-side for an operator, as
+ * on `/suppliers`). Since it is unpaged it is also the journal's NAME source
+ * (audit D7): `status: 'all'` names every supplier a historic document can
+ * belong to, past the 100 a paged read would stop at.
  */
 export function useSupplierTotalsQuery(filter: {
   search: string;
   sort: SupplierTotalsSort;
   order: 'asc' | 'desc';
   status: SupplierTotalsStatus;
+  pointId?: string | null;
 }) {
   const q = filter.search.trim();
   const { sort, order, status } = filter;
+  const pointId = filter.pointId ?? null;
   return useQuery({
-    queryKey: [...queryKeys.supplierBalances, 'totals', { q, sort, order, status }],
+    queryKey: [...queryKeys.supplierBalances, 'totals', { q, sort, order, status, pointId }],
     queryFn: async (): Promise<SupplierTotalsRow[]> =>
       (
         await httpClient.get<SupplierTotalsRow[]>('/supplier-totals', {
-          params: { ...(q ? { q } : {}), sort, order, status },
+          params: {
+            ...(q ? { q } : {}),
+            sort,
+            order,
+            status,
+            ...(pointId ? { collection_point_id: pointId } : {}),
+          },
         })
       ).data,
     staleTime: STALE.list,

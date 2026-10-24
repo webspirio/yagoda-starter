@@ -40,7 +40,10 @@ export class ListIntakesQuery {
     if (query.to) qb.andWhere('s.business_date <= :to', { to: query.to });
     if (!query.include_voided) qb.andWhere('i.voided_at IS NULL');
 
-    qb.orderBy('i.created_at', 'DESC')
+    // By the SHIFT's day first (audit 2026-10-24 A3): a receipt recorded later for an earlier
+    // day — a reopened shift — sits with its day instead of above today's.
+    qb.orderBy('s.business_date', 'DESC')
+      .addOrderBy('i.created_at', 'DESC')
       // Tiebreaker: two receipts punched in the same millisecond are ordinary at a busy point.
       .addOrderBy('i.id', 'ASC')
       .skip(skipOf(query))

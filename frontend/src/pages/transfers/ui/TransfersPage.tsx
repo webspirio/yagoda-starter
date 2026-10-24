@@ -1,12 +1,14 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { isTruncated } from '@/shared/api';
 import { ListPage } from '@/shared/ui/templates/list-page';
 import { StatGrid } from '@/shared/ui/stat-grid';
 import { StatTile } from '@/shared/ui/stat-tile';
 import { Spinner } from '@/shared/ui/spinner';
-import { sum, cmp, formatUah } from '@/shared/lib/money';
+import { TraceScope, TraceTerm } from '@/shared/ui/trace';
+import { sum, cmp, isZero, formatUah } from '@/shared/lib/money';
 import { usePointCashQuery } from '@/entities/point-cash';
+import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useTransfersQuery, type Transfer } from '@/entities/transfer';
 import { SendTransferDialog } from '@/features/send-transfer';
 import { ResolveTransferDialog } from '@/features/resolve-transfer';
@@ -27,15 +29,18 @@ type DialogTarget =
  * so it never needs to remember to hide a button for an operator — there is
  * nothing role-conditional in this tree to forget.
  *
- * ONE `useTransfersQuery({})` READ SERVES TWO JOBS, deliberately not two
- * separate calls: `TransferHistory` renders it as the document log, and the
- * same array is filtered client-side to `status === 'disputed' &&
- * resolved_at === null` so `PointDebtTable` can hand `ResolveTransferDialog`
- * a full `Transfer` (id included) for whichever point still has an open
- * dispute (EVERY open one, #76) — the `GET /point-cash` row itself carries only
- * `latest_transfer: { status, sent_at, resolved_at }` (`resolved_at` since
- * #76, enough for its badge to read «Врегульовано»), but no id, and only the
- * point's latest transfer, not every open dispute.
+ * THREE TRANSFER READS, each for one job (audit 2026-10-24, C10/C4):
+ *   - `useTransfersQuery({})` — `TransferHistory`'s document log, the newest
+ *     100 across the network;
+ *   - `{ status: 'disputed' }` — every dispute, so `PointDebtTable` can hand
+ *     `ResolveTransferDialog` a full `Transfer` (id included) for EVERY open
+ *     one (#76). It used to be filtered out of the history page above, where
+ *     an older open dispute fell off the newest-100 cut and lost its
+ *     «Вирішити» (Конищів had 3, the page showed 2);
+ *   - `{ status: 'sent' }` — money on the road, summed per point with `sum`
+ *     for «з них … уже в дорозі» under each shortfall.
+ * The `GET /point-cash` row itself carries only `latest_transfer: { status,
+ * sent_at, resolved_at }` — no id, and only the point's latest transfer.
  *
  * RULE 4 — this read is never given `includeVoided: true`. A voided
  * transfer stopped counting toward any point's cash (§9.3); showing it in
@@ -63,6 +68,11 @@ export function TransfersPage() {
 
   const pointCash = usePointCashQuery();
   const transfers = useTransfersQuery({});
+  const disputed = useTransfersQuery({ status: 'disputed' });
+  const sent = useTransfersQuery({ status: 'sent' });
+  // ACTIVE points, for one thing only: hiding a retired point that has
+  // nothing left to say (below). Names still come from `pointCash` rows.
+  const activePoints = usePointOptionsQuery();
 
   // One dialog target for all three actions — never open at once, so one
   // `{ kind, ... }` union replaces three parallel `{ target, open, key }`
@@ -88,43 +98,67 @@ export function TransfersPage() {
   }, []);
   const closeDialog = () => setDialogTarget(null);
 
-  const isPending = pointCash.isPending || transfers.isPending;
-  const isError = pointCash.isError || transfers.isError;
+  const isPending =
+    pointCash.isPending || transfers.isPending || disputed.isPending || sent.isPending;
+  const isError = pointCash.isError || transfers.isError || disputed.isError || sent.isError;
 
-  const rows = useMemo(() => pointCash.data?.data ?? [], [pointCash.data]);
+  const allRows = useMemo(() => pointCash.data?.data ?? [], [pointCash.data]);
   const allTransfers = useMemo(() => transfers.data?.data ?? [], [transfers.data]);
   // Only a dispute nobody has closed yet is actionable — see this
   // component's own doc comment (fix round 1, finding 4) for why `status`
   // alone is not enough.
   const unresolvedDisputes = useMemo(
-    () => allTransfers.filter((tr) => tr.status === 'disputed' && tr.resolved_at === null),
-    [allTransfers],
+    () =>
+      (disputed.data?.data ?? []).filter(
+        (tr) => tr.status === 'disputed' && tr.resolved_at === null,
+      ),
+    [disputed.data],
   );
+  // C4 — Σ of what is on the road to each point, through `sum`.
+  const inTransit = useMemo(() => {
+    const byPoint = new Map<string, string[]>();
+    for (const tr of sent.data?.data ?? []) {
+      if (tr.status !== 'sent') continue;
+      const list = byPoint.get(tr.collection_point_id);
+      if (list) list.push(tr.cash);
+      else byPoint.set(tr.collection_point_id, [tr.cash]);
+    }
+    return new Map([...byPoint].map(([id, cash]) => [id, sum(cash)]));
+  }, [sent.data]);
+  // C10 — a retired point is hidden once it has nothing left to say: no cash,
+  // no open dispute, nothing on the road. One that still holds or is owed
+  // money stays — `point-cash.service.ts` keeps its row for exactly that.
+  // Until the active list arrives (or if it fails) nothing is hidden.
+  const rows = useMemo(() => {
+    const active = activePoints.data ? new Set(activePoints.data.map((p) => p.id)) : null;
+    if (active === null) return allRows;
+    const disputedPoints = new Set(unresolvedDisputes.map((tr) => tr.collection_point_id));
+    return allRows.filter(
+      (r) =>
+        active.has(r.collection_point_id) ||
+        !isZero(r.cash) ||
+        disputedPoints.has(r.collection_point_id) ||
+        inTransit.has(r.collection_point_id),
+    );
+  }, [allRows, activePoints.data, unresolvedDisputes, inTransit]);
   // §7.10 — every point in scope, deactivated ones included: see this
   // component's own doc comment (fix round 1, findings 1+2) for why this is
   // NOT `usePointOptionsQuery`.
   const pointName = useMemo(
-    () => new Map(rows.map((r) => [r.collection_point_id, r.name])),
-    [rows],
+    () => new Map(allRows.map((r) => [r.collection_point_id, r.name])),
+    [allRows],
   );
   // `useCallback`, keyed on the `pointName` map above, so `TransferHistory`'s
   // own `useMemo` (also keyed in part on this prop) actually memoizes rather
   // than recomputing its columns on every render off a fresh arrow-function
   // identity.
-  const lookupPointName = useCallback(
-    (id: string) => pointName.get(id) ?? id,
-    [pointName],
-  );
+  const lookupPointName = useCallback((id: string) => pointName.get(id) ?? id, [pointName]);
   // Finding 3 — `useTransfersQuery({})` is unscoped across the WHOLE
-  // network at its default `limit: 100`, the first such use in this
-  // codebase (every other caller scopes by point, where 100 is never
-  // reached). Missing rows here are worse than a short list: an older
-  // still-open dispute at a quieter point can fall outside the top 100 and
-  // silently lose its «Вирішити» button, which reads exactly like "nothing
-  // to resolve". `DebtsPage.tsx`'s own `total > rows.length` convention
-  // names the gap instead of hiding it — deliberately NOT fixed by paging
-  // to completion, which would turn one screen's load into an unbounded
-  // fetch.
+  // network at its default `limit: 100`, so the HISTORY can be a partial
+  // page; it says so rather than read as the whole log. Open disputes no
+  // longer depend on it (their own `status: 'disputed'` read, C10), so the
+  // cut costs no «Вирішити». Deliberately NOT paged to completion, which
+  // would turn one screen's load into an unbounded fetch.
   const transfersTruncated = isTruncated(transfers.data);
 
   // RULE 1 — a point with no target (`shortfall: null`) is deliberately
@@ -134,10 +168,18 @@ export function TransfersPage() {
   // `filter().map()` so the `!= null` check actually narrows the string
   // pushed into `owed`, instead of needing a cast to satisfy `sum`.
   const owed: string[] = [];
+  // …and of that, what is already on the road — capped per point at what the
+  // point is owed, so «з них» never exceeds the whole.
+  const owedOnTheRoad: string[] = [];
   for (const row of rows) {
-    if (row.shortfall != null && cmp(row.shortfall, '0') === 1) owed.push(row.shortfall);
+    if (row.shortfall != null && cmp(row.shortfall, '0') === 1) {
+      owed.push(row.shortfall);
+      const road = inTransit.get(row.collection_point_id);
+      if (road) owedOnTheRoad.push(cmp(road, row.shortfall) === 1 ? row.shortfall : road);
+    }
   }
   const totalOwed = sum(owed);
+  const totalOnTheRoad = sum(owedOnTheRoad);
 
   // Transfers carry no human-readable code (unlike an intake's or payout's
   // receipt number) — this composes one for the void confirmation's title
@@ -148,58 +190,84 @@ export function TransfersPage() {
 
   return (
     <>
-      <ListPage
-        eyebrow={t('transfers.eyebrow')}
-        title={t('transfers.title')}
-        description={t('transfers.description')}
-        stats={
-          <StatGrid columns={2}>
-            <StatTile
-              label={t('transfers.tiles.totalOwed')}
-              value={formatUah(totalOwed, locale)}
-              tone="amber"
-              // Same truncation-honesty convention as `DebtsPage`'s own
-              // equivalent tile: `rows` is `pointCash.data.data`, capped at
-              // `limit: 100` with no paging (`usePointCash.ts`). A network
-              // with more than 100 points would otherwise sum only the first
-              // page and print that as if it were the whole network's total.
-              hint={
-                isTruncated(pointCash.data)
-                  ? t('transfers.tiles.totalOwedHint', { count: rows.length })
-                  : undefined
-              }
-            />
-          </StatGrid>
-        }
-      >
-        {isPending ? (
-          <div className="flex justify-center py-12">
-            <Spinner />
-          </div>
-        ) : isError ? (
-          <p role="alert" className="py-6 text-center text-destructive">
-            {t('common.somethingWentWrong')}
-          </p>
-        ) : (
-          <div className="flex flex-col gap-5">
-            {transfersTruncated ? (
-              <p className="text-xs text-muted-foreground">{t('transfers.truncatedHint')}</p>
-            ) : null}
-            <PointDebtTable
-              rows={rows}
-              unresolvedDisputes={unresolvedDisputes}
-              onSend={openSend}
-              onResolve={openResolve}
-            />
-            <TransferHistory
-              transfers={allTransfers}
-              pointName={lookupPointName}
-              onVoid={openVoid}
-              onResolve={openResolve}
-            />
-          </div>
-        )}
-      </ListPage>
+      {/* One trace scope: the tile's figures light the table rows they sum. */}
+      <TraceScope>
+        <ListPage
+          eyebrow={t('transfers.eyebrow')}
+          title={t('transfers.title')}
+          description={t('transfers.description')}
+          stats={
+            <StatGrid columns={2}>
+              <StatTile
+                label={t('transfers.tiles.totalOwed')}
+                // Σ of the owed rows' «Не вистачає» — pointing at it lights them
+                // (`debt:owed`, `PointDebtTable`), as the «з них» figure lights
+                // their «у дорозі» lines.
+                value={
+                  <TraceTerm refs="debt:owed" tone="amber" hint={t('transfers.tiles.traceOwed')}>
+                    {formatUah(totalOwed, locale)}
+                  </TraceTerm>
+                }
+                tone="amber"
+                // Same truncation-honesty convention as `DebtsPage`'s own
+                // equivalent tile: `rows` is `pointCash.data.data`, capped at
+                // `limit: 100` with no paging (`usePointCash.ts`). A network
+                // with more than 100 points would otherwise sum only the first
+                // page and print that as if it were the whole network's total.
+                hint={
+                  isTruncated(pointCash.data) ? (
+                    t('transfers.tiles.totalOwedHint', { count: rows.length })
+                  ) : !isZero(totalOnTheRoad) ? (
+                    <Trans
+                      t={t}
+                      i18nKey="transfers.tiles.onTheRoad"
+                      values={{ uah: formatUah(totalOnTheRoad, locale) }}
+                      components={{
+                        road: (
+                          <TraceTerm
+                            refs="debt:road"
+                            tone="amber"
+                            hint={t('transfers.tiles.traceRoad')}
+                          />
+                        ),
+                      }}
+                    />
+                  ) : undefined
+                }
+              />
+            </StatGrid>
+          }
+        >
+          {isPending ? (
+            <div className="flex justify-center py-12">
+              <Spinner />
+            </div>
+          ) : isError ? (
+            <p role="alert" className="py-6 text-center text-destructive">
+              {t('common.somethingWentWrong')}
+            </p>
+          ) : (
+            <div className="flex flex-col gap-5">
+              {transfersTruncated ? (
+                <p className="text-xs text-muted-foreground">{t('transfers.truncatedHint')}</p>
+              ) : null}
+              <PointDebtTable
+                rows={rows}
+                unresolvedDisputes={unresolvedDisputes}
+                inTransit={inTransit}
+                onSend={openSend}
+                onResolve={openResolve}
+              />
+              <TransferHistory
+                transfers={allTransfers}
+                pointName={lookupPointName}
+                onVoid={openVoid}
+                onResolve={openResolve}
+              />
+            </div>
+          )}
+        </ListPage>
+      </TraceScope>
 
       {dialogTarget?.kind === 'send' ? (
         <SendTransferDialog
@@ -211,11 +279,7 @@ export function TransfersPage() {
       ) : null}
 
       {dialogTarget?.kind === 'resolve' ? (
-        <ResolveTransferDialog
-          transfer={dialogTarget.transfer}
-          open
-          onClose={closeDialog}
-        />
+        <ResolveTransferDialog transfer={dialogTarget.transfer} open onClose={closeDialog} />
       ) : null}
 
       {dialogTarget?.kind === 'void' ? (

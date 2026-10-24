@@ -52,34 +52,30 @@ export function useDayDocuments(date: string, shiftId: string | undefined): DayD
   const payoutRows = payouts.data?.data ?? [];
 
   const feed: DayFeedRow[] = [
-    ...intakeRows.map(
-      (i: Intake): DayFeedRow => ({
-        kind: 'intake',
-        intake: i,
-        standalonePayout: false,
-        id: i.id,
-        code: i.code,
-        amount: i.amount,
-        at: i.created_at,
-        supplierId: i.supplier_id,
-        voided: i.voided_at !== null,
-        reason: i.void_reason,
-      }),
-    ),
-    ...payoutRows.map(
-      (p: Payout): DayFeedRow => ({
-        kind: 'payout',
-        intake: null,
-        standalonePayout: p.intake_id === null,
-        id: p.id,
-        code: p.code,
-        amount: p.amount,
-        at: p.created_at,
-        supplierId: p.supplier_id,
-        voided: p.voided_at !== null,
-        reason: p.void_reason,
-      }),
-    ),
+    ...intakeRows.map((i: Intake): DayFeedRow => ({
+      kind: 'intake',
+      intake: i,
+      standalonePayout: false,
+      id: i.id,
+      code: i.code,
+      amount: i.amount,
+      at: i.created_at,
+      supplierId: i.supplier_id,
+      voided: i.voided_at !== null,
+      reason: i.void_reason,
+    })),
+    ...payoutRows.map((p: Payout): DayFeedRow => ({
+      kind: 'payout',
+      intake: null,
+      standalonePayout: p.intake_id === null,
+      id: p.id,
+      code: p.code,
+      amount: p.amount,
+      at: p.created_at,
+      supplierId: p.supplier_id,
+      voided: p.voided_at !== null,
+      reason: p.void_reason,
+    })),
   ].sort((a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0));
 
   return {

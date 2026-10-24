@@ -14,7 +14,19 @@ import {
   parseDecimal,
   sub,
 } from '@/shared/lib/money';
+import { TraceTerm } from '@/shared/ui/trace';
 import { suggestedPaid, totalToPay } from '../lib/suggestedPaid';
+import { ENTRY_FIELD } from '../lib/entryFields';
+import { TOTALS_SOURCE, TOTALS_TRACE } from '../lib/traceIds';
+
+/**
+ * Where the supplier's balance read stands. `none` — no supplier picked;
+ * `pending` — no fresh figure yet; `error` — the read failed; `ready` — `debt`
+ * is the server's (and `null` there means no balance at all). Only `ready`
+ * may become part of «Разом» (B2, audit 2026-10-24): a total without the
+ * carried-in balance is a wrong total, not a partial one.
+ */
+export type DebtStatus = 'none' | 'pending' | 'error' | 'ready';
 
 /**
  * «Розрахунок» — the SAME action as «Прийняти» now also hands over cash
@@ -31,11 +43,17 @@ import { suggestedPaid, totalToPay } from '../lib/suggestedPaid';
  * operator's back (R1, spec 2026-10-23): the field keeps what was typed, the
  * amber hint names the most that may go out, and the button stays disabled
  * until the figure fits. The page refuses Enter on the same condition.
+ *
+ * Traced (client, 24.10): the ledger IS a calculation — «Разом» = нараховано +
+ * попередній залишок, the remainder = «Разом» − видано — so every figure the card
+ * derives is a `TraceTerm` that lights up the rows it is made of (inside the
+ * page's `TraceScope`); the rows it reads are sources (`data-trace`).
  */
 export function TotalsSection({
   accrued,
   lineCount,
   debt,
+  debtStatus,
   cash,
   cashUnavailable,
   paid,
@@ -45,7 +63,6 @@ export function TotalsSection({
   isPreviewing,
   isSubmitting,
   formErrorKey,
-  formErrorParams,
   showDraftHint,
   crateReturn,
 }: {
@@ -56,6 +73,8 @@ export function TotalsSection({
    *  04.09.2026: «"Разом" дорівнює балансу»); a negative one is the supplier
    *  owing us and lowers it. */
   debt: string | null;
+  /** Whether `debt` is known yet — see `DebtStatus`. */
+  debtStatus: DebtStatus;
   /** `GET /point-cash/:id`'s `.cash` — the drawer for berries. `null` means
    *  UNKNOWN (still loading OR errored), never an empty drawer. */
   cash: string | null;
@@ -74,7 +93,6 @@ export function TotalsSection({
   isPreviewing: boolean;
   isSubmitting: boolean;
   formErrorKey: string | null;
-  formErrorParams?: Record<string, number>;
   /** «Ще позиція» left an empty draft behind — nudges the operator toward
    *  finishing it or using `LineEditor`'s «Прибрати позицію» escape hatch,
    *  rather than leaving a dark submit button unexplained. */
@@ -85,13 +103,18 @@ export function TotalsSection({
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
 
-  const carried = debt !== null && cmp(debt, '0') !== 0 ? debt : null;
-  const total = totalToPay(accrued, debt);
+  const debtKnown = debtStatus === 'ready';
+  const carried = debtKnown && debt !== null && cmp(debt, '0') !== 0 ? debt : null;
+  // Never a total without the balance it carries in (B2): «—» until it is read.
+  const total = debtKnown ? totalToPay(accrued, debt) : null;
   const drawer = cash !== null && cmp(cash, '0') === 1 ? cash : '0.00';
   // The cash-capped total, never below zero — same helper the page uses for
   // the default and for its own Enter guard, so the cap here, the suggestion
   // and the refusal can never drift apart.
   const cap = total === null ? null : suggestedPaid(accrued, debt, cash);
+  // What the supplier owed US walking in — today's berries pay that off
+  // first, so it is no debt of ours (B1).
+  const owedToUs = carried !== null && cmp(carried, '0') === -1 ? sub('0', carried) : '0.00';
   const paidField = useDecimalField(paid, {
     onBlur: () => {
       if (cap === null) return;
@@ -138,14 +161,26 @@ export function TotalsSection({
   const [paidFocused, setPaidFocused] = useState(false);
   const paidDisplay =
     paidParsed !== null && paid.trim() !== '' ? formatDecimal(paidParsed, locale) : paid;
-  // What THIS delivery adds to the balance (paid less than today's accrual),
-  // or how much of the earlier balance the cash pays down (paid more) —
-  // never both. Strings through `shared/lib/money`, never floats.
-  const newDebt =
-    accrued !== null && !overCap && cmp(accrued, paidValue) === 1 ? sub(accrued, paidValue) : null;
+  // What THIS delivery adds to the balance — today's accrual, less the cash,
+  // less whatever the supplier owed us (B1: max(0, accrued − paid − owed to
+  // us)) — or how much of the earlier balance the cash pays down (paid more
+  // than today accrues) — never both. Strings through `shared/lib/money`.
+  const newDebtRaw =
+    accrued !== null && total !== null && !overCap ? sub(sub(accrued, paidValue), owedToUs) : null;
+  const newDebt = newDebtRaw !== null && cmp(newDebtRaw, '0') === 1 ? newDebtRaw : null;
   const paysOld =
-    accrued !== null && !overCap && cmp(paidValue, accrued) === 1 ? sub(paidValue, accrued) : null;
+    accrued !== null && total !== null && !overCap && cmp(paidValue, accrued) === 1
+      ? sub(paidValue, accrued)
+      : null;
   const settle = (v: string) => onPaidChange(v);
+  // What each derived figure is made of — the rows it lights up.
+  const { sum: sumIds, newDebt: newIds, paysOld: oldIds, remainder: remIds } = TOTALS_TRACE;
+  const totalRefs = carried !== null ? [sumIds.accrued, sumIds.debt] : [sumIds.accrued];
+  const newDebtRefs =
+    cmp(owedToUs, '0') === 1
+      ? [newIds.accrued, newIds.paid, newIds.debt]
+      : [newIds.accrued, newIds.paid];
+  const remainderRefs = [remIds.total, remIds.paid];
   // The over-cap hint takes the Field hint slot first: it is the reason the
   // button is disabled (R1), so it must be said even when the drawer could
   // not be read — then the cap is the total (`suggestedPaid`) and the hint
@@ -173,14 +208,14 @@ export function TotalsSection({
     // «Разом»), what is handed over now (the field and its chips), then what
     // that leaves and the button. Body text is 14–16 px throughout — the
     // operator reads this card at arm's length while counting cash.
-    <section aria-label={t('reception.totals.eyebrow')} className="flex flex-col gap-4 p-4">
+    <section aria-label={t('reception.totals.eyebrow')} className="flex flex-1 flex-col gap-4 p-4">
       <div className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between gap-3 text-base">
           <span className="text-muted-foreground">
             {t('reception.totals.accruedToday')}
             {lineCount > 1 ? t('reception.totals.linesSuffix', { count: lineCount }) : ''}
           </span>
-          <span className="font-mono font-medium">
+          <span data-trace={TOTALS_SOURCE.accrued} className="font-mono font-medium">
             {accrued === null ? (
               <span className="text-muted-foreground">{isPreviewing ? '…' : '—'}</span>
             ) : (
@@ -189,17 +224,29 @@ export function TotalsSection({
           </span>
         </div>
 
-        {carried !== null ? (
+        {debtStatus === 'pending' || debtStatus === 'error' ? (
+          // B2 — said, never silently left out of «Разом».
+          <div className="flex items-baseline justify-between gap-3 text-base">
+            <span className="text-muted-foreground">{t('reception.totals.debt')}</span>
+            {debtStatus === 'pending' ? (
+              <span className="font-mono text-muted-foreground">…</span>
+            ) : (
+              <span className="text-sm text-destructive">{t('reception.totals.debtFailed')}</span>
+            )}
+          </div>
+        ) : carried !== null ? (
           // Signed (§3.5): «+» is what the network owes the supplier, «−»
           // what the supplier owes the network — added to «Разом» either way.
           <div className="flex items-baseline justify-between gap-3 text-base">
             <span className="text-muted-foreground">{t('reception.totals.debt')}</span>
             {cmp(carried, '0') === 1 ? (
-              <span className="font-mono font-medium text-amber">
+              <span data-trace={TOTALS_SOURCE.debt} className="font-mono font-medium text-amber">
                 + {formatUah(carried, locale)}
               </span>
             ) : (
-              <span className="font-mono font-medium">− {formatUah(sub('0', carried), locale)}</span>
+              <span data-trace={TOTALS_SOURCE.debt} className="font-mono font-medium">
+                − {formatUah(sub('0', carried), locale)}
+              </span>
             )}
           </div>
         ) : null}
@@ -209,22 +256,46 @@ export function TotalsSection({
             two sums sit one under the other and are read as a subtraction. */}
         <div className="mt-1 flex items-baseline justify-between gap-x-3 border-t border-border pt-3">
           <span className="text-base font-semibold">{t('reception.totals.total')}</span>
-          <span className="font-mono text-3xl leading-none font-semibold tracking-tight">
+          {/* The figure is a source of its own (the remainder below cites it),
+              wrapped round the term that cites its two rows. */}
+          <span
+            data-trace={TOTALS_SOURCE.total}
+            className="rounded-md font-mono text-3xl leading-none font-semibold tracking-tight"
+          >
             {total === null ? (
-              <span className="text-base text-muted-foreground">{isPreviewing ? '…' : '—'}</span>
+              <span className="text-base text-muted-foreground">
+                {isPreviewing && debtStatus !== 'pending' && debtStatus !== 'error' ? '…' : '—'}
+              </span>
             ) : (
-              formatUah(total, locale)
+              <TraceTerm
+                refs={totalRefs}
+                hint={t(
+                  carried !== null
+                    ? 'reception.totals.trace.total'
+                    : 'reception.totals.trace.totalAccrued',
+                )}
+                className="px-1.5"
+              >
+                {formatUah(total, locale)}
+              </TraceTerm>
             )}
           </span>
         </div>
 
         <div className="flex items-center justify-between gap-x-3">
-          <label htmlFor="paid_amount" id="paid_amount-label" className="shrink-0 text-base font-semibold whitespace-nowrap">
+          <label
+            htmlFor="paid_amount"
+            id="paid_amount-label"
+            className="shrink-0 text-base font-semibold whitespace-nowrap"
+          >
             {t('reception.totals.paid')}
           </label>
           <div className="flex min-w-0 items-baseline font-mono text-3xl leading-none font-semibold tracking-tight">
             <DecimalInput
               id="paid_amount"
+              data-trace={TOTALS_SOURCE.paid}
+              // The last stop of Enter's walk: here Enter is the submit (§2.1 ⑦).
+              {...ENTRY_FIELD}
               variant="ghost"
               aria-labelledby="paid_amount-label"
               aria-invalid={paidErrorText || overCap ? true : undefined}
@@ -269,11 +340,14 @@ export function TotalsSection({
           </p>
         ) : null}
 
-        <div className="grid grid-cols-3 gap-2">
+        {/* One column on a phone, where three can't hold «Усе в залишок» (B9). */}
+        <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-3">
           <Button
             type="button"
             variant="outline"
             className="h-9 px-2 text-sm"
+            // B3 — no cap yet (the preview or the balance still out), nothing to set.
+            disabled={cap === null}
             onClick={() => settle(cap ?? '0')}
           >
             {t('reception.totals.all')}
@@ -305,13 +379,35 @@ export function TotalsSection({
         {newDebt !== null ? (
           <div className="flex items-baseline justify-between gap-3 text-base">
             <span className="text-muted-foreground">{t('reception.totals.newDebt')}</span>
-            <span className="font-mono font-medium text-amber">+ {formatUah(newDebt, locale)}</span>
+            <span className="font-mono font-medium text-amber">
+              +{' '}
+              <TraceTerm
+                refs={newDebtRefs}
+                tone="amber"
+                hint={t(
+                  cmp(owedToUs, '0') === 1
+                    ? 'reception.totals.trace.newDebtOwed'
+                    : 'reception.totals.trace.newDebt',
+                )}
+              >
+                {formatUah(newDebt, locale)}
+              </TraceTerm>
+            </span>
           </div>
         ) : null}
         {paysOld !== null ? (
           <div className="flex items-baseline justify-between gap-3 text-base">
             <span className="text-muted-foreground">{t('reception.totals.paysOld')}</span>
-            <span className="font-mono font-medium text-leaf">− {formatUah(paysOld, locale)}</span>
+            <span className="font-mono font-medium text-leaf">
+              −{' '}
+              <TraceTerm
+                refs={[oldIds.paid, oldIds.accrued]}
+                tone="leaf"
+                hint={t('reception.totals.trace.paysOld')}
+              >
+                {formatUah(paysOld, locale)}
+              </TraceTerm>
+            </span>
           </div>
         ) : null}
         <div
@@ -329,12 +425,30 @@ export function TotalsSection({
             // M1: neither «Розраховано повністю» nor a balance claims
             // anything about a total that has not settled yet.
             '—'
-          ) : owed || stillOwesUs ? (
+          ) : owed ? (
             <>
               <span className="text-base font-semibold">{t('reception.totals.balanceAfter')}</span>
-              <span className="font-mono text-xl font-semibold">
+              <TraceTerm
+                refs={remainderRefs}
+                tone="amber"
+                hint={t('reception.totals.trace.remainder')}
+                className="text-xl font-semibold"
+              >
                 {formatUah(remainder, locale)}
-              </span>
+              </TraceTerm>
+            </>
+          ) : stillOwesUs ? (
+            // B1 — a label about what WE owe never carries a minus: below zero
+            // it is the supplier who owes, and the figure is unsigned.
+            <>
+              <span className="text-base font-semibold">{t('reception.totals.supplierOwes')}</span>
+              <TraceTerm
+                refs={remainderRefs}
+                hint={t('reception.totals.trace.remainder')}
+                className="text-xl font-semibold"
+              >
+                {formatUah(sub('0', remainder), locale)}
+              </TraceTerm>
             </>
           ) : (
             <span className="text-base font-semibold">{t('reception.totals.settled')}</span>
@@ -356,16 +470,17 @@ export function TotalsSection({
 
       {formErrorKey ? (
         <p role="alert" className="text-sm text-destructive">
-          {t(formErrorKey, formErrorParams)}
+          {t(formErrorKey)}
         </p>
       ) : null}
 
       {/* The label carries the payout sum, so it wraps inside the button
-          rather than running past the ~355 px card — never truncated. */}
+          rather than running past the ~355 px card — never truncated. Pinned
+          to the card's foot: the card is as tall as the lines card beside it. */}
       <Button
         type="submit"
-        className="h-auto min-h-12 w-full py-2 text-center text-base leading-tight font-semibold whitespace-normal"
-        disabled={disabled || isSubmitting || overCap}
+        className="mt-auto h-auto min-h-12 w-full py-2 text-center text-base leading-tight font-semibold whitespace-normal"
+        disabled={disabled || isSubmitting || overCap || !debtKnown}
       >
         <Check className="size-5" />
         {label}

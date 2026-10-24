@@ -94,9 +94,9 @@ describe('CrateStandingService.forPoint (Postgres)', () => {
     opts: { boxes?: number; voided?: boolean } = {},
   ): Promise<string> => {
     const [intake] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id,
                             voided_at, voided_by_user_id, void_reason)
-       VALUES ($1, $2, $3, '100.00', $4, $5, $6, $7) RETURNING id`,
+       VALUES ($1, $2, $3, '100.00', '0.00', $4, $5, $6, $7) RETURNING id`,
       [
         `ST-${randomUUID().slice(0, 8)}`,
         shiftId,

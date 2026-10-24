@@ -30,7 +30,7 @@ export const TextInput = React.forwardRef<HTMLInputElement, TextInputProps>(func
       ref={ref}
       type={type}
       className={cn(
-        variant === 'ghost' ? fieldGhostClass : cn(fieldBaseClass, 'h-[46px]'),
+        variant === 'ghost' ? fieldGhostClass : cn(fieldBaseClass, 'h-11.5'),
         type === 'datetime-local' && datetimeLocalClasses,
         className,
       )}

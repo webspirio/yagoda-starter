@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { SelectField } from '@/shared/ui/select-field';
+import { HeaderSlot } from '@/shared/ui/header-slot';
 import { DateBound } from '@/shared/ui/date-bound';
 import { Switch } from '@/shared/ui/switch';
 import { TabsList, TabsTrigger } from '@/shared/ui/tabs';
@@ -34,6 +35,7 @@ export function JournalToolbar({
   to: string;
   onFromChange: (value: string) => void;
   onToChange: (value: string) => void;
+  /** Every supplier at the scope, inactive ones too — those are labelled. */
   suppliers: Supplier[];
   supplierId: string;
   onSupplierChange: (value: string) => void;
@@ -44,20 +46,22 @@ export function JournalToolbar({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div className="w-44">
-        <SelectField
-          aria-label={t('journal.pickPoint')}
-          value={pointId}
-          onChange={(e) => onPointChange(e.target.value)}
-        >
-          <option value="">{t('journal.allPoints')}</option>
-          {points.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </SelectField>
-      </div>
+      <HeaderSlot slot="scope">
+        <div className="w-44">
+          <SelectField
+            aria-label={t('journal.pickPoint')}
+            value={pointId}
+            onChange={(e) => onPointChange(e.target.value)}
+          >
+            <option value="">{t('journal.allPoints')}</option>
+            {points.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </SelectField>
+        </div>
+      </HeaderSlot>
 
       {/* Each bound caps the other, so the range cannot be reversed. */}
       <DateBound label={t('journal.pickFrom')} value={from} max={to} onCommit={onFromChange} />
@@ -72,7 +76,9 @@ export function JournalToolbar({
           <option value="">{t('journal.allSuppliers')}</option>
           {suppliers.map((s) => (
             <option key={s.id} value={s.id}>
-              {supplierName(s)}
+              {s.is_active
+                ? supplierName(s)
+                : t('journal.inactiveSupplier', { name: supplierName(s) })}
             </option>
           ))}
         </SelectField>

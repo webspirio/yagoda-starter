@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ApiError } from '@/shared/api';
 import { TopUpDialog } from './TopUpDialog';
@@ -10,11 +10,28 @@ vi.mock('../api/useCreateTopUp', () => ({
   useCreateTopUpMutation: () => ({ mutateAsync: createMock }),
 }));
 
-const INTAKE = { id: 'i1', code: 'KV-0001' };
+const INTAKE = {
+  id: 'i1',
+  code: 'KV-0001',
+  business_date: '2026-10-23',
+  amount: '12042.00',
+  net_kg: '267.60',
+  items: [
+    { product_name: 'Raspberry' },
+    { product_name: 'Strawberry' },
+    { product_name: 'Raspberry' },
+  ],
+};
 
 function open() {
   return render(
-    <TopUpDialog intake={INTAKE} supplierName="Ivan Koval" open onClose={() => {}} />,
+    <TopUpDialog
+      intake={INTAKE}
+      supplierName="Ivan Koval"
+      balanceBefore="1500.00"
+      open
+      onClose={() => {}}
+    />,
   );
 }
 
@@ -29,10 +46,58 @@ beforeEach(() => {
 });
 
 describe('TopUpDialog', () => {
+  it('calls itself a top-up — «доплата» in the glossary, never a «balance» (B8)', () => {
+    open();
+    expect(screen.getByRole('heading', { name: 'Add a top-up' })).toBeInTheDocument();
+  });
+
   it('names the receipt and the supplier the debt is being raised against', () => {
     open();
     expect(screen.getByText(/KV-0001/)).toBeInTheDocument();
     expect(screen.getByText(/Ivan Koval/)).toBeInTheDocument();
+  });
+
+  // Review 2026-10-24 #4: what the money is for, and what it changes.
+  it("shows the receipt's facts and what the top-up does and does not do", () => {
+    open();
+    expect(screen.getByText('Raspberry, Strawberry')).toBeInTheDocument();
+    expect(screen.getByText('267.60 kg')).toBeInTheDocument();
+    expect(screen.getByText('12,042.00 ₴')).toBeInTheDocument();
+    expect(screen.getByText(/«Cost of day» for 10\/23/)).toBeInTheDocument();
+    expect(screen.getByText(/It cannot be reduced — only voided/)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/48 ₴\/kg instead of 45 ₴\/kg/)).toBeInTheDocument();
+  });
+
+  it('previews the balance live: X, then X → X + amount', async () => {
+    const user = userEvent.setup();
+    open();
+    expect(screen.getByText(/^Balance:/)).toHaveTextContent('Balance: 1,500.00 ₴');
+
+    await user.type(screen.getByLabelText(/amount/i), '750');
+    expect(screen.getByText(/^Balance:/)).toHaveTextContent('Balance: 1,500.00 ₴ → 2,250.00 ₴');
+
+    // The «after» term points back at the balance now and at the amount being typed.
+    fireEvent.pointerEnter(screen.getByText('2,250.00 ₴'));
+    expect(screen.getByLabelText(/amount/i)).toHaveAttribute('data-trace-hit', 'amber');
+    expect(screen.getByText('1,500.00 ₴')).toHaveAttribute('data-trace-hit', 'amber');
+  });
+
+  it('warns, in amber, when the top-up is bigger than the receipt itself', async () => {
+    const user = userEvent.setup();
+    open();
+    await user.type(screen.getByLabelText(/amount/i), '120420');
+    expect(screen.getByText(/bigger than the receipt itself/)).toBeInTheDocument();
+    // The receipt's sum in the warning lights the «Amount» fact it repeats.
+    const [fact, term] = screen.getAllByText('12,042.00 ₴');
+    fireEvent.pointerEnter(term);
+    expect(fact).toHaveAttribute('data-trace-hit', 'amber');
+  });
+
+  it('gives no warning while the top-up is within the receipt', async () => {
+    const user = userEvent.setup();
+    open();
+    await user.type(screen.getByLabelText(/amount/i), '750');
+    expect(screen.queryByText(/bigger than the receipt itself/)).not.toBeInTheDocument();
   });
 
   it('sends the parent intake id, the amount and a trimmed reason', async () => {
@@ -119,9 +184,7 @@ describe('TopUpDialog', () => {
 
     await fill(user, '750', 'Доплата');
 
-    await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toMatch(/deactivated/i),
-    );
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/deactivated/i));
   });
 
   it('falls back to a generic banner for an unmapped failure', async () => {

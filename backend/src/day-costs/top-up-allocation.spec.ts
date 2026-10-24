@@ -4,7 +4,11 @@ import { sum } from '../common/money';
 describe('allocateTopUps', () => {
   it('gives a single-line receipt the whole top-up', () => {
     const out = allocateTopUps([
-      { intake_id: 'i-1', top_up_total: '2000.00', lines: [{ product_grade_id: 'g-1', amount: '128000.00' }] },
+      {
+        intake_id: 'i-1',
+        top_up_total: '2000.00',
+        lines: [{ product_grade_id: 'g-1', amount: '128000.00' }],
+      },
     ]);
     expect(out.get('g-1')).toBe('2000.00');
   });
@@ -41,8 +45,16 @@ describe('allocateTopUps', () => {
 
   it('accumulates across receipts that share a grade', () => {
     const out = allocateTopUps([
-      { intake_id: 'i-1', top_up_total: '10.00', lines: [{ product_grade_id: 'g-1', amount: '5.00' }] },
-      { intake_id: 'i-2', top_up_total: '15.00', lines: [{ product_grade_id: 'g-1', amount: '5.00' }] },
+      {
+        intake_id: 'i-1',
+        top_up_total: '10.00',
+        lines: [{ product_grade_id: 'g-1', amount: '5.00' }],
+      },
+      {
+        intake_id: 'i-2',
+        top_up_total: '15.00',
+        lines: [{ product_grade_id: 'g-1', amount: '5.00' }],
+      },
     ]);
     expect(out.get('g-1')).toBe('25.00');
   });
@@ -63,7 +75,11 @@ describe('allocateTopUps', () => {
 
   it('ignores a receipt with no top-up', () => {
     const out = allocateTopUps([
-      { intake_id: 'i-1', top_up_total: '0.00', lines: [{ product_grade_id: 'g-1', amount: '5.00' }] },
+      {
+        intake_id: 'i-1',
+        top_up_total: '0.00',
+        lines: [{ product_grade_id: 'g-1', amount: '5.00' }],
+      },
     ]);
     expect(out.get('g-1') ?? '0.00').toBe('0.00');
   });

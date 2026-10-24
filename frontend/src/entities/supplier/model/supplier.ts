@@ -56,6 +56,8 @@ export interface SupplierBalanceList extends Paginated<SupplierBalanceRow> {
   oldest_open_date: string | null;
   /** Σ of the positive debts over EVERY visible row, not the loaded page (#229). */
   total_owed: string;
+  /** How many visible rows are owed money (`debt > 0`) — `total` also counts a credit. */
+  owed_count: number;
 }
 
 /**

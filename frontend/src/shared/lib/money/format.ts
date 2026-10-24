@@ -39,6 +39,26 @@ export function formatDecimal(value: string, locale = 'uk'): string {
   return `${sign ? '−' : ''}${grouped}${decimal}${frac.padEnd(2, '0')}`;
 }
 
+/**
+ * A canonical decimal string as a prefilled `DecimalInput` should SHOW it:
+ * '1234.50' → '1234,50' in uk, unchanged in en. Only the separator changes —
+ * no thousands grouping, no typographic minus, no padding — so the field's
+ * mask accepts it as given. Anything that is not a canonical decimal ('' for
+ * «no value», a malformed string) comes back untouched.
+ *
+ * A form default or `setValue` is stored as given (`decimalRules`' `setValueAs`
+ * runs only on an edit), so a form prefilled with this must read the value
+ * back through `parseDecimal` before it compares or sends it.
+ */
+export function toDecimalField(value: string, locale = 'uk'): string {
+  const m = DECIMAL.exec(value);
+  if (!m) return value;
+  const [, sign = '', whole, frac] = m;
+  return frac === undefined
+    ? `${sign}${whole}`
+    : `${sign}${whole}${separatorsFor(locale).decimal}${frac}`;
+}
+
 export const formatUah = (value: string, locale = 'uk'): string =>
   `${formatDecimal(value, locale)} ₴`;
 
@@ -59,3 +79,27 @@ function kgUnitFor(locale: string): string {
 
 export const formatKg = (value: string, locale = 'uk'): string =>
   `${formatDecimal(value, locale)} ${kgUnitFor(locale)}`;
+
+/** A price per kilogram — «189,42 ₴/кг», «189.42 ₴/kg»: the unit of every
+ *  price operand in a written-out formula. */
+export const formatUahPerKg = (value: string, locale = 'uk'): string =>
+  `${formatDecimal(value, locale)} ₴/${kgUnitFor(locale)}`;
+
+/**
+ * One operand of a written-out formula, held on one line: each plain space
+ * becomes a no-break space, so «113 044,20 ₴ ÷ 596,80 кг = 189,42 ₴/кг» may
+ * wrap between terms but never strands «₴/кг» at the start of the next line.
+ * (The thousands group is already U+202F, which never breaks.)
+ */
+export const unbreakable = (term: string): string => term.replace(/ /g, ' ');
+
+/**
+ * A whole count — crates, receipts, positions — grouped like money («1 250», «−14»),
+ * never with decimals. `n` is a count, so anything fractional is a caller bug.
+ */
+export function formatCount(n: number, locale = 'uk'): string {
+  if (!Number.isInteger(n)) throw new Error(`Not a whole count: ${n}`);
+  const { group } = separatorsFor(locale);
+  const digits = String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, group);
+  return `${n < 0 ? '−' : ''}${digits}`;
+}

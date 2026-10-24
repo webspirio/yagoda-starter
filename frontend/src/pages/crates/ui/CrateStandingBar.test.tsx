@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { expectNoAxeViolations } from '../../../test-axe';
 import { CrateStandingBar } from './CrateStandingBar';
 import type { CrateStanding } from '@/entities/crate';
@@ -20,17 +20,32 @@ const base: CrateStanding = {
   holders: 2,
 };
 
+/** The identity line — its operands are boxed terms, so it is read as one text. */
+const identity = () => document.querySelector('[data-identity]') as HTMLElement;
+
 describe('CrateStandingBar', () => {
   it('prints the three figures, the identity line and the context line', () => {
     render(<CrateStandingBar standing={base} />);
-    expect(screen.getByText('500')).toBeInTheDocument();
-    expect(screen.getByText('Received by transfer: 500')).toBeInTheDocument();
+    // Stand-alone figures carry their unit.
+    expect(screen.getByText('500 cr.')).toBeInTheDocument();
+    expect(screen.getByText('Received by transfer: 500 cr.')).toBeInTheDocument();
     expect(screen.getByText('Empty at the point').parentElement).toHaveTextContent('350');
     expect(screen.getByText('Out with people').parentElement).toHaveTextContent('50');
     expect(screen.getByText('With us, with berries').parentElement).toHaveTextContent('0');
-    expect(screen.getByText('Total for the point 400 = 350 + 50 + 0')).toBeInTheDocument();
+    expect(screen.getByText('Empty at the point').parentElement).toHaveTextContent('350 cr.');
+    expect(identity()).toHaveTextContent('Total for the point 400 cr. = 350 cr. + 50 cr. + 0 cr.');
     expect(screen.getByText('Short of the allotment:')).toBeInTheDocument();
-    expect(screen.getByText('100')).toBeInTheDocument();
+    expect(screen.getByText('100 cr.')).toBeInTheDocument();
+  });
+
+  // Audit 2026-10-24, F6: crates on the road are not empties yet — the bar says so.
+  it('names crates still on the road, and says nothing when none are', () => {
+    const { rerender } = render(<CrateStandingBar standing={{ ...base, in_transit: 40 }} />);
+    expect(
+      screen.getByText('On the road: 40 cr. — the transfer is not accepted yet'),
+    ).toBeInTheDocument();
+    rerender(<CrateStandingBar standing={base} />);
+    expect(screen.queryByText(/On the road/)).not.toBeInTheDocument();
   });
 
   it('says the allotment is complete at shortfall 0', () => {
@@ -42,7 +57,7 @@ describe('CrateStandingBar', () => {
   it('prints «over N» once total runs past the allotment', () => {
     render(<CrateStandingBar standing={{ ...base, allotment: 380, shortfall: -20 }} />);
     expect(screen.getByText('Over the allotment:')).toBeInTheDocument();
-    expect(screen.getByText('20')).toBeInTheDocument();
+    expect(screen.getByText('20 cr.')).toBeInTheDocument();
     expect(screen.queryByText('Short of the allotment:')).not.toBeInTheDocument();
   });
 
@@ -50,7 +65,7 @@ describe('CrateStandingBar', () => {
   it('shows «—» for the allotment and the shortfall when the allotment is unset', () => {
     render(<CrateStandingBar standing={{ ...base, allotment: null, shortfall: null }} />);
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByText('Total for the point 400 = 350 + 50 + 0')).toBeInTheDocument();
+    expect(identity()).toHaveTextContent('Total for the point 400 cr. = 350 cr. + 50 cr. + 0 cr.');
   });
 
   /** §8.4 — no allotment means no «Short of the allotment:»/«Over the allotment:» label at all. */
@@ -61,12 +76,13 @@ describe('CrateStandingBar', () => {
     expect(screen.queryByText('Allotment complete')).not.toBeInTheDocument();
   });
 
-  it('turns a negative on-hand red and warns, without blocking anything', () => {
+  it('shows a negative on-hand with its minus, in amber — a debt in crates, not an error (§6.9, 23.10.2026)', () => {
     render(<CrateStandingBar standing={{ ...base, on_hand: -5, total: 45 }} />);
-    expect(screen.getByText('−5')).toHaveClass('text-destructive');
-    expect(
-      screen.getByText(/Fewer than zero empty crates: the documents don't add up/),
-    ).toBeInTheDocument();
+    const figure = document.querySelector('p[data-trace="crates:onHand"]');
+    expect(figure).toHaveTextContent('−5 cr.');
+    expect(figure).toHaveClass('text-amber');
+    expect(figure).not.toHaveClass('text-destructive');
+    expect(screen.getByText(/it owes people crates/)).toHaveClass('text-amber');
   });
 
   it('draws no segment wider than its share and never a negative width', () => {
@@ -81,6 +97,30 @@ describe('CrateStandingBar', () => {
     expect(widths.every((w) => !w.startsWith('-') && w !== 'NaN%')).toBe(true);
     const total = widths.reduce((sum, w) => sum + parseFloat(w), 0);
     expect(total).toBeCloseTo(100, 2);
+  });
+
+  // 24.10 — «звідки це число»: each operand lights the figure it repeats.
+  it('traces the identity line to the three figures', () => {
+    render(<CrateStandingBar standing={base} />);
+    const terms = [...identity().querySelectorAll<HTMLElement>('[data-slot="trace-term"]')];
+    expect(terms.map((el) => el.textContent?.replace(/\u00a0/g, ' '))).toEqual([
+      '400 cr.',
+      '350 cr.',
+      '50 cr.',
+      '0 cr.',
+    ]);
+
+    const inField = screen
+      .getByText('Out with people')
+      .parentElement!.querySelector('[data-trace]');
+    fireEvent.pointerEnter(terms[2]);
+    expect(inField).toHaveAttribute('data-trace-hit', 'amber');
+    fireEvent.pointerLeave(terms[2]);
+    expect(inField).not.toHaveAttribute('data-trace-hit');
+
+    // The total is shown nowhere else — it lights all three figures it sums.
+    fireEvent.pointerEnter(terms[0]);
+    expect(document.querySelectorAll('p[data-trace][data-trace-hit]')).toHaveLength(3);
   });
 
   it('is accessible', async () => {

@@ -11,11 +11,11 @@ import { IntakeDetailQuery } from '../queries/intake-detail.query';
 import { Payout } from '../../payouts/payout.entity';
 import { PayoutWriter } from '../../payouts/services/payout-writer';
 import { AllocationsService } from '../../supplier-balance/services/allocations';
+import { SupplierDebtQuery } from '../../supplier-balance/queries/supplier-debt.query';
 import { CratesService } from '../../crates/crates.service';
-import { CrateStockGuard } from '../../crate-stock/crate-stock.guard';
 import { AuditService } from '../../audit/audit.service';
 import { nextDocumentCode } from '../../common/document-code';
-import { isZero } from '../../common/money';
+import { add, isZero, sub } from '../../common/money';
 import { translateUniqueViolation } from '../../common/unique-violation';
 import type { AuthenticatedUser } from '../../auth/jwt.strategy';
 
@@ -32,11 +32,11 @@ export class CreateIntakeCommand {
     private readonly dataSource: DataSource,
     private readonly pricing: PriceIntakeQuery,
     private readonly allocations: AllocationsService,
+    private readonly debt: SupplierDebtQuery,
     private readonly payouts: PayoutWriter,
     private readonly crates: CratesService,
     private readonly audit: AuditService,
     private readonly detail: IntakeDetailQuery,
-    private readonly stock: CrateStockGuard,
   ) {}
 
   async create(actor: AuthenticatedUser, dto: CreateIntakeDto): Promise<IntakeDetailResponse> {
@@ -66,7 +66,16 @@ export class CreateIntakeCommand {
             shiftId: shift.id,
             table: 'intakes',
           });
-          const intake = await this.insert(m, actor, code, shift.id, supplier.id, built);
+          // Truthiness on purpose: absent, null and '' all mean «нічого не видано» (§3.7).
+          const paidAmount = dto.paid_amount && !isZero(dto.paid_amount) ? dto.paid_amount : null;
+
+          // Audit 2026-10-24 A1 — the receipt's «Залишок», frozen: the debt BEFORE this receipt
+          // (read under the supplier lock the ledger holds, so nothing can move it before the
+          // insert) plus its «Сума» minus the cash handed over with it. Equal to that payout's
+          // own `balance_after` whenever there is one, by construction.
+          const before = await this.debt.debtFor(supplier.id, m);
+          const balanceAfter = sub(add(before, built.amount), paidAmount ?? '0.00');
+          const intake = await this.insert(m, actor, code, shift.id, supplier.id, built, balanceAfter);
           await this.audit.record(
             {
               action: 'intake.created',
@@ -91,22 +100,16 @@ export class CreateIntakeCommand {
             });
           }
 
-          // Spec 2026-09-30 — full crates are always ours, so the crate tare this receipt weighs
-          // comes out of the empties, less any it gives back (`returned`). Before the payout, so a
-          // refusal hands no cash over.
-          const taken = built.crate_units - returned;
-          if (taken > 0) await this.stock.assertOnHand(m, pointId, taken);
-
           // §2.1 ⑥ — the cash leaves in the same transaction; a ceiling refusal rolls the receipt
-          // back with it. Truthiness on purpose: absent, null and '' all mean «нічого не видано» (§3.7).
+          // back with it (and the `balance_after` that counted it).
           const paid: Payout[] = [];
-          if (dto.paid_amount && !isZero(dto.paid_amount)) {
+          if (paidAmount) {
             const { payout } = await this.payouts.write(m, {
               actor,
               pointId,
               pointCode: point.code,
               supplierId: supplier.id,
-              amount: dto.paid_amount,
+              amount: paidAmount,
               intakeId: intake.id,
             });
             paid.push(payout);
@@ -137,6 +140,7 @@ export class CreateIntakeCommand {
     shiftId: string,
     supplierId: string,
     built: BuiltIntake,
+    balanceAfter: string,
   ): Promise<Intake> {
     try {
       return await m.save(
@@ -146,6 +150,7 @@ export class CreateIntakeCommand {
           shift_id: shiftId,
           supplier_id: supplierId,
           amount: built.amount,
+          balance_after: balanceAfter,
           // §10.6 — the signature belongs to whoever pressed the button.
           received_by_user_id: actor.sub,
           items: built.items.map((line) =>

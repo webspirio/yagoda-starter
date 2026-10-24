@@ -15,6 +15,16 @@ it('renders eyebrow, title, aside and children', () => {
   expect(screen.getByText('вміст')).toBeInTheDocument();
 });
 
+it('wears the one outlined shell, like Card', () => {
+  const { container } = render(
+    <SectionCard>
+      <p>x</p>
+    </SectionCard>,
+  );
+  expect(container.firstChild).toHaveClass('border', 'border-line2', 'bg-card');
+  expect((container.firstChild as HTMLElement).className).not.toContain('ring-');
+});
+
 it('omits the card shell when card=false', () => {
   const { container } = render(
     <SectionCard card={false}>

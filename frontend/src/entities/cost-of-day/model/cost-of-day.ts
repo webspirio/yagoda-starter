@@ -1,4 +1,16 @@
 /**
+ * §8.5 — how the day's basket is split between the products weighed in full
+ * (spec 2026-10-24 §2): by «наша вага», by «нараховано», or each product's own
+ * недостача plus витрати by «нараховано». A view of the day, never its state.
+ */
+export const COST_SPLITS = ['weight', 'value', 'own'] as const;
+export type CostSplit = (typeof COST_SPLITS)[number];
+
+export function isCostSplit(value: unknown): value is CostSplit {
+  return typeof value === 'string' && (COST_SPLITS as readonly string[]).includes(value);
+}
+
+/**
  * One product on §8.4's screen. EVERY figure here is the server's — this
  * screen never re-derives one, same contract as `entities/point-cash`.
  *
@@ -36,12 +48,20 @@ export interface CostOfDayProduct {
   /** «повна вартість» — `accrued − shortfall + basket_share`, a money figure,
    *  never divided into a per-kg one. `null` exactly when `basket_share` is. */
   full_cost: string | null;
+  /** This row's «недостача дня, ₴/кг»: the day's half under `weight`, the
+   *  row's own `shortfall_share ÷ reweigh_net_kg` under `value`/`own`, so
+   *  ціна закупки + недостача + витрати = собівартість on every row. `null`
+   *  exactly when `price_cost` is. */
+  shortfall_per_kg: string | null;
+  /** This row's «витрати, ₴/кг», the same rule as `shortfall_per_kg`. */
+  expenses_per_kg: string | null;
   /** «ціна закупки» — нараховано ÷ вага пункту, доплати included. */
   price_was: string;
   /** «собівартість» — було + на кілограм. `null` when there is no на кілограм. */
   price_cost: string | null;
-  /** «нараховане ÷ наша вага» — the third of §8.4's three prices. */
-  price_by_our_weight: string | null;
+  // `price_by_our_weight` (§8.4's «нараховане ÷ наша вага») still rides on
+  // the wire but no screen prints it since the single-table redesign — left
+  // off this type so nothing starts reading it by accident (audit E11).
   /** §3.15 — every grade this product had this shift is on the scale. */
   complete: boolean;
   /** The product's grades — a breakdown, not a second недостача: the
@@ -67,6 +87,16 @@ interface CostOfDayGrade {
 /** §8.4 for one shift. `GET /shifts/:shiftId/cost-of-day`, owner-only. */
 export interface CostOfDay {
   shift_id: string;
+  /** The split asked for. */
+  split: CostSplit;
+  /** The split the figures were built with — `weight` when a split by money
+   *  had no money to split by (weighed нараховано 0,00 ₴). */
+  split_applied: CostSplit;
+  /** витрати as ≈ % of the weighed нараховано — a caption, never an operand.
+   *  `null` under `weight` and when nothing is weighed. */
+  expenses_pct: string | null;
+  /** недостача as ≈ % of the weighed нараховано, under `value` only. */
+  shortfall_pct: string | null;
   closed_at: string | null;
   /** The shift is still open, so every figure below is still moving (§3.9). */
   provisional: boolean;

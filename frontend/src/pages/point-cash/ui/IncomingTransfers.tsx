@@ -75,6 +75,8 @@ export function IncomingTransfers({ pointId, canAct }: { pointId: string; canAct
       {pending.map((transfer) => (
         <div
           key={transfer.id}
+          // The source the shortfall tile's «з них … уже в дорозі» lights.
+          data-trace="incoming:sent"
           className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl bg-amber/10 px-4 py-3 ring-1 ring-amber/30"
         >
           <Truck className="size-5 shrink-0 text-amber" aria-hidden="true" />
@@ -151,7 +153,13 @@ export function IncomingTransfers({ pointId, canAct }: { pointId: string; canAct
               ) : null}
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">{t('transfer.incoming.disputed.footer')}</p>
+          {/* §7.9 (09.09.2026): the point's OWN count is credited until the
+              owner resolves — «the drawer did not move» was false (C3). */}
+          <p className="text-xs text-muted-foreground">
+            {t('transfer.incoming.disputed.footer', {
+              uah: formatUah(transfer.reported_cash ?? '0.00', locale),
+            })}
+          </p>
         </div>
       ))}
 

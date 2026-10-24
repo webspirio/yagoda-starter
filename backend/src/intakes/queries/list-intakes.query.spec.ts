@@ -163,6 +163,18 @@ describe('ListIntakesQuery', () => {
     expect(clone.getCount).toHaveBeenCalled();
   });
 
+  it('orders by business date, newest first, then by created_at — the journal reads by day (A3)', async () => {
+    // A receipt recorded late for an earlier day (a reopened shift) must sit with its day, not
+    // above today's: ordering by created_at alone ran 24.10 → 19.10 → 23.10.
+    await query.list(oksana, listQuery() as never);
+
+    expect(qb.orderBy).toHaveBeenCalledWith('s.business_date', 'DESC');
+    expect(qb.addOrderBy.mock.calls).toEqual([
+      ['i.created_at', 'DESC'],
+      ['i.id', 'ASC'],
+    ]);
+  });
+
   it('throws a programming error, not a 400, when a raw row is missing for an entity', async () => {
     qb.getRawAndEntities.mockResolvedValue({
       entities: [{ ...intake(), shift: shift() }],

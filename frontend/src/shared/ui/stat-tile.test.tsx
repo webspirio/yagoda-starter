@@ -12,7 +12,15 @@ it('renders the label, value and hint', () => {
 
 it('applies the tone colour to the value', () => {
   render(<StatTile label="За ягоду" value="1 616,10 ₴" tone="berry" />);
-  expect(screen.getByText('1 616,10 ₴')).toHaveClass('text-primary');
+  // Berry TEXT is `text-brand` (the lightened berry in dark mode), never the fill.
+  expect(screen.getByText('1 616,10 ₴')).toHaveClass('text-brand');
+});
+
+it('wears the one outlined shell, like Card', () => {
+  render(<StatTile label="X" value="1" />);
+  const tile = screen.getByText('X').closest('[data-slot="stat-tile"]');
+  expect(tile).toHaveClass('border', 'border-line2');
+  expect(tile?.className).not.toContain('ring-');
 });
 
 it('renders an icon when given one', () => {

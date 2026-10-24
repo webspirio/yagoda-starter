@@ -1,4 +1,4 @@
-import { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import {
   gradeTotals,
   productShortfall,
@@ -63,18 +63,18 @@ export interface ProductCostGrade {
  * (network average) both need: нараховано (top-ups included), недостача
  * (clamped) and the weighed kilograms, aggregated from grade to product
  * level. Extracted out of `CostOfDayService` (which used to compute this
- * inline) so the network-average endpoint reuses it rather than recomputing
+ * inline) so §8.6 reuses it rather than recomputing
  * the same top-up allocation and shortfall clamp a second time — see the
  * task-10 brief's reuse note.
  */
 export async function productCostRows(
-  dataSource: DataSource,
+  runner: DataSource | EntityManager,
   shiftId: string,
 ): Promise<ProductCostRow[]> {
-  const grades = await gradeTotals(dataSource, shiftId);
+  const grades = await gradeTotals(runner, shiftId);
   if (grades.length === 0) return [];
 
-  const topUpsByGrade = await topUpsByGradeForShift(dataSource, shiftId);
+  const topUpsByGrade = await topUpsByGradeForShift(runner, shiftId);
 
   const gradeCosts = grades.map((g) => {
     const topUps = topUpsByGrade.get(g.product_grade_id) ?? '0.00';

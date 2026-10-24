@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { PointCashRow } from '@/entities/point-cash';
@@ -13,9 +13,10 @@ function tile(label: string): HTMLElement {
   return el as HTMLElement;
 }
 
-const { pointCashMock, transfersMock } = vi.hoisted(() => ({
+const { pointCashMock, transfersMock, pointOptionsMock } = vi.hoisted(() => ({
   pointCashMock: vi.fn(),
   transfersMock: vi.fn(),
+  pointOptionsMock: vi.fn(),
 }));
 
 // `PointDebtTable` (rendered by this page) also imports `shortfallTone`/
@@ -34,11 +35,13 @@ vi.mock('@/entities/transfer', () => ({
   useTransfersQuery: (filter: unknown) => transfersMock(filter),
 }));
 
-// No `@/entities/collection-point` mock, deliberately (fix round 1, findings
-// 1+2): the page must not import `usePointOptionsQuery` at all — see
-// `TransfersPage.tsx`'s own doc comment for why. If it were ever
-// reintroduced, this suite would fail with an unmocked-hook error rather
-// than silently reverting to a name source that hides deactivated points.
+// The ACTIVE list is read for one thing only (C10): hiding a retired point
+// with nothing left to say. Names still come from `GET /point-cash` (fix
+// round 1, findings 1+2 — the suite below proves a retired point is still
+// named). Default: not answered yet, so nothing is hidden.
+vi.mock('@/entities/collection-point', () => ({
+  usePointOptionsQuery: () => pointOptionsMock(),
+}));
 
 // The three action dialogs each own a real mutation (`useMutation`, needing a
 // live `QueryClient`) and already have their own test suites — this page's
@@ -53,7 +56,12 @@ vi.mock('@/features/send-transfer', () => ({
     pointId: string;
     pointName: string;
     open: boolean;
-  }) => (open ? <div role="dialog">Send dialog — {pointId} — {pointName}</div> : null),
+  }) =>
+    open ? (
+      <div role="dialog">
+        Send dialog — {pointId} — {pointName}
+      </div>
+    ) : null,
 }));
 
 vi.mock('@/features/resolve-transfer', () => ({
@@ -62,7 +70,17 @@ vi.mock('@/features/resolve-transfer', () => ({
 }));
 
 vi.mock('@/features/void-document', () => ({
-  VoidDocumentDialog: ({ kind, id, code, open }: { kind: string; id: string; code: string; open: boolean }) =>
+  VoidDocumentDialog: ({
+    kind,
+    id,
+    code,
+    open,
+  }: {
+    kind: string;
+    id: string;
+    code: string;
+    open: boolean;
+  }) =>
     open ? (
       <div role="dialog">
         Void dialog — {kind} — {id} — {code}
@@ -125,6 +143,9 @@ const list = <T,>(data: T[]) => ({ data, total: data.length, page: 1, limit: 100
 beforeEach(() => {
   pointCashMock.mockReset().mockReturnValue(single(points([pointRow()])));
   transfersMock.mockReset().mockReturnValue(single(list([])));
+  pointOptionsMock
+    .mockReset()
+    .mockReturnValue({ data: undefined, isPending: true, isError: false });
 });
 
 describe('TransfersPage — loading and error states', () => {
@@ -190,7 +211,9 @@ describe('TransfersPage — finding 3: the transfers read can be truncated', () 
     render(<TransfersPage />);
 
     expect(
-      screen.getByText(/Showing recent transfers only — an older dispute may not appear/),
+      screen.getByText(
+        /The history shows recent transfers only\. Every open dispute is in the table above\./,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -209,7 +232,12 @@ describe('TransfersPage — honesty rule 1: a point with no target is absent fro
       single(
         points([
           pointRow({ collection_point_id: 'p1', name: 'Shypynky', shortfall: '4000.00' }),
-          pointRow({ collection_point_id: 'p2', name: 'Haiove', target_cash: null, shortfall: null }),
+          pointRow({
+            collection_point_id: 'p2',
+            name: 'Haiove',
+            target_cash: null,
+            shortfall: null,
+          }),
         ]),
       ),
     );
@@ -222,9 +250,7 @@ describe('TransfersPage — honesty rule 1: a point with no target is absent fro
   });
 
   it('never counts a settled point (shortfall ≤ 0) toward what the network owes', () => {
-    pointCashMock.mockReturnValue(
-      single(points([pointRow({ shortfall: '-100.00' })])),
-    );
+    pointCashMock.mockReturnValue(single(points([pointRow({ shortfall: '-100.00' })])));
 
     render(<TransfersPage />);
 
@@ -266,14 +292,108 @@ describe('TransfersPage — wiring the table to the send dialog', () => {
   });
 });
 
-describe('TransfersPage — wiring the table to the resolve dialog', () => {
-  it('resolves the full disputed transfer matched from the network-wide read', async () => {
+describe('TransfersPage — reads of their own for disputes and money on the road (C10, C4)', () => {
+  const byStatus = (all: Transfer[], disputed: Transfer[], sent: Transfer[]) =>
+    transfersMock.mockImplementation((f: { status?: string }) =>
+      single(list(f.status === 'disputed' ? disputed : f.status === 'sent' ? sent : all)),
+    );
+
+  it('offers «Resolve» for an open dispute the newest-100 history page does not carry', async () => {
     const user = userEvent.setup();
-    const disputed = transfer({ id: 't9', status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z' });
+    const old = transfer({
+      id: 'old-dispute',
+      status: 'disputed',
+      sent_at: '2026-08-01T08:00:00.000Z',
+    });
+    byStatus([], [old], []);
+    render(<TransfersPage />);
+
+    expect(transfersMock).toHaveBeenCalledWith({ status: 'disputed' });
+    await user.click(screen.getByRole('button', { name: 'Resolve' }));
+    expect(await screen.findByRole('dialog')).toHaveTextContent('old-dispute');
+  });
+
+  it('names what is already on the road, per point and in the tile', () => {
+    pointCashMock.mockReturnValue(single(points([pointRow({ shortfall: '49500.00' })])));
+    byStatus(
+      [],
+      [],
+      [
+        transfer({ id: 's1', status: 'sent', cash: '20000.00' }),
+        transfer({ id: 's2', status: 'sent', cash: '4000.00' }),
+      ],
+    );
+    render(<TransfersPage />);
+
+    expect(transfersMock).toHaveBeenCalledWith({ status: 'sent' });
+    expect(screen.getByText('on the road 24,000.00 ₴')).toBeInTheDocument();
+    expect(tile('Owed to points')).toHaveTextContent('24,000.00 ₴ of it already on the road');
+  });
+
+  // 24.10 — «звідки це число»: the tile's figures light the rows they sum.
+  it('traces the tile to the table: the total to «Short», «of it» to the on-the-road lines', () => {
+    pointCashMock.mockReturnValue(single(points([pointRow({ shortfall: '49500.00' })])));
+    byStatus([], [], [transfer({ id: 's1', status: 'sent', cash: '20000.00' })]);
+    render(<TransfersPage />);
+
+    const owedTerm = within(tile('Owed to points')).getByText('49,500.00 ₴');
+    fireEvent.pointerEnter(owedTerm);
+    expect(screen.getByText('49,500.00')).toHaveAttribute('data-trace-hit', 'amber');
+    fireEvent.pointerLeave(owedTerm);
+
+    const roadTerm = within(tile('Owed to points')).getByText('20,000.00 ₴');
+    fireEvent.pointerEnter(roadTerm);
+    expect(screen.getByText('on the road 20,000.00 ₴')).toHaveAttribute('data-trace-hit', 'amber');
+    expect(screen.getByText('49,500.00')).not.toHaveAttribute('data-trace-hit');
+  });
+
+  it('hides a retired point with nothing left to say, keeps one still holding money', () => {
+    pointOptionsMock.mockReturnValue({
+      data: [{ id: 'p1', name: 'Shypynky' }],
+      isPending: false,
+      isError: false,
+    });
     pointCashMock.mockReturnValue(
       single(
         points([
-          pointRow({ latest_transfer: { status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z', resolved_at: null } }),
+          pointRow(),
+          pointRow({
+            collection_point_id: 'p8',
+            name: 'Retired empty',
+            cash: '0.00',
+            target_cash: null,
+            shortfall: null,
+          }),
+          pointRow({ collection_point_id: 'p9', name: 'Retired with cash', cash: '300.00' }),
+        ]),
+      ),
+    );
+    render(<TransfersPage />);
+
+    expect(screen.getByText('Shypynky')).toBeInTheDocument();
+    expect(screen.queryByText('Retired empty')).toBeNull();
+    expect(screen.getByText('Retired with cash')).toBeInTheDocument();
+  });
+});
+
+describe('TransfersPage — wiring the table to the resolve dialog', () => {
+  it('resolves the full disputed transfer matched from the network-wide read', async () => {
+    const user = userEvent.setup();
+    const disputed = transfer({
+      id: 't9',
+      status: 'disputed',
+      sent_at: '2026-09-10T08:00:00.000Z',
+    });
+    pointCashMock.mockReturnValue(
+      single(
+        points([
+          pointRow({
+            latest_transfer: {
+              status: 'disputed',
+              sent_at: '2026-09-10T08:00:00.000Z',
+              resolved_at: null,
+            },
+          }),
         ]),
       ),
     );
@@ -323,7 +443,11 @@ describe('TransfersPage — wiring the table to the resolve dialog', () => {
 describe('TransfersPage — wiring the history to the resolve dialog (#76)', () => {
   it('resolves an open dispute from its expanded history row', async () => {
     const user = userEvent.setup();
-    const disputed = transfer({ id: 't11', status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z' });
+    const disputed = transfer({
+      id: 't11',
+      status: 'disputed',
+      sent_at: '2026-09-10T08:00:00.000Z',
+    });
     transfersMock.mockReturnValue(single(list([disputed])));
 
     render(<TransfersPage />);

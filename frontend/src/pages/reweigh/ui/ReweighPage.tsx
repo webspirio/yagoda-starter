@@ -1,9 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/shared/ui/page-header';
+import { EmptyState } from '@/shared/ui/empty-state';
 import { SelectField } from '@/shared/ui/select-field';
+import { HeaderSlot } from '@/shared/ui/header-slot';
 import { DateStepper } from '@/shared/ui/date-stepper';
 import { Spinner } from '@/shared/ui/spinner';
+import { TraceScope } from '@/shared/ui/trace';
 import { toast } from '@/shared/ui/toast';
 import { useUrlParam } from '@/shared/lib/url-state';
 import { todayIso, addDaysIso, isRealIsoDate, formatShortDate } from '@/shared/lib/date';
@@ -200,20 +203,21 @@ export function ReweighPage() {
     <div className="flex flex-wrap items-center gap-2">
       {canPick ? (
         <>
-          <span className="text-xs text-muted-foreground">{t('reweigh.fromPoint')}</span>
-          <SelectField
-            aria-label={t('reweigh.fromPoint')}
-            value={pointId ?? ''}
-            onChange={(e) => setPointId(e.target.value || null)}
-            className="w-44"
-          >
-            <option value="">{t('reweigh.fromPoint')}</option>
-            {receptionPoints.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </SelectField>
+          <HeaderSlot slot="scope">
+            <SelectField
+              aria-label={t('reweigh.fromPoint')}
+              value={pointId ?? ''}
+              onChange={(e) => setPointId(e.target.value || null)}
+              className="w-44"
+            >
+              <option value="">{t('reweigh.fromPoint')}</option>
+              {receptionPoints.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </SelectField>
+          </HeaderSlot>
         </>
       ) : null}
       <span className="text-xs text-muted-foreground">{t('reweigh.berryOn')}</span>
@@ -221,13 +225,14 @@ export function ReweighPage() {
         label={formatShortDate(date, locale)}
         onPrev={() => setDateParam(addDaysIso(date, -1))}
         onNext={() => setDateParam(addDaysIso(date, 1))}
+        onToday={date === today ? undefined : () => setDateParam(today)}
         canNext={date < today}
       />
     </div>
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5 px-4 py-6">
+    <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5">
       <PageHeader
         eyebrow={t('reweigh.eyebrow')}
         title={t('reweigh.title')}
@@ -243,48 +248,51 @@ export function ReweighPage() {
         <div className="flex justify-center py-12">
           <Spinner />
         </div>
+      ) : !hasShift ? (
+        // ONE empty state (audit E8): the form, its drafts and the звірка
+        // each used to say «зміну не відкривали» in their own words, around
+        // a form nobody could use.
+        <EmptyState title={t('reweigh.noShift', { point: pointName })} />
       ) : (
         // TWO COLUMNS ONLY FROM `2xl` (1536 px): at 1366 the звірка beside the
         // form was clipped (review 2026-10-23, W6), so below that the form,
         // its drafts and the звірка stack — form → drafts → «Провести» reads
-        // top to bottom either way.
-        <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <div className="flex min-w-0 flex-col gap-5">
-            <WeighingForm
-              grades={grades}
-              hasShift={hasShift}
-              acceptedAnything={acceptedAnything}
-              pointName={pointName}
-              date={date}
-              onAdd={addDraft}
-            />
-            <DraftLines
-              drafts={drafts}
-              onRemove={removeDraft}
-              onPost={post}
-              posting={addLine.isPending}
-              canPost={Boolean(shiftId)}
-              note={
-                hasShift
-                  ? null
-                  : t('reweigh.noShift', { date: formatShortDate(date, locale), point: pointName })
-              }
-            />
-          </div>
+        // top to bottom either way. ONE trace scope round all three (client,
+        // 24.10): the звірка's «Не проведено» cites the drafts' total.
+        <TraceScope>
+          <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="flex min-w-0 flex-col gap-5">
+              <WeighingForm
+                grades={grades}
+                hasShift={hasShift}
+                acceptedAnything={acceptedAnything}
+                pointName={pointName}
+                date={date}
+                onAdd={addDraft}
+              />
+              <DraftLines
+                drafts={drafts}
+                onRemove={removeDraft}
+                onPost={post}
+                posting={addLine.isPending}
+                canPost={Boolean(shiftId)}
+              />
+            </div>
 
-          <div className="flex min-w-0 flex-col gap-5">
-            <Reconciliation
-              products={products}
-              grades={grades}
-              missingTotalKg={reweigh.data?.missing_total_kg ?? null}
-              missingTotalAmount={reweigh.data?.missing_total_amount ?? null}
-              drafts={drafts}
-              shiftClosed={shiftClosed}
-              acceptedAnything={acceptedAnything}
-              pointName={pointName}
-            />
+            <div className="flex min-w-0 flex-col gap-5">
+              <Reconciliation
+                products={products}
+                grades={grades}
+                missingTotalKg={reweigh.data?.missing_total_kg ?? null}
+                missingTotalAmount={reweigh.data?.missing_total_amount ?? null}
+                drafts={drafts}
+                shiftClosed={shiftClosed}
+                acceptedAnything={acceptedAnything}
+                pointName={pointName}
+              />
+            </div>
           </div>
-        </div>
+        </TraceScope>
       )}
 
       {/* The day table sits OUTSIDE the `readsFailed` branch above, so it
