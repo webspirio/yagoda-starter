@@ -907,8 +907,6 @@ jobs:
       # /api/health/version assertion compares against its own SHA.
       - name: Skip if main has moved on
         id: tip
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           tip=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
@@ -952,12 +950,16 @@ jobs:
           COOLIFY_DEPLOYMENT_UUID: ${{ steps.deploy.outputs.deployment-uuid }}
         run: bash scripts/ci/deployment-record.sh finish ${{ steps.deploy.outcome == 'success' && 'success' || 'failure' }}
 
+      # The deploy step's own outcome decides: a cancel that lands after it finished (before
+      # or during the finish step) must not turn a verified release into an «error». Only a
+      # deploy the cancel interrupted is one. A second success status is harmless.
       - name: Deployment record — cancelled
         if: cancelled() && steps.gh-deployment.outputs.deployment_id != ''
         continue-on-error: true
         env:
           DEPLOYMENT_ID: ${{ steps.gh-deployment.outputs.deployment_id }}
-        run: bash scripts/ci/deployment-record.sh finish error
+          COOLIFY_DEPLOYMENT_UUID: ${{ steps.deploy.outputs.deployment-uuid }}
+        run: bash scripts/ci/deployment-record.sh finish ${{ steps.deploy.outcome == 'success' && 'success' || steps.deploy.outcome == 'failure' && 'failure' || 'error' }}
 
   # Production is deployed only from a published GitHub Release (or a manual
   # re-deploy of an existing release tag). Coolify's deploy API takes no git
@@ -1099,5 +1101,6 @@ jobs:
         continue-on-error: true
         env:
           DEPLOYMENT_ID: ${{ steps.gh-deployment.outputs.deployment_id }}
+          COOLIFY_DEPLOYMENT_UUID: ${{ steps.deploy.outputs.deployment-uuid }}
           SHA: ${{ steps.target.outputs.sha }}
-        run: bash scripts/ci/deployment-record.sh finish error
+        run: bash scripts/ci/deployment-record.sh finish ${{ steps.deploy.outcome == 'success' && 'success' || steps.deploy.outcome == 'failure' && 'failure' || 'error' }}

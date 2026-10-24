@@ -5,7 +5,7 @@
 #
 # Usage:
 #   deployment-record.sh start                          create the record; status in_progress
-#   deployment-record.sh finish success|failure|error   final status; on success the previous
+#   deployment-record.sh finish success|failure|error   final status; on success every earlier
 #                                                       live record goes inactive
 #
 # Env: GITHUB_REPOSITORY ENVIRONMENT SHA URL, [TAG] (production: the release; also the ref),
@@ -70,25 +70,44 @@ start() {
   echo "$ENVIRONMENT record $id: in_progress"
 }
 
-# sweep: walk this environment's records newest first and mark the previous LIVE one
-# inactive. Every success before it was made inactive by the deploy that superseded it, so
-# the walk stops at the first record that is live (deactivated) or already inactive;
-# failures and stuck in_progress records in between are passed over.
+# sweep: settle every record older than this one, so exactly one is live. It walks the
+# environment's records newest first, page by page, until the first record that is already
+# inactive: everything older than that was settled by the sweep that made it inactive. On
+# the way it collects each LIVE record (success → inactive) and each record whose run never
+# finished it — in_progress, queued, pending, or no status at all, after a lost runner or a
+# timeout (→ error). `concurrency` serialises an environment's deploys, so no other run of
+# it can still be going. Failures and errors are final and passed over.
+#
+# The collected records are settled OLDEST first. A sweep that fails part-way (the step is
+# continue-on-error) thus only ever leaves records NEWER than any it made inactive, and the
+# next deploy's walk still reaches them before it stops — a missed sweep repairs itself.
 sweep() {
-  local ids id state
-  ids=$(gh api -X GET "repos/$GITHUB_REPOSITORY/deployments" -f environment="$ENVIRONMENT" -f per_page=100 \
-          | jq -r '.[].id') || { warn "could not list the $ENVIRONMENT records"; return 1; }
-  for id in $ids; do
-    [ "$id" = "$DEPLOYMENT_ID" ] && continue
-    state=$(gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses?per_page=1" | jq -r '.[0].state // "none"') \
-      || { warn "could not read record $id's status"; return 1; }
-    case "$state" in
-      inactive) return 0 ;;
-      success)
-        post_status "$id" inactive || { warn "could not mark record $id inactive"; return 1; }
-        echo "$ENVIRONMENT record $id: inactive"
-        return 0 ;;
-    esac
+  local page=1 json n id state stop="" i
+  local -a ids=() states=()
+  while [ -z "$stop" ]; do
+    json=$(gh api -X GET "repos/$GITHUB_REPOSITORY/deployments?environment=$ENVIRONMENT&per_page=100&page=$page") \
+      || { warn "could not list the $ENVIRONMENT records (page $page)"; return 1; }
+    for id in $(jq -r '.[].id' <<< "$json"); do
+      [ "$id" = "$DEPLOYMENT_ID" ] && continue
+      state=$(gh api "repos/$GITHUB_REPOSITORY/deployments/$id/statuses?per_page=1" | jq -r '.[0].state // "none"') \
+        || { warn "could not read record $id's status"; return 1; }
+      case "$state" in
+        inactive) stop=1; break ;;
+        success) ids+=("$id"); states+=(inactive) ;;
+        in_progress|queued|pending|none) ids+=("$id"); states+=(error) ;;
+      esac
+    done
+    n=$(jq length <<< "$json")
+    [ "$n" -lt 100 ] && break
+    page=$((page + 1))
+  done
+  for ((i = ${#ids[@]} - 1; i >= 0; i--)); do
+    if [ "${states[$i]}" = inactive ]; then
+      post_status "${ids[$i]}" inactive || { warn "could not mark record ${ids[$i]} inactive"; return 1; }
+    else
+      post_status "${ids[$i]}" error "never finished" || { warn "could not close unfinished record ${ids[$i]}"; return 1; }
+    fi
+    echo "$ENVIRONMENT record ${ids[$i]}: ${states[$i]}"
   done
 }
 

@@ -1424,7 +1424,7 @@ Nobody voids an intake in a closed shift any more, the owner included (§9.4, п
   that never ran; a `workflow_dispatch` rollback runs at main's tip, so the record would
   name the wrong commit; and GitHub's `auto_inactive` never touches production records,
   so every release would stay «active». The script sets the ref itself (the tag for
-  production, the commit for staging) and sweeps the previous live record.
+  production, the commit for staging) and sweeps every earlier live record.
 - **Coolify skips a PR whose author it sees as `CONTRIBUTOR`.** The staging application's
   *PR deployment access: repository members only* reads `author_association` from the App
   webhook, which is the PUBLIC view: an org member with private membership (and no direct

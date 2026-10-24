@@ -27,10 +27,14 @@ Design: `docs/superpowers/specs/2026-09-09-coolify-deployment-and-cd-design.md`.
 (`https://github.com/webspirio/yagoda-starter/deployments`): one GitHub environment per
 row above — `production`, `staging`, and `preview` for every PR. `deploy-prod` and
 `deploy-staging` write theirs through `scripts/ci/deployment-record.sh`. A record starts at
-`in_progress` and ends at `success`/`failure` once the job has verified the application.
+`in_progress` and ends at `success`/`failure` once the job has verified the application, or
+at `error` («… · run cancelled») when a cancel interrupted the deploy itself — a cancel
+after the deploy step finished still records that step's own outcome.
 Its description reads `v1.2.3 · sha-abc1234 · coolify <uuid>` (staging has no tag), and a
-success marks the previous live record inactive, so exactly one record per environment is
-live. A skipped staging deploy («main has moved on») and a refused release (guards, missing
+success marks every earlier live record inactive — normally just the previous one, but also
+any a failed sweep left behind — so exactly one record per environment is live. The same
+sweep closes as `error` («never finished») any earlier record its run never finished, after
+a lost runner or a job timeout. A skipped staging deploy («main has moved on») and a refused release (guards, missing
 image) write no record, because nothing was deployed. A deploy started by hand in
 Coolify's UI is not recorded.
 
@@ -653,7 +657,8 @@ ssh root@<vps> 'docker ps --format "{{.Names}}\t{{.Status}}\t{{.Image}}"; docker
 | A preview is live but the PR has no «View deployment», or its issue has no block | a `preview-links.sh` step failed — it is `continue-on-error`, so the job stays green — or the PR closes no issue | the `::warning::` annotation on the `deploy-preview` run names the call; add `Closes #N` (or link the issue under *Development*) and re-run the job |
 | «a yagoda-preview:pr-N start marker has no end marker — left untouched» | someone edited the issue and cut the block's end marker | delete the block's remaining lines by hand; the next deploy writes a fresh one |
 | `deploy-preview`: «Pull request N not found for this resource», on every push and after a close/reopen too | Coolify skipped the PR's webhook: *PR deployment access: repository members only* reads the author's PUBLIC `author_association`, and an org member with private membership arrives as `CONTRIBUTOR` | `curl -s https://api.github.com/repos/webspirio/yagoda-starter/pulls/<N> \| jq -r .author_association` — anything but `OWNER`/`MEMBER`/`COLLABORATOR` is this. Give that person a DIRECT repository grant (any role; membership can stay private) or make their org membership public, then push to the PR. Org-role and team access do not count — both were tried on #199 |
-| *Deployments* shows an old commit for `staging`/`production` although the deploy job is green | a `deployment-record.sh` step failed — it is `continue-on-error`, so the job stays green | the `::warning::` annotation on the run names the call; the next deploy writes a fresh record and sweeps the stale one |
+| *Deployments* shows an old commit for `staging`/`production` although the deploy job is green | a `deployment-record.sh` step failed — it is `continue-on-error`, so the job stays green | the `::warning::` annotation on the run names the call; the next successful deploy writes a fresh record and sweeps every stale one, oldest first |
+| *Deployments* shows a `staging`/`production` record «in progress» long after its run ended | the run was lost or timed out before its record step could write a final status | nothing — the next successful deploy closes it as `error` «never finished» |
 | `deploy-preview` shows "cancelled", no comment | another PR took the single pending slot of the `preview-allocation` concurrency group while this one waited | re-run the job |
 | `deploy-staging` skipped with «main is at X, not Y» | correct: a newer merge owns staging, and its own run deploys it | nothing — unless that newer run went red, in which case staging is behind `main` until it is fixed and re-run |
 | CI green after a merge but production unchanged | expected — production moves only on a release («Releasing to production»); check staging instead | publish a release when the change is meant for production |

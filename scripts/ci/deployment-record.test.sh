@@ -50,6 +50,7 @@ fields()  { awk -F'\t' -v k="$1" '$1 == k { print $2 }' "$FAKE_GH/calls.log"; }
 sent()    { awk -F'\t' -v k="$1" '$1 == k { print $3 }' "$FAKE_GH/calls.log"; }
 run()     { bash "$SCRIPT" "$@" > "$T/stdout" 2> "$T/stderr"; }
 D=repos/acme/app/deployments
+page() { printf 'GET %s?environment=%s&per_page=100&page=%s' "$D" "$ENVIRONMENT" "$1"; }
 staging()    { export ENVIRONMENT=staging URL=https://staging.test; unset TAG PRODUCTION; }
 production() { export ENVIRONMENT=production URL=https://app.test TAG=v1.2.3 PRODUCTION=true; }
 
@@ -84,23 +85,24 @@ echo "# 4. finish success: the previous LIVE record goes inactive; failures betw
 reset; production
 export DEPLOYMENT_ID=99 COOLIFY_DEPLOYMENT_UUID=luewsvzz
 respond "POST $D/99/statuses" '{}'
-respond "GET $D" '[{"id":99},{"id":98},{"id":97},{"id":96}]'
+respond "$(page 1)" '[{"id":99},{"id":98},{"id":97},{"id":96}]'
 respond "GET $D/98/statuses?per_page=1" '[{"state":"failure"}]'
 respond "GET $D/97/statuses?per_page=1" '[{"state":"success"}]'
 respond "POST $D/97/statuses" '{}'
+respond "GET $D/96/statuses?per_page=1" '[{"state":"inactive"}]'
 check run finish success
 check jq -e '.state == "success" and .auto_inactive == false and .environment_url == "https://app.test"
   and .description == "v1.2.3 · sha-abcdef1 · coolify luewsvzz"' <<< "$(sent "POST $D/99/statuses")"
-check [ "$(fields "GET $D")" = "environment=production per_page=100" ]
+check called "$(page 1)"
 check [ "$(sent "POST $D/97/statuses" | jq -r .state)" = inactive ]
 check_fail called "POST $D/98/statuses"
-check_fail called "GET $D/96/statuses?per_page=1"
+check_fail called "POST $D/96/statuses"
 check_fail called "GET $D/99/statuses?per_page=1"
 
 echo "# 5. finish success: the walk stops at the first inactive record — older ones are settled"
 reset; staging
 respond "POST $D/99/statuses" '{}'
-respond "GET $D" '[{"id":99},{"id":98},{"id":97}]'
+respond "$(page 1)" '[{"id":99},{"id":98},{"id":97}]'
 respond "GET $D/98/statuses?per_page=1" '[{"state":"inactive"}]'
 check run finish success
 check_fail called "GET $D/97/statuses?per_page=1"
@@ -111,7 +113,7 @@ reset; staging
 respond "POST $D/99/statuses" '{}'
 check run finish failure
 check [ "$(sent "POST $D/99/statuses" | jq -r .state)" = failure ]
-check_fail called "GET $D"
+check_fail grep -q "^GET $D?" "$FAKE_GH/calls.log"
 
 echo "# 7. finish error (the run was cancelled): said so in the description"
 reset; staging
@@ -136,6 +138,79 @@ check [ ! -s "$FAKE_GH/calls.log" ]
 echo "# 10. an unknown command or state is a usage error"
 check_fail run finish maybe
 check_fail run deploy
+
+echo "# 11. finish success after a sweep that failed: EVERY live record before it goes inactive"
+reset; staging
+export DEPLOYMENT_ID=99
+respond "POST $D/99/statuses" '{}'
+respond "$(page 1)" '[{"id":99},{"id":98},{"id":97},{"id":96},{"id":95}]'
+respond "GET $D/98/statuses?per_page=1" '[{"state":"success"}]'
+respond "GET $D/97/statuses?per_page=1" '[{"state":"success"}]'
+respond "GET $D/96/statuses?per_page=1" '[{"state":"inactive"}]'
+respond "POST $D/98/statuses" '{}'
+respond "POST $D/97/statuses" '{}'
+check run finish success
+check [ "$(sent "POST $D/98/statuses" | jq -r .state)" = inactive ]
+check [ "$(sent "POST $D/97/statuses" | jq -r .state)" = inactive ]
+check_fail called "GET $D/95/statuses?per_page=1"
+
+echo "# 12. finish success, the environment's first record: nothing else to sweep, exit 0"
+reset; staging
+respond "POST $D/99/statuses" '{}'
+respond "$(page 1)" '[{"id":99}]'
+check run finish success
+check [ "$(grep -c '^POST' "$FAKE_GH/calls.log")" = 1 ]
+
+echo "# 13. finish success after failures only: the walk reaches the end and posts nothing else"
+reset; staging
+respond "POST $D/99/statuses" '{}'
+respond "$(page 1)" '[{"id":99},{"id":98},{"id":97}]'
+respond "GET $D/98/statuses?per_page=1" '[{"state":"failure"}]'
+respond "GET $D/97/statuses?per_page=1" '[{"state":"error"}]'
+check run finish success
+check [ "$(grep -c '^POST' "$FAKE_GH/calls.log")" = 1 ]
+
+echo "# 14. finish success: a record its run never finished (lost runner, timeout) is closed as error"
+reset; staging
+respond "POST $D/99/statuses" '{}'
+respond "$(page 1)" '[{"id":99},{"id":98},{"id":97},{"id":96}]'
+respond "GET $D/98/statuses?per_page=1" '[{"state":"in_progress"}]'
+respond "GET $D/97/statuses?per_page=1" '[]'
+respond "GET $D/96/statuses?per_page=1" '[{"state":"inactive"}]'
+respond "POST $D/98/statuses" '{}'
+respond "POST $D/97/statuses" '{}'
+check run finish success
+check jq -e '.state == "error" and .description == "never finished"' <<< "$(sent "POST $D/98/statuses")"
+check jq -e '.state == "error" and .description == "never finished"' <<< "$(sent "POST $D/97/statuses")"
+
+echo "# 15. finish success: records are settled OLDEST first, so a sweep that fails part-way"
+echo "#     leaves only records newer than any it made inactive — the next walk still reaches them"
+reset; staging
+respond "POST $D/99/statuses" '{}'
+respond "$(page 1)" '[{"id":99},{"id":98},{"id":97},{"id":96}]'
+respond "GET $D/98/statuses?per_page=1" '[{"state":"success"}]'
+respond "GET $D/97/statuses?per_page=1" '[{"state":"success"}]'
+respond "GET $D/96/statuses?per_page=1" '[{"state":"inactive"}]'
+respond "POST $D/97/statuses" '{}'
+check_fail run finish success
+check [ "$(sent "POST $D/97/statuses" | jq -r .state)" = inactive ]
+check called "POST $D/98/statuses"
+check [ "$(grep '^POST' "$FAKE_GH/calls.log" | cut -f1 | tr '\n' ,)" = "POST $D/99/statuses,POST $D/97/statuses,POST $D/98/statuses," ]
+check grep -q '^::warning::.*98' "$T/stderr"
+
+echo "# 16. finish success: the walk turns the page when a full page holds no stop"
+reset; staging
+respond "POST $D/99/statuses" '{}'
+respond "$(page 1)" "$(jq -nc '[range(99; -1; -1) | {id: .}] | .[0:100]')"
+for i in $(seq 0 98); do respond "GET $D/$i/statuses?per_page=1" '[{"state":"failure"}]'; done
+respond "$(page 2)" '[{"id":-1},{"id":-2},{"id":-3}]'
+respond "GET $D/-1/statuses?per_page=1" '[{"state":"success"}]'
+respond "GET $D/-2/statuses?per_page=1" '[{"state":"inactive"}]'
+respond "POST $D/-1/statuses" '{}'
+check run finish success
+check [ "$(sent "POST $D/-1/statuses" | jq -r .state)" = inactive ]
+check_fail called "$(page 3)"
+check_fail called "GET $D/-3/statuses?per_page=1"
 
 echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ]
