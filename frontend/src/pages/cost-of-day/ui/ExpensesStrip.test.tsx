@@ -38,6 +38,10 @@ afterAll(async () => {
 
 const day: CostOfDay = {
   shift_id: 's1',
+  split: 'weight',
+  split_applied: 'weight',
+  expenses_pct: null,
+  shortfall_pct: null,
   closed_at: '2026-09-22T18:00:00.000Z',
   provisional: false,
   accrued: '131900.00',

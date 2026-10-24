@@ -39,16 +39,20 @@ afterEach(() => mock.restore());
 
 describe('useNetworkCostOfDayQuery', () => {
   it('reads every point’s собівартість for one date', async () => {
-    mock.onGet('/reports/cost-of-day', { params: { date: '2026-10-22' } }).reply(200, network);
+    mock
+      .onGet('/reports/cost-of-day', { params: { date: '2026-10-22', split: 'value' } })
+      .reply(200, network);
 
-    const { result } = renderHook(() => useNetworkCostOfDayQuery('2026-10-22'), { wrapper });
+    const { result } = renderHook(() => useNetworkCostOfDayQuery('2026-10-22', 'value'), {
+      wrapper,
+    });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(network);
   });
 
   it('sends nothing while the page is about one point', () => {
-    const { result } = renderHook(() => useNetworkCostOfDayQuery(null), { wrapper });
+    const { result } = renderHook(() => useNetworkCostOfDayQuery(null, 'weight'), { wrapper });
 
     expect(result.current.fetchStatus).toBe('idle');
     expect(mock.history.get).toHaveLength(0);

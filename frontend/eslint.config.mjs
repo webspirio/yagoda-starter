@@ -201,6 +201,9 @@ export default tseslint.config(
       'src/shared/lib/i18n/language-preference.ts',
       'src/shared/lib/point-preference/index.ts',
       'src/shared/lib/sidebar-preference/index.ts',
+      // 2026-10-24, spec cost-of-day-split-strategies §3.1: the remembered «Розподіл
+      // кошика», same try/catch shape as sidebar-preference; the page validates the value.
+      'src/shared/lib/split-preference/index.ts',
       'src/shared/lib/theme/theme-preference.ts',
       'src/test-setup.ts',
       'src/**/*.test.ts',

@@ -50,7 +50,8 @@ vi.mock('@/shared/lib/url-state', () => ({
 vi.mock('@/features/point-scope', () => ({ useWorkingPoint: () => workingPointMock() }));
 vi.mock('@/entities/collection-point', () => ({ usePointOptionsQuery: () => pointsMock() }));
 vi.mock('@/entities/shift', () => ({ useShiftOnDateQuery: () => shiftMock() }));
-vi.mock('@/entities/cost-of-day', () => ({
+vi.mock('@/entities/cost-of-day', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/cost-of-day')>()),
   useCostOfDayQuery: () => dayMock(),
   useNetworkCostOfDayQuery: (date: string | null) => networkMock(date),
 }));
@@ -63,6 +64,10 @@ vi.mock('@/entities/day-expense', () => ({
 
 const day = {
   shift_id: 's1',
+  split: 'weight' as const,
+  split_applied: 'weight' as const,
+  expenses_pct: null,
+  shortfall_pct: null,
   closed_at: null,
   provisional: true,
   accrued: '131900.00',
@@ -102,6 +107,8 @@ const day = {
       basket_share: '5460.00',
       full_cost: '133460.00',
       price_was: '160.00',
+      shortfall_per_kg: '1.94',
+      expenses_per_kg: '4.45',
       price_cost: '166.39',
       complete: true,
       grades: [],
@@ -115,6 +122,7 @@ const failed = { data: undefined, isPending: false, isError: true };
 
 const network = {
   date: '2026-10-22',
+  split: 'weight' as const,
   points: [
     {
       point_id: 'p1',

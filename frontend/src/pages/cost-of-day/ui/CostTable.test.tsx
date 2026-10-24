@@ -37,6 +37,8 @@ const cornel: CostOfDayProduct = {
   basket_share: '50.49',
   full_cost: '647.09',
   price_was: '38.00',
+  shortfall_per_kg: '0.43',
+  expenses_per_kg: '2.78',
   price_cost: '41.21',
   complete: true,
   grades: [
@@ -66,6 +68,8 @@ const raspberry: CostOfDayProduct = {
   basket_share: '1914.70',
   full_cost: '114693.71',
   price_was: '189.42',
+  shortfall_per_kg: '0.43',
+  expenses_per_kg: '2.78',
   price_cost: '192.63',
   complete: true,
   grades: [
@@ -92,6 +96,10 @@ const raspberry: CostOfDayProduct = {
 
 const day: CostOfDay = {
   shift_id: 's-1910',
+  split: 'weight',
+  split_applied: 'weight',
+  expenses_pct: null,
+  shortfall_pct: null,
   closed_at: '2026-10-19T18:00:00.000Z',
   provisional: false,
   accrued: '113640.80',

@@ -27,6 +27,7 @@ import { ExpensesStrip } from './ExpensesStrip';
 import { CostTable } from './CostTable';
 import { ChecksDisclosure } from './ChecksDisclosure';
 import { NetworkCostOfDay } from './NetworkCostOfDay';
+import { useCostSplit } from '../model/useCostSplit';
 
 /** `?point=all` — «Усі точки». Not a uuid, so `usePointScope` drops it and
  *  no other screen ever reads it; `setPointId` is never called with it, so
@@ -146,14 +147,15 @@ export function CostOfDayPage() {
   const allPoints = canPick && pointParam === ALL_POINTS;
 
   const [dateParam, setDateParam] = useUrlParam('date');
+  const [split] = useCostSplit();
   const today = todayIso();
   const date = isRealIsoDate(dateParam) && dateParam <= today ? dateParam : today;
 
   const shift = useShiftOnDateQuery(allPoints ? null : pointId, date);
   const shiftId = allPoints ? undefined : shift.data?.id;
-  const cost = useCostOfDayQuery(shiftId);
+  const cost = useCostOfDayQuery(shiftId, split);
   const expenses = useDayExpensesQuery(shiftId);
-  const network = useNetworkCostOfDayQuery(allPoints ? date : null);
+  const network = useNetworkCostOfDayQuery(allPoints ? date : null, split);
 
   const readsPending = allPoints
     ? pointsQuery.isPending || network.isPending

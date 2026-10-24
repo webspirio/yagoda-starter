@@ -53,15 +53,30 @@ describe('useCostOfDayQuery', () => {
   it('reads one shift собівартість', async () => {
     mock.onGet('/shifts/s1/cost-of-day').reply(200, day);
 
-    const { result } = renderHook(() => useCostOfDayQuery('s1'), { wrapper });
+    const { result } = renderHook(() => useCostOfDayQuery('s1', 'weight'), { wrapper });
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual(day);
   });
 
   it('does not fire without a shift — «no shift» is a state, not a request', () => {
-    const { result } = renderHook(() => useCostOfDayQuery(undefined), { wrapper });
+    const { result } = renderHook(() => useCostOfDayQuery(undefined, 'weight'), { wrapper });
     expect(result.current.fetchStatus).toBe('idle');
     expect(mock.history.get).toHaveLength(0);
+  });
+
+  it('sends the split and keeps one cache entry per split — spec 2026-10-24 §4', async () => {
+    mock.onGet('/shifts/s1/cost-of-day').reply(200, day);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const shared = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+
+    const own = renderHook(() => useCostOfDayQuery('s1', 'own'), { wrapper: shared });
+    await waitFor(() => expect(own.result.current.isSuccess).toBe(true));
+    const value = renderHook(() => useCostOfDayQuery('s1', 'value'), { wrapper: shared });
+    await waitFor(() => expect(value.result.current.isSuccess).toBe(true));
+
+    expect(mock.history.get.map((r) => r.params)).toEqual([{ split: 'own' }, { split: 'value' }]);
   });
 });

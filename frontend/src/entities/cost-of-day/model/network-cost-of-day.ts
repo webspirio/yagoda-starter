@@ -1,3 +1,5 @@
+import type { CostSplit } from './cost-of-day';
+
 /**
  * «Собівартість дня» for EVERY point at once (`GET /reports/cost-of-day`).
  * Same contract as `CostOfDay`: every figure is the server's, and a `null`
@@ -64,6 +66,8 @@ interface NetworkCostDayPoint {
 
 export interface NetworkCostOfDay {
   date: string;
+  /** The split every point's day was asked for. */
+  split: CostSplit;
   points: NetworkCostDayPoint[];
   provisional: boolean;
   accrued: string;

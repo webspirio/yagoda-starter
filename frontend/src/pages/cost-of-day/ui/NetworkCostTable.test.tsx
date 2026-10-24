@@ -41,6 +41,7 @@ const cell = (over: Partial<NetworkCostPoint>): NetworkCostPoint => ({
 // Лісове accepted 100 кг and has not weighed them.
 const day: NetworkCostOfDay = {
   date: '2026-10-22',
+  split: 'weight',
   points: [
     {
       point_id: 'pt-shp',

@@ -219,7 +219,8 @@ export function PointCashPage() {
   // `GET /shifts/:id/cost-of-day` is owner-only: an operator passes no id, so
   // the hook stays disabled and never asks (and the operator sees no note —
   // whether operators see доплати at all is the client's open question).
-  const costOfDay = useCostOfDayQuery(isOwner ? shift.data?.id : undefined);
+  // `top_ups_total` is the same under every split, so the default one is asked.
+  const costOfDay = useCostOfDayQuery(isOwner ? shift.data?.id : undefined, 'weight');
   const topUps = isOwner ? (costOfDay.data?.top_ups_total ?? null) : null;
   const hasShift = shift.data != null;
   // One gate for the day's figures: a shift, a clean read, both journals in.
