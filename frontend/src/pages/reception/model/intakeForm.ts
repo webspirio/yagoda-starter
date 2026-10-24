@@ -43,6 +43,34 @@ export function emptyLine(defaultTareTypeId: string): IntakeLineValues {
   };
 }
 
+/** A line nobody has started: no grade, no gross weight, no pallet. The
+ *  default tare row does not count — `emptyLine` puts it there, not the
+ *  operator, and without a weight it weighs nothing. */
+export function isBlankLine(line: IntakeLineValues): boolean {
+  const pallet = parseDecimal(line.pallet_kg);
+  return (
+    line.product_grade_id === '' &&
+    line.gross_kg.trim() === '' &&
+    (line.pallet_kg.trim() === '' || (pallet !== null && cmp(pallet, '0') === 0))
+  );
+}
+
+/**
+ * The receipt as it is meant: «Ще позиція» always leaves a fresh draft behind,
+ * and an untouched one is not a line — it is dropped here before the preview
+ * is asked or the receipt is sent, so the committed lines above it stay
+ * priced and «Прийняти» works (client, 24.10). Only a TRAILING draft, and only
+ * when a committed line remains, so every earlier index — the one server
+ * errors are placed by — is unchanged. A half-filled draft still blocks, with
+ * its hint and «Прибрати позицію».
+ */
+export function withoutBlankDraft(values: IntakeFormValues): IntakeFormValues {
+  const last = values.items[values.items.length - 1];
+  return values.items.length > 1 && last !== undefined && isBlankLine(last)
+    ? { ...values, items: values.items.slice(0, -1) }
+    : values;
+}
+
 /** One line as it crosses the wire — `units` is a whole count ≥ 1, not money. */
 export interface PreviewIntakeItemBody {
   product_grade_id: string;
