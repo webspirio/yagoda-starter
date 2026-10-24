@@ -35,7 +35,9 @@ export function SupplierSection({
 }) {
   return (
     // `py-2` around the picker's 48 px trigger keeps the row at 64 px (§5.1).
-    <div className="flex items-center gap-2 px-4 pt-4 pb-3">
+    // §2.11's «Це оптовик» is no longer a line under the trigger: it is said
+    // on the line editor's «Ціна» (client, 24.10), so the row never grows.
+    <div className="flex items-start gap-2 px-4 pt-4 pb-3">
       <div className="min-w-0 flex-1">
         <SupplierPicker
           ref={pickerRef}
@@ -48,7 +50,7 @@ export function SupplierSection({
         />
       </div>
 
-      {supplier ? <SupplierProfile supplier={supplier} /> : null}
+      <SupplierProfile supplier={supplier} />
     </div>
   );
 }

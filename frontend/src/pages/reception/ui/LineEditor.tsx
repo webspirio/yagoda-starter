@@ -1,5 +1,5 @@
 import { useState, type ChangeEvent } from 'react';
-import { AlertTriangle, Layers, Minus, Package, Plus, Trash2 } from 'lucide-react';
+import { Layers, Minus, Package, Plus, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import {
   useFieldArray,
@@ -31,6 +31,8 @@ import type { PricedGrade } from '@/entities/product-grade';
 import type { TareTypeOption } from '@/entities/tare-type';
 import { formatBonusSign } from '../lib/formatBonusSign';
 import { formatWholeHryvnia } from '../lib/formatWholeHryvnia';
+import { WarningTooltip } from './WarningTooltip';
+import { ENTRY_EXIT, ENTRY_FIELD, ENTRY_LINE, ENTRY_WAIT } from '../lib/entryFields';
 import type { IntakeFormValues, IntakePreviewItem } from '../model/intakeForm';
 
 /** §5.2 — the largest line of the season was 701,5 kg; above this we ask. */
@@ -40,6 +42,14 @@ const PER_CRATE_MIN = '2';
 const PER_CRATE_MAX = '14';
 /** One step of the «Ціна» stepper, in ₴/kg. */
 const PRICE_STEP = '1';
+
+/** ↑ and ↓ step the two stepper fields (the tare count and the price) the way
+ *  their − and + do, so neither needs the mouse; any other key is the field's. */
+function arrowDirection(key: string): 1 | -1 | null {
+  if (key === 'ArrowUp') return 1;
+  if (key === 'ArrowDown') return -1;
+  return null;
+}
 
 /** `cmp` throws on a half-typed decimal ("12.", "-", ""), which is not an error
  *  to shout about — it is a value the operator has not finished. */
@@ -75,9 +85,11 @@ export function LineEditor({
   errorAt,
   disabled,
   canAdd,
+  addWaiting,
   atCap,
   onAdd,
   onRemoveDraft,
+  priceHintKey,
 }: {
   index: number;
   control: Control<IntakeFormValues>;
@@ -98,10 +110,16 @@ export function LineEditor({
   onRemoveDraft: () => void;
   /** Whether «Ще позиція» may commit this draft — the page's gate, unchanged. */
   canAdd: boolean;
+  /** The draft is finished and only the preview is still to come: Enter
+   *  waits on «Ще позиція» instead of jumping past it (`ENTRY_WAIT`). */
+  addWaiting: boolean;
   /** Five lines already (§2.3): the cap hint replaces the multi-grade one. */
   atCap: boolean;
   /** Commits the draft: the page appends a fresh empty line after it. */
   onAdd: () => void;
+  /** The picked supplier's §2.11 hint («Це оптовик — перевірте ціну»), an
+   *  i18n key, or null — said on «Ціна», the field it asks to check. */
+  priceHintKey: string | null;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
@@ -158,7 +176,9 @@ export function LineEditor({
     return {
       ...field,
       onChange: (e: ChangeEvent<HTMLInputElement>) => {
-        const masked = maskDecimalInput(e.target.value);
+        // The count starts at 0 (`emptyLine`), and the caret lands after it:
+        // a leading zero goes, so typing «12» over it reads 12, not «012».
+        const masked = maskDecimalInput(e.target.value).replace(/^0+(?=\d)/, '');
         if (masked !== e.target.value) e.target.value = masked;
         return field.onChange(e);
       },
@@ -255,6 +275,13 @@ export function LineEditor({
 
   // Integer unit COUNTS, never money; a refused count adds nothing.
   const totalUnits = tareCounts.reduce<number>((n, c) => n + (c ?? 0), 0);
+  // What the tare rows take off, for the heading — the same `{weight ×
+  // units}` each row used to show, added up exactly. The server's own figure
+  // is in the formula line under the line once it is priced.
+  const tareKg = tareRows.reduce((kg, row, rowIndex) => {
+    const type = tareTypes.find((candidate) => candidate.id === row.tare_type_id);
+    return type ? add(kg, mul(type.weight_kg, tareCounts[rowIndex] ?? 0)) : kg;
+  }, '0.00');
 
   // ONE normalization, fed to both the comparison and the formatter: they use
   // different regexes, and `formatDecimal`'s admits no surrounding whitespace —
@@ -277,198 +304,44 @@ export function LineEditor({
     perCrate !== null &&
     (cmp(perCrate, PER_CRATE_MIN) === -1 || cmp(perCrate, PER_CRATE_MAX) === 1);
 
-  // The warnings are amber HINTS, one line each, under the preview line (spec
-  // §4) — none of them disables anything. `tareError` is the one refusal among
-  // them, and reads destructive.
-  const warning = (text: string) => (
-    <p className="flex items-start gap-2 text-sm text-amber">
-      <AlertTriangle className="mt-px size-3.5 shrink-0" />
-      {text}
-    </p>
-  );
+  // The warnings are amber HINTS — none of them disables anything. Each is
+  // said on the control it is about: the control turns amber and gives the
+  // reason on hover (`WarningTooltip`), rather than a line under the preview
+  // that pops in mid-typing and shifts the card (client, 24.10). `tareError`
+  // is a refusal, not a hint, and keeps its line.
+  const perCrateText =
+    perCrateWarning && perCrate !== null
+      ? t('reception.line.perCrateWarning', { kg: formatDecimal(perCrate, locale) })
+      : null;
+  // An implausible gross first; the per-crate one names the gross too.
+  const grossHint = grossWarning
+    ? t('reception.line.grossWarning', { gross: formatDecimal(normalizedGross, locale) })
+    : perCrateText;
+  // A gross weight with no tare counted would all go into the net.
+  const tareHint =
+    grossPositive && totalUnits === 0 && !tareError
+      ? t('reception.line.tareMissing')
+      : perCrateText;
+  const priceHint = priceHintKey !== null ? t(priceHintKey) : null;
+  const gradeHint =
+    grossPositive && totalUnits > 0 && gradeId === '' ? t('reception.line.gradeMissing') : null;
+  const hintIds = {
+    gross: `items.${index}.gross-hint`,
+    tare: `items.${index}.tare-hint`,
+    grade: `items.${index}.grade-hint`,
+    price: `items.${index}.price-hint`,
+  };
+  const describedBy = (own: string | undefined, hint: string | null, hintId: string) =>
+    [own, hint !== null ? hintId : null].filter(Boolean).join(' ') || undefined;
+  const amber = 'border-amber bg-amber/10';
 
   return (
-    <div className="px-4 pb-4">
+    <div className="px-4 pb-4" {...ENTRY_LINE}>
       <div className="flex flex-col gap-3 rounded-lg border border-dashed border-border p-3">
-        {/* Row 1 — weighing: Брутто, then everything taken off it in
-            §2.4's order — the pallet first, then the tare — as rows of ONE
-            column. Every row is the same 40 px: a name on the left, the amount
-            in a fixed-width box, the weight it takes off, a remove slot. */}
-        <div className="flex flex-wrap items-start gap-3">
-          <Field
-            size="large"
-            name={`items.${index}.gross_kg`}
-            label={t('reception.weight.gross')}
-            required
-            error={grossError ?? undefined}
-            className="min-w-[140px] flex-1"
-          >
-            {(a11y) => (
-              <div className="relative">
-                <DecimalInput
-                  {...a11y}
-                  value={gross}
-                  onChange={(e) =>
-                    setValue(`items.${index}.gross_kg`, e.target.value, { shouldDirty: true })
-                  }
-                  {...grossField.inputProps}
-                  disabled={disabled}
-                  placeholder="0,00"
-                  className="h-10 pr-12 font-mono text-xl font-semibold"
-                />
-                <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-sm text-muted-foreground">
-                  {t('reception.weight.unit')}
-                </span>
-              </div>
-            )}
-          </Field>
-
-          {/* «Інша тара» and «Піддон» (in the footer) add rows here; they
-              stack and push the block down rather than widen it (spec §4). */}
-          <div className="min-w-0 basis-full sm:min-w-[260px] sm:basis-0 sm:flex-[2.4]">
-            <div className="mb-1.5 text-sm font-medium text-muted-foreground">
-              {t('reception.weight.tare')}
-            </div>
-            <div className="flex flex-col gap-1.5">
-              {revealPallet ? (
-                <div>
-                  <div className="flex items-center gap-2">
-                    <label
-                      htmlFor={`items.${index}.pallet_kg`}
-                      className="flex h-10 min-w-0 flex-1 items-center rounded-xl border border-input bg-muted/30 px-3.5 text-base"
-                    >
-                      {t('reception.weight.pallet')}
-                    </label>
-                    <div className="relative w-32 shrink-0">
-                      <DecimalInput
-                        id={`items.${index}.pallet_kg`}
-                        aria-invalid={palletError ? true : undefined}
-                        aria-describedby={
-                          palletError ? `items.${index}.pallet_kg-error` : undefined
-                        }
-                        value={pallet}
-                        onChange={(e) =>
-                          setValue(`items.${index}.pallet_kg`, e.target.value, {
-                            shouldDirty: true,
-                          })
-                        }
-                        {...palletField.inputProps}
-                        disabled={disabled}
-                        className="h-10 rounded-lg pr-9 text-center font-mono font-semibold"
-                      />
-                      <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 font-mono text-sm text-muted-foreground">
-                        {t('reception.weight.unit')}
-                      </span>
-                    </div>
-                    <span className="hidden w-14 shrink-0 sm:block" aria-hidden="true" />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={t('reception.weight.removePallet')}
-                      disabled={disabled}
-                      onClick={() => {
-                        setValue(`items.${index}.pallet_kg`, '0.00', { shouldDirty: true });
-                        setShowPallet(false);
-                      }}
-                    >
-                      <Trash2 className="size-3.5" />
-                    </Button>
-                  </div>
-                  {palletError ? (
-                    <p
-                      id={`items.${index}.pallet_kg-error`}
-                      role="alert"
-                      className="mt-1.5 text-sm leading-snug text-destructive"
-                    >
-                      {t(palletError)}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
-              {tare.fields.map((row, rowIndex) => {
-                const rowTareType = tareTypes.find(
-                  (type) => type.id === tareRows[rowIndex]?.tare_type_id,
-                );
-                const rowUnits = tareCounts[rowIndex] ?? 0;
-                return (
-                  <div key={row.id} className="flex items-center gap-2">
-                    <div className="min-w-0 flex-1">
-                      <SelectField
-                        aria-label={t('reception.weight.tareType', { n: rowIndex + 1 })}
-                        disabled={disabled}
-                        className="h-10"
-                        {...register(`items.${index}.tare.${rowIndex}.tare_type_id`)}
-                      >
-                        {tareTypes.map((type) => (
-                          <option key={type.id} value={type.id}>
-                            {t('reception.weight.tareOption', {
-                              name: type.name,
-                              weight: formatDecimal(type.weight_kg, locale),
-                            })}
-                          </option>
-                        ))}
-                      </SelectField>
-                    </div>
-                    <div className="flex h-10 w-32 shrink-0 items-center gap-1 rounded-lg border border-border bg-background p-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={t('reception.weight.fewer', { n: rowIndex + 1 })}
-                        disabled={disabled}
-                        onClick={() => stepUnits(rowIndex, -1)}
-                      >
-                        <Minus className="size-3.5" />
-                      </Button>
-                      <TextInput
-                        variant="ghost"
-                        aria-label={t('reception.weight.units', { n: rowIndex + 1 })}
-                        inputMode="numeric"
-                        autoComplete="off"
-                        disabled={disabled}
-                        className="w-full min-w-0 flex-1 text-center font-mono font-semibold"
-                        {...unitsField(rowIndex)}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={t('reception.weight.more', { n: rowIndex + 1 })}
-                        disabled={disabled}
-                        onClick={() => stepUnits(rowIndex, 1)}
-                      >
-                        <Plus className="size-3.5" />
-                      </Button>
-                    </div>
-                    <span className="hidden w-14 shrink-0 text-right font-mono text-sm whitespace-nowrap text-muted-foreground sm:block">
-                      {rowTareType ? formatKg(mul(rowTareType.weight_kg, rowUnits), locale) : null}
-                    </span>
-                    {tare.fields.length > 1 ? (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={t('reception.weight.removeTare')}
-                        disabled={disabled}
-                        onClick={() => tare.remove(rowIndex)}
-                      >
-                        <Trash2 className="size-3.5" />
-                      </Button>
-                    ) : revealPallet ? (
-                      // Holds the remove column so a lone tare row lines up
-                      // with the pallet row's own remove button above it.
-                      <span className="size-8 shrink-0" aria-hidden="true" />
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-
-        {/* Row 2 — pricing: the product, its grade at the day's price, and
-            this line's own extra price (§2.8). */}
+        {/* Row 1 — pricing: the product, its grade at the day's price, and
+            this line's own extra price (§2.8). First, ahead of the weighing
+            (client, 24.10): the operator sees the berry before it is on the
+            scale, and Tab and Enter follow this same order. */}
         <div className="flex flex-wrap items-start gap-3">
           <Field
             size="large"
@@ -479,6 +352,10 @@ export function LineEditor({
             {(a11y) => (
               <SelectField
                 {...a11y}
+                {...ENTRY_FIELD}
+                // An empty «Товар» on a line after the first: Enter leaves the
+                // line for «Видано готівкою» (client, 24.10).
+                {...(index > 0 && product === '' ? ENTRY_EXIT : {})}
                 value={product}
                 disabled={disabled}
                 className="h-10"
@@ -512,36 +389,40 @@ export function LineEditor({
             className="min-w-[160px] flex-[1.3]"
           >
             {(a11y) => (
-              <SelectField
-                {...a11y}
-                // A hybrid of `register` (so a user pick still updates RHF the
-                // normal way) plus an explicit `value`: the grade OPTIONS are
-                // scoped to `product`, which itself is derived from the grade
-                // (one render behind a programmatic `setValue`, e.g. the
-                // page's pre-select effect) — a plain uncontrolled `register`
-                // select would try to apply that value before its matching
-                // `<option>` exists and silently drop it, with no later
-                // render retrying since nothing marks it controlled. `value`
-                // makes React re-apply it on every render until it sticks.
-                value={gradeId}
-                disabled={disabled || product === ''}
-                className="h-10"
-                {...gradeSelect}
-                onChange={(e) => {
-                  resetPrice();
-                  return gradeSelect.onChange(e);
-                }}
-              >
-                <option value="">{t('reception.grade.gradePlaceholder')}</option>
-                {productGrades.map((g) => (
-                  <option key={g.id} value={g.id}>
-                    {t('reception.grade.gradeOption', {
-                      name: g.name,
-                      price: formatDecimal(g.base_price, locale),
-                    })}
-                  </option>
-                ))}
-              </SelectField>
+              <WarningTooltip text={gradeHint}>
+                <SelectField
+                  {...a11y}
+                  aria-describedby={describedBy(a11y['aria-describedby'], gradeHint, hintIds.grade)}
+                  // A hybrid of `register` (so a user pick still updates RHF the
+                  // normal way) plus an explicit `value`: the grade OPTIONS are
+                  // scoped to `product`, which itself is derived from the grade
+                  // (one render behind a programmatic `setValue`, e.g. the
+                  // page's pre-select effect) — a plain uncontrolled `register`
+                  // select would try to apply that value before its matching
+                  // `<option>` exists and silently drop it, with no later
+                  // render retrying since nothing marks it controlled. `value`
+                  // makes React re-apply it on every render until it sticks.
+                  {...ENTRY_FIELD}
+                  value={gradeId}
+                  disabled={disabled || product === ''}
+                  className={cn('h-10', gradeHint !== null && amber)}
+                  {...gradeSelect}
+                  onChange={(e) => {
+                    resetPrice();
+                    return gradeSelect.onChange(e);
+                  }}
+                >
+                  <option value="">{t('reception.grade.gradePlaceholder')}</option>
+                  {productGrades.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {t('reception.grade.gradeOption', {
+                        name: g.name,
+                        price: formatDecimal(g.base_price, locale),
+                      })}
+                    </option>
+                  ))}
+                </SelectField>
+              </WarningTooltip>
             )}
           </Field>
 
@@ -552,48 +433,286 @@ export function LineEditor({
             error={bonusError ?? undefined}
             // The deviation from the grade's price, never the bounds (§2.10):
             // the operator and whoever checks the receipt see a non-base price.
-            hint={
-              grade && cmp(bonusValue, '0') !== 0
-                ? t('reception.grade.priceDelta', { delta: formatBonusSign(bonusValue, locale) })
-                : undefined
+            // The bare signed figure, in the label's row (client, 24.10); the
+            // whole sentence is what a screen reader hears.
+            labelAside={
+              grade && cmp(bonusValue, '0') !== 0 ? (
+                <>
+                  <span aria-hidden="true" className="font-mono text-amber">
+                    {formatBonusSign(bonusValue, locale)}
+                  </span>
+                  <span className="sr-only">
+                    {t('reception.grade.priceDelta', {
+                      delta: formatBonusSign(bonusValue, locale),
+                    })}
+                  </span>
+                </>
+              ) : undefined
             }
-            hintTone="warning"
             className="w-full sm:w-auto"
           >
             {(a11y) => (
-              <div className="flex h-10 items-center gap-1 rounded-lg border border-border bg-background p-1">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t('reception.grade.priceDown')}
-                  disabled={disabled || !grade}
-                  onClick={() => stepPrice(-1)}
+              <WarningTooltip text={priceHint}>
+                <div
+                  className={cn(
+                    'flex h-10 items-center gap-1 rounded-lg border p-1',
+                    priceHint !== null ? amber : 'border-border bg-background',
+                  )}
                 >
-                  <Minus className="size-3.5" />
-                </Button>
-                <DecimalInput
-                  {...a11y}
-                  variant="ghost"
-                  value={priceDisplay}
-                  onChange={(e) => onPriceChange(e.target.value)}
-                  {...priceField.inputProps}
-                  disabled={disabled || !grade}
-                  className="w-20 flex-1 text-center font-mono font-semibold sm:flex-none"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label={t('reception.grade.priceUp')}
-                  disabled={disabled || !grade}
-                  onClick={() => stepPrice(1)}
-                >
-                  <Plus className="size-3.5" />
-                </Button>
-              </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t('reception.grade.priceDown')}
+                    // Out of Tab, like the tare steppers: the price is typed
+                    // or stepped with ↑/↓.
+                    tabIndex={-1}
+                    disabled={disabled || !grade}
+                    onClick={() => stepPrice(-1)}
+                  >
+                    <Minus className="size-3.5" />
+                  </Button>
+                  <DecimalInput
+                    {...a11y}
+                    aria-describedby={describedBy(
+                      a11y['aria-describedby'],
+                      priceHint,
+                      hintIds.price,
+                    )}
+                    {...ENTRY_FIELD}
+                    variant="ghost"
+                    value={priceDisplay}
+                    onChange={(e) => onPriceChange(e.target.value)}
+                    {...priceField.inputProps}
+                    onKeyDown={(e) => {
+                      const direction = arrowDirection(e.key);
+                      if (direction === null) return;
+                      e.preventDefault();
+                      stepPrice(direction);
+                    }}
+                    disabled={disabled || !grade}
+                    className="w-20 flex-1 text-center font-mono font-semibold sm:flex-none"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t('reception.grade.priceUp')}
+                    tabIndex={-1}
+                    disabled={disabled || !grade}
+                    onClick={() => stepPrice(1)}
+                  >
+                    <Plus className="size-3.5" />
+                  </Button>
+                </div>
+              </WarningTooltip>
             )}
           </Field>
+        </div>
+
+        {/* Row 2 — weighing: Брутто, then everything taken off it in
+            §2.4's order — the pallet first, then the tare — as rows of ONE
+            column. Every row is the same 40 px: a name on the left, the amount
+            in a fixed-width box, the weight it takes off, a remove slot. */}
+        <div className="flex flex-wrap items-start gap-3">
+          <Field
+            size="large"
+            name={`items.${index}.gross_kg`}
+            label={t('reception.weight.gross')}
+            required
+            error={grossError ?? undefined}
+            className="min-w-[140px] flex-1"
+          >
+            {(a11y) => (
+              <WarningTooltip text={grossHint}>
+                <div className="relative">
+                  <DecimalInput
+                    {...a11y}
+                    aria-describedby={describedBy(
+                      a11y['aria-describedby'],
+                      grossHint,
+                      hintIds.gross,
+                    )}
+                    {...ENTRY_FIELD}
+                    value={gross}
+                    onChange={(e) =>
+                      setValue(`items.${index}.gross_kg`, e.target.value, { shouldDirty: true })
+                    }
+                    {...grossField.inputProps}
+                    disabled={disabled}
+                    placeholder="0,00"
+                    className={cn(
+                      'h-10 pr-12 font-mono text-xl font-semibold',
+                      grossHint !== null && amber,
+                    )}
+                  />
+                  <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-sm text-muted-foreground">
+                    {t('reception.weight.unit')}
+                  </span>
+                </div>
+              </WarningTooltip>
+            )}
+          </Field>
+
+          {/* «Інша тара» and «Піддон» (in the footer) add rows here; they
+              stack and push the block down rather than widen it (spec §4). */}
+          <div className="min-w-0 basis-full sm:min-w-[260px] sm:basis-0 sm:flex-[2.4]">
+            {/* The tare's weight, every row added up, in the heading's own
+                row (client, 24.10) — so the steppers end flush with the
+                price stepper above instead of a figure hanging past them. */}
+            <div className="mb-1.5 flex items-baseline justify-between gap-2 text-sm font-medium text-muted-foreground">
+              <span>{t('reception.weight.tare')}</span>
+              <span className="font-mono font-normal">{formatKg(tareKg, locale)}</span>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              {revealPallet ? (
+                <div>
+                  <div className="flex items-center gap-2">
+                    <label
+                      htmlFor={`items.${index}.pallet_kg`}
+                      className="flex h-10 min-w-0 flex-1 items-center rounded-xl border border-input bg-muted/30 px-3.5 text-base"
+                    >
+                      {t('reception.weight.pallet')}
+                    </label>
+                    <div className="relative w-32 shrink-0">
+                      <DecimalInput
+                        id={`items.${index}.pallet_kg`}
+                        {...ENTRY_FIELD}
+                        aria-invalid={palletError ? true : undefined}
+                        aria-describedby={
+                          palletError ? `items.${index}.pallet_kg-error` : undefined
+                        }
+                        value={pallet}
+                        onChange={(e) =>
+                          setValue(`items.${index}.pallet_kg`, e.target.value, {
+                            shouldDirty: true,
+                          })
+                        }
+                        {...palletField.inputProps}
+                        disabled={disabled}
+                        className="h-10 rounded-lg pr-9 text-center font-mono font-semibold"
+                      />
+                      <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 font-mono text-sm text-muted-foreground">
+                        {t('reception.weight.unit')}
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t('reception.weight.removePallet')}
+                      disabled={disabled}
+                      onClick={() => {
+                        setValue(`items.${index}.pallet_kg`, '0.00', { shouldDirty: true });
+                        setShowPallet(false);
+                      }}
+                    >
+                      <Trash2 className="size-3.5" />
+                    </Button>
+                  </div>
+                  {palletError ? (
+                    <p
+                      id={`items.${index}.pallet_kg-error`}
+                      role="alert"
+                      className="mt-1.5 text-sm leading-snug text-destructive"
+                    >
+                      {t(palletError)}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+              {tare.fields.map((row, rowIndex) => {
+                return (
+                  <div key={row.id} className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <SelectField
+                        aria-label={t('reception.weight.tareType', { n: rowIndex + 1 })}
+                        {...ENTRY_FIELD}
+                        disabled={disabled}
+                        className="h-10"
+                        {...register(`items.${index}.tare.${rowIndex}.tare_type_id`)}
+                      >
+                        {tareTypes.map((type) => (
+                          <option key={type.id} value={type.id}>
+                            {t('reception.weight.tareOption', {
+                              name: type.name,
+                              weight: formatDecimal(type.weight_kg, locale),
+                            })}
+                          </option>
+                        ))}
+                      </SelectField>
+                    </div>
+                    <WarningTooltip text={tareHint}>
+                      <div
+                        className={cn(
+                          'flex h-10 w-32 shrink-0 items-center gap-1 rounded-lg border p-1 transition-colors',
+                          tareHint !== null ? amber : 'border-border bg-background',
+                        )}
+                      >
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={t('reception.weight.fewer', { n: rowIndex + 1 })}
+                          // Out of Tab: the count beside it is typed, or stepped
+                          // with ↑/↓ (client, 24.10).
+                          tabIndex={-1}
+                          disabled={disabled}
+                          onClick={() => stepUnits(rowIndex, -1)}
+                        >
+                          <Minus className="size-3.5" />
+                        </Button>
+                        <TextInput
+                          variant="ghost"
+                          aria-label={t('reception.weight.units', { n: rowIndex + 1 })}
+                          aria-describedby={tareHint !== null ? hintIds.tare : undefined}
+                          {...ENTRY_FIELD}
+                          inputMode="numeric"
+                          autoComplete="off"
+                          disabled={disabled}
+                          className="w-full min-w-0 flex-1 text-center font-mono font-semibold"
+                          {...unitsField(rowIndex)}
+                          onKeyDown={(e) => {
+                            const direction = arrowDirection(e.key);
+                            if (direction === null) return;
+                            e.preventDefault();
+                            stepUnits(rowIndex, direction);
+                          }}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={t('reception.weight.more', { n: rowIndex + 1 })}
+                          tabIndex={-1}
+                          disabled={disabled}
+                          onClick={() => stepUnits(rowIndex, 1)}
+                        >
+                          <Plus className="size-3.5" />
+                        </Button>
+                      </div>
+                    </WarningTooltip>
+                    {tare.fields.length > 1 ? (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t('reception.weight.removeTare')}
+                        disabled={disabled}
+                        onClick={() => tare.remove(rowIndex)}
+                      >
+                        <Trash2 className="size-3.5" />
+                      </Button>
+                    ) : revealPallet ? (
+                      // Holds the remove column so a lone tare row lines up
+                      // with the pallet row's own remove button above it.
+                      <span className="size-8 shrink-0" aria-hidden="true" />
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         {/* The line's numbers, kept visible (dimmed) while a newer preview is in
@@ -645,31 +764,33 @@ export function LineEditor({
             : t('reception.line.pending')}
         </p>
 
-        {/* Instant, client-side hints — never a rule the server enforces,
-            just what the operator is about to be surprised by. */}
-        <div className="-mt-1.5 flex flex-col gap-0.5 empty:hidden">
-          {grossWarning
-            ? warning(
-                t('reception.line.grossWarning', {
-                  gross: formatDecimal(normalizedGross, locale),
-                }),
-              )
-            : null}
-          {tareError ? (
-            <p role="alert" className="text-sm text-destructive">
-              {t(tareError)}
-            </p>
-          ) : null}
-          {grossPositive && totalUnits === 0 && !tareError
-            ? warning(t('reception.line.tareMissing'))
-            : null}
-          {grossPositive && totalUnits > 0 && gradeId === ''
-            ? warning(t('reception.line.gradeMissing'))
-            : null}
-          {perCrateWarning && perCrate !== null
-            ? warning(t('reception.line.perCrateWarning', { kg: formatDecimal(perCrate, locale) }))
-            : null}
-        </div>
+        {/* The hints' text for a screen reader, which never hovers — each
+            linked to its control through `aria-describedby`. */}
+        {grossHint !== null ? (
+          <span id={hintIds.gross} className="sr-only">
+            {grossHint}
+          </span>
+        ) : null}
+        {tareHint !== null ? (
+          <span id={hintIds.tare} className="sr-only">
+            {tareHint}
+          </span>
+        ) : null}
+        {gradeHint !== null ? (
+          <span id={hintIds.grade} className="sr-only">
+            {gradeHint}
+          </span>
+        ) : null}
+        {priceHint !== null ? (
+          <span id={hintIds.price} className="sr-only">
+            {priceHint}
+          </span>
+        ) : null}
+        {tareError ? (
+          <p role="alert" className="-mt-1.5 text-sm text-destructive">
+            {t(tareError)}
+          </p>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3 xl:flex-nowrap">
           {/* «Інша тара» lives here, not under the tare rows, so row 1 stays
@@ -682,7 +803,7 @@ export function LineEditor({
             className="-ml-2 shrink-0"
             disabled={disabled || !freeTareType}
             onClick={() =>
-              freeTareType && tare.append({ tare_type_id: freeTareType.id, units: '1' })
+              freeTareType && tare.append({ tare_type_id: freeTareType.id, units: '0' })
             }
           >
             <Package className="size-3.5" />
@@ -738,6 +859,9 @@ export function LineEditor({
               variant="outline"
               size="sm"
               title={atCap ? t('reception.lines.capHint') : t('reception.lines.hint')}
+              // Enter's walk ends on the line here; Enter on it adds the line.
+              {...ENTRY_FIELD}
+              {...(addWaiting ? ENTRY_WAIT : {})}
               disabled={!canAdd}
               onClick={onAdd}
               className="shrink-0"

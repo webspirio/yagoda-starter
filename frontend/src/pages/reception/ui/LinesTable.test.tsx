@@ -72,11 +72,12 @@ describe('LinesTable — reads like the mock', () => {
     expect(within(line2).queryByText('−2.00')).not.toBeInTheDocument();
   });
 
-  // «Ще позиція» and its hint live in the draft block's footer now (spec §4),
-  // so with nothing committed the table has nothing of its own to show.
-  it('renders nothing without committed rows', () => {
-    const { container } = render(<LinesTable rows={[]} disabled={false} onRemove={vi.fn()} />);
+  // The table keeps its room for eight rows even when empty (client, 24.10),
+  // so it shows its header and no line rows.
+  it('keeps the header and no line rows without committed rows', () => {
+    render(<LinesTable rows={[]} disabled={false} onRemove={vi.fn()} />);
 
-    expect(container).toBeEmptyDOMElement();
+    const rows = within(screen.getByRole('table')).getAllByRole('row');
+    expect(rows).toHaveLength(1);
   });
 });

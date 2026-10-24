@@ -6,10 +6,12 @@ import { cmp, formatKg, formatUah } from '@/shared/lib/money';
 import { useIntakesQuery } from '@/entities/intake';
 
 /**
- * The «Сьогодні» popover's body: every receipt of the CURRENT shift, newest first, each one
- * a way back into its own printable copy. Reads the same `intakes` journal the
- * day screen does — a saved receipt invalidates that prefix, so this list is
- * the confirmation that the document landed.
+ * Today's receipts: every receipt of the CURRENT shift, newest first, each one
+ * a way back into its own printable copy — in the «Сьогодні» popover and, as
+ * `layout="columns"`, in the card under the reception form (client, 24.10).
+ * Reads the same `intakes` journal the day screen does — a saved receipt
+ * invalidates that prefix, so this list is the confirmation that the document
+ * landed.
  *
  * A row is READ, not recomputed: `net_kg`, `lines_count`, `supplier_name` and
  * `open_amount` all arrive already on the `Intake` header.
@@ -19,13 +21,22 @@ import { useIntakesQuery } from '@/entities/intake';
 export function TodayReceipts({
   shiftId,
   onOpen,
+  layout = 'list',
 }: {
   shiftId: string | undefined;
   onOpen: (intakeId: string) => void;
+  /** `list` packs a row into the 420 px popover; `columns` lines the figures
+   *  up in fixed columns across a full-width card. */
+  layout?: 'list' | 'columns';
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
   const intakes = useIntakesQuery({ shiftId });
+
+  const columns = layout === 'columns';
+  // An optional cell is always rendered so the columns stay put; in the
+  // popover's flex row an empty one is hidden so it adds no gap.
+  const optional = columns ? 'text-right' : 'empty:hidden';
 
   const rows = [...(intakes.data?.data ?? [])].sort((a, b) =>
     a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0,
@@ -50,7 +61,10 @@ export function TodayReceipts({
                   type="button"
                   onClick={() => onOpen(row.id)}
                   className={cn(
-                    'flex w-full min-w-0 items-center gap-2 py-2 text-left text-sm transition-colors hover:text-brand',
+                    'w-full min-w-0 items-center py-2 text-left text-sm transition-colors hover:text-brand',
+                    columns
+                      ? 'grid grid-cols-[3rem_minmax(0,1fr)_6rem_6rem_minmax(0,11rem)_6rem_8rem_1rem] gap-3'
+                      : 'flex gap-2',
                     row.voided_at !== null && 'text-muted-foreground line-through',
                   )}
                 >
@@ -58,23 +72,28 @@ export function TodayReceipts({
                     {formatTime(row.created_at, locale)}
                   </span>
                   <span className="min-w-0 flex-1 truncate">{row.supplier_name}</span>
-                  {row.lines_count > 1 ? (
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {t('reception.today.positions', { count: row.lines_count })}
-                    </span>
-                  ) : null}
-                  <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
+                  <span className={cn('shrink-0 text-xs text-muted-foreground', optional)}>
+                    {row.lines_count > 1
+                      ? t('reception.today.positions', { count: row.lines_count })
+                      : null}
+                  </span>
+                  <span
+                    className={cn(
+                      'shrink-0 font-mono text-xs tabular-nums text-muted-foreground',
+                      columns && 'text-right',
+                    )}
+                  >
                     {formatKg(row.net_kg, locale)}
                   </span>
-                  {hasRemainder ? (
-                    <span className="shrink-0 text-xs text-amber">
-                      {t('reception.today.remainder', { uah: formatUah(remainder, locale) })}
-                    </span>
-                  ) : null}
-                  {row.voided_at !== null ? (
-                    <span className="shrink-0 text-xs">{t('reception.today.voided')}</span>
-                  ) : null}
-                  <span className="shrink-0 font-mono tabular-nums">
+                  <span className={cn('min-w-0 shrink-0 truncate text-xs text-amber', optional)}>
+                    {hasRemainder
+                      ? t('reception.today.remainder', { uah: formatUah(remainder, locale) })
+                      : null}
+                  </span>
+                  <span className={cn('shrink-0 text-xs', optional)}>
+                    {row.voided_at !== null ? t('reception.today.voided') : null}
+                  </span>
+                  <span className={cn('shrink-0 font-mono tabular-nums', columns && 'text-right')}>
                     {formatUah(row.amount, locale)}
                   </span>
                   <Receipt className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />

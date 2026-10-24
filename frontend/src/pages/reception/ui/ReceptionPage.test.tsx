@@ -1,6 +1,6 @@
-import { forwardRef, useImperativeHandle, useRef } from 'react';
+import { forwardRef, useImperativeHandle, useRef, useState } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, waitFor, within, fireEvent } from '@testing-library/react';
+import { act, render, screen, waitFor, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -125,7 +125,9 @@ vi.mock('@/entities/shift', () => ({
   useCurrentShiftQuery: (pointId: string | null) => shiftMock(pointId),
 }));
 
-vi.mock('@/entities/supplier', () => ({
+vi.mock('@/entities/supplier', async (importOriginal) => ({
+  // `kindHintKey` stays the real one — the key the page hands «Ціна» (§2.11).
+  kindHintKey: (await importOriginal<typeof import('@/entities/supplier')>()).kindHintKey,
   useSupplierBalanceQuery: (id: string | null) => balanceMock(id),
   supplierName: (s: { first_name: string; last_name: string }) => `${s.last_name} ${s.first_name}`,
   KindBadge: () => null,
@@ -148,9 +150,19 @@ vi.mock('@/features/pick-supplier', () => ({
     const buttonRef = useRef<HTMLButtonElement>(null);
     useImperativeHandle(ref, () => ({ focus: () => buttonRef.current?.focus() }));
     return (
-      <button ref={buttonRef} type="button" onClick={() => onChange(nina)}>
-        pick-nina
-      </button>
+      <>
+        <button ref={buttonRef} type="button" onClick={() => onChange(nina)}>
+          pick-nina
+        </button>
+        {/* Out of Tab, so the focus-order tests see one picker stop. */}
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => onChange({ ...nina, kind: 'wholesale' })}
+        >
+          pick-wholesaler
+        </button>
+      </>
     );
   }),
 }));
@@ -436,14 +448,12 @@ function renderReception() {
   // `CountDrawerDialog` is real here too. In open mode its crate read is
   // DISABLED (`shiftId={null}`), but `useQuery` still needs a client in scope.
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return {
-    ...render(
-      <QueryClientProvider client={client}>
-        <RouterProvider router={router} />
-      </QueryClientProvider>,
-    ),
-    router,
-  };
+  const tree = (
+    <QueryClientProvider client={client}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  );
+  return { ...render(tree), router };
 }
 
 /** Fills the draft line so the «Add line» gate opens: gross, tare units, grade. */
@@ -663,9 +673,7 @@ describe('ReceptionPage — choosing the supplier', () => {
       '− 250.00 ₴',
     );
     // 1 204 accrued − 250 the supplier owes us = 954, suggested and sent.
-    expect(within(card).getByText('Total to pay out').parentElement).toHaveTextContent(
-      '954.00 ₴',
-    );
+    expect(within(card).getByText('Total to pay out').parentElement).toHaveTextContent('954.00 ₴');
     expect(within(card).queryByText(/Overpaid/)).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Accept · pay out 954.00 ₴' }));
     await waitFor(() =>
@@ -683,9 +691,11 @@ describe('ReceptionPage — a one-line receipt', () => {
     const user = userEvent.setup();
     renderReception();
 
+    // The profile button is always there, so the row never shifts — and
+    // opens only once there is a supplier to show.
+    expect(screen.getByRole('button', { name: 'Supplier profile' })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
-    // The profile button only renders while a supplier is chosen.
-    expect(screen.getByRole('button', { name: 'Supplier profile' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Supplier profile' })).toBeEnabled();
     await fillDraft(user);
 
     // Net weight and the amount are the SERVER's, never computed here.
@@ -851,7 +861,7 @@ describe('ReceptionPage — several lines', () => {
   // §5.2 — DOM order is §2.1 order, with no `tabIndex` overrides: the one
   // stop between the picker and Брутто is the profile button, and the committed
   // rows' trash comes only after the whole draft, its footer included.
-  it('tabs from the supplier to Брутто through only the profile button, and reaches committed rows after the draft', async () => {
+  it('tabs from the supplier to «Товар» through only the profile button, and reaches committed rows after the draft', async () => {
     const user = userEvent.setup();
     renderReception();
 
@@ -865,7 +875,7 @@ describe('ReceptionPage — several lines', () => {
     await user.tab();
     expect(screen.getByRole('button', { name: 'Supplier profile' })).toHaveFocus();
     await user.tab();
-    expect(screen.getByLabelText('Gross, kg')).toHaveFocus();
+    expect(screen.getByLabelText('Product')).toHaveFocus();
 
     const rowTrash = within(screen.getByRole('table')).getByRole('button', {
       name: 'Remove line',
@@ -878,11 +888,12 @@ describe('ReceptionPage — several lines', () => {
     expect(rowTrash).toHaveFocus();
     const at = (el: Element) => visited.indexOf(el);
     const add = screen.getByRole('button', { name: 'Add line' });
-    expect(at(screen.getByLabelText('Tare type 1'))).toBeGreaterThan(-1);
-    expect(at(screen.getByLabelText('Price, ₴/kg'))).toBeGreaterThan(
-      at(screen.getByLabelText('Tare type 1')),
+    // Pricing first, then weighing (client, 24.10).
+    expect(at(screen.getByLabelText('Price, ₴/kg'))).toBeGreaterThan(-1);
+    expect(at(screen.getByLabelText('Tare type 1'))).toBeGreaterThan(
+      at(screen.getByLabelText('Price, ₴/kg')),
     );
-    expect(at(add)).toBeGreaterThan(at(screen.getByLabelText('Price, ₴/kg')));
+    expect(at(add)).toBeGreaterThan(at(screen.getByLabelText('Tare type 1')));
     expect(at(rowTrash)).toBeGreaterThan(at(add));
   });
 });
@@ -1004,6 +1015,37 @@ describe('ReceptionPage — tare rows', () => {
     expect(screen.getByLabelText('One more 1')).toBeInTheDocument();
     expect(screen.getByLabelText('One more 2')).toBeInTheDocument();
   });
+
+  it('starts every tare count at 0 — the first row and «Інша тара» alike', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    expect(screen.getByLabelText('Tare units 1')).toHaveValue('0');
+    await user.click(screen.getByRole('button', { name: 'Other tare' }));
+    expect(screen.getByLabelText('Tare units 2')).toHaveValue('0');
+  });
+
+  it('typing over the 0 replaces it rather than writing «012»', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.type(screen.getByLabelText('Tare units 1'), '12');
+    expect(screen.getByLabelText('Tare units 1')).toHaveValue('12');
+  });
+
+  it('never lets a receipt through with no tare, whatever the preview says', async () => {
+    previewMock.mockReturnValue(SETTLED);
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await user.type(screen.getByLabelText('Gross, kg'), '62,40');
+    await user.selectOptions(screen.getByLabelText('Product'), 'Raspberry');
+
+    expect(screen.getByRole('button', { name: /^Accept/ })).toBeDisabled();
+
+    await user.type(screen.getByLabelText('Tare units 1'), '12');
+    expect(screen.getByRole('button', { name: /^Accept/ })).toBeEnabled();
+  });
 });
 
 describe('ReceptionPage — the draft line preview', () => {
@@ -1013,7 +1055,9 @@ describe('ReceptionPage — the draft line preview', () => {
       previewState({
         preview: {
           ...PREVIEW,
-          items: [{ ...PREVIEW.items[0], bonus: '-5.00', amount: '602.00', amount_exact: '602.00' }],
+          items: [
+            { ...PREVIEW.items[0], bonus: '-5.00', amount: '602.00', amount_exact: '602.00' },
+          ],
         },
         isSettled: true,
       }),
@@ -1107,9 +1151,7 @@ describe('ReceptionPage — the draft line preview', () => {
     await fillDraft(user);
 
     expect(
-      screen.getByText(
-        '552.30 − 14.30 pallet − 120.00 tare = 418.00 kg × 65.00 = 27,170 ₴',
-      ),
+      screen.getByText('552.30 − 14.30 pallet − 120.00 tare = 418.00 kg × 65.00 = 27,170 ₴'),
     ).toBeInTheDocument();
   });
 });
@@ -1256,11 +1298,12 @@ describe('ReceptionPage — the client-side sanity hints', () => {
     await user.clear(gross);
     await user.type(gross, ' 800');
 
-    expect(
-      screen.getByText(
-        '800.00 kg — more than the largest line of the season (701.5 kg). Check the gross weight.',
-      ),
-    ).toBeInTheDocument();
+    // Said on the field itself (client, 24.10) — its description, and the
+    // tooltip the focused field opens — never a line that shifts the card.
+    const warning =
+      '800.00 kg — more than the largest line of the season (701.5 kg). Check the gross weight.';
+    expect(gross).toHaveAccessibleDescription(warning);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(warning);
   });
 });
 
@@ -1485,7 +1528,8 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
     // Enter — from «Видано готівкою» or any other field — never reaches the
     // browser's implicit submit (`dispatchEvent` is false exactly when the
     // guard called `preventDefault()`, same proof as the gross-field test).
-    const enter = () => new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    const enter = () =>
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
     expect(paidInput.dispatchEvent(enter())).toBe(false);
     expect(screen.getByLabelText('Gross, kg').dispatchEvent(enter())).toBe(false);
     // And a submit that gets there some other way is refused by the handler.
@@ -1604,14 +1648,17 @@ describe('ReceptionPage — switching supplier mid-visit', () => {
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
     await user.click(screen.getByRole('button', { name: 'Add line' }));
-    expect(screen.getByRole('table')).toBeInTheDocument();
+    // The table is always there (room for eight rows); a committed line is a
+    // row under its header.
+    const lineRows = () => within(screen.getByRole('table')).getAllByRole('row');
+    expect(lineRows()).toHaveLength(2);
 
     // Picking again simulates a switch — the stub always hands back the same
     // row, but the PAGE doesn't know that, and reacts to there being
     // something committed already.
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
 
-    expect(screen.queryByRole('table')).toBeNull();
+    expect(lineRows()).toHaveLength(1);
     expect(screen.getByLabelText('Gross, kg')).toHaveValue('');
     expect(toastMock).toHaveBeenCalledWith(
       'Lines cleared — they belonged to the previous supplier',
@@ -1628,37 +1675,208 @@ describe('ReceptionPage — switching supplier mid-visit', () => {
   });
 });
 
-describe('ReceptionPage — Enter never submits a half-typed receipt', () => {
-  it('swallows Enter in the gross field while the form is not ready, and leaves it alone once it is', async () => {
+describe('ReceptionPage — moving through the line from the keyboard', () => {
+  /** Dispatches a bare Enter keydown; `false` means some listener called
+   *  `preventDefault()` — the direct proof the browser's implicit submit was
+   *  held back (happy-dom has none of its own to observe). */
+  const pressEnter = (el: HTMLElement) =>
+    el.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+    );
+
+  it('moves to «Товар» once a supplier is picked', async () => {
     const user = userEvent.setup();
     renderReception();
 
-    const grossInput = screen.getByLabelText('Gross, kg');
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    expect(screen.getByLabelText('Product')).toHaveFocus();
+  });
 
-    // Not ready: no supplier chosen yet, so `canSubmit` is false — Enter must
-    // not reach the browser's own (absent from happy-dom) implicit submit.
-    const notReadyEvent = new KeyboardEvent('keydown', {
-      key: 'Enter',
-      bubbles: true,
-      cancelable: true,
-    });
-    // `dispatchEvent` returns false exactly when some listener called
-    // `preventDefault()` — the direct proof the guard fired.
-    expect(grossInput.dispatchEvent(notReadyEvent)).toBe(false);
-    fireEvent.keyDown(grossInput, { key: 'Enter' });
+  it('walks Enter: product, grade, price, gross, tare type, count, «Add line» — then the new line', async () => {
+    previewMock.mockReturnValue(SETTLED);
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+
+    await user.selectOptions(screen.getByLabelText('Product'), 'Raspberry');
+    await user.keyboard('{Enter}');
+    expect(screen.getByLabelText('Grade')).toHaveFocus();
+
+    await user.keyboard('{Enter}');
+    expect(screen.getByLabelText('Price, ₴/kg')).toHaveFocus();
+
+    await user.keyboard('{Enter}');
+    expect(screen.getByLabelText('Gross, kg')).toHaveFocus();
+
+    await user.keyboard('62,40{Enter}');
+    expect(screen.getByLabelText('Tare type 1')).toHaveFocus();
+
+    await user.keyboard('{Enter}');
+    expect(screen.getByLabelText('Tare units 1')).toHaveFocus();
+
+    await user.keyboard('12{Enter}');
+    const add = screen.getByRole('button', { name: 'Add line' });
+    expect(add).toHaveFocus();
+
+    // Enter on the button is the button's own: the line is committed and the
+    // fresh one starts where every line starts, on «Товар».
+    await user.keyboard('{Enter}');
+    expect(within(screen.getByRole('table')).getAllByRole('row').length).toBeGreaterThan(1);
+    expect(screen.getByLabelText('Product')).toHaveValue('');
+    expect(screen.getByLabelText('Product')).toHaveFocus();
     expect(createMock).not.toHaveBeenCalled();
+  });
 
-    // Ready: supplier picked, the one line filled, the preview settled.
+  it('leaves an empty new line straight for «Видано готівкою» on Enter in its «Товар»', async () => {
+    previewMock.mockReturnValue(SETTLED);
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Add line' }));
+    expect(screen.getByLabelText('Product')).toHaveFocus();
+
+    await user.keyboard('{Enter}');
+    expect(screen.getByLabelText('Paid in cash')).toHaveFocus();
+  });
+
+  it('keeps Enter on the first line even with «Товар» empty', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByLabelText('Product'));
+    await user.keyboard('{Enter}');
+    // «Сорт» and «Ціна» wait for a product, so Enter lands on «Брутто» —
+    // still the line, never the payout.
+    expect(screen.getByLabelText('Paid in cash')).not.toHaveFocus();
+    expect(screen.getByLabelText('Gross, kg')).toHaveFocus();
+  });
+
+  it('waits on «Add line» for a finished line whose preview has not settled yet', async () => {
+    // The operator types the count and presses Enter at once: the preview is
+    // still in its debounce, so «Add line» is disabled for that moment. The
+    // mock holds its answer in React state, so settling it is a real render.
+    let settle = () => {};
+    previewMock.mockImplementation(() => {
+      const [isSettled, setSettled] = useState(false);
+      settle = () => setSettled(true);
+      return isSettled ? SETTLED : previewState({ isPending: true });
+    });
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    await user.click(screen.getByLabelText('Tare units 1'));
+    await user.keyboard('{Enter}');
+    const add = screen.getByRole('button', { name: 'Add line' });
+    expect(add).toBeDisabled();
+    expect(screen.getByLabelText('Paid in cash')).not.toHaveFocus();
+
+    act(() => settle());
+    await waitFor(() => expect(add).toHaveFocus());
+  });
+
+  it('goes past a disabled «Add line» to «Видано готівкою»', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    // No supplier, no preview: «Add line» stays disabled.
+    expect(screen.getByRole('button', { name: 'Add line' })).toBeDisabled();
+    await user.click(screen.getByLabelText('Tare units 1'));
+    await user.keyboard('{Enter}');
+    expect(screen.getByLabelText('Paid in cash')).toHaveFocus();
+  });
+
+  it('stops at the pallet between gross and tare once the pallet field is open (§2.4)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'Pallet' }));
+    await user.click(screen.getByLabelText('Gross, kg'));
+    await user.keyboard('552,30{Enter}');
+    expect(screen.getByLabelText('Pallet')).toHaveFocus();
+
+    await user.keyboard('{Enter}');
+    expect(screen.getByLabelText('Tare type 1')).toHaveFocus();
+  });
+
+  it('never submits from a line field, even once the receipt is ready', async () => {
+    const user = userEvent.setup();
+    renderReception();
     previewMock.mockReturnValue(SETTLED);
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
-    const readyEvent = new KeyboardEvent('keydown', {
-      key: 'Enter',
-      bubbles: true,
-      cancelable: true,
-    });
-    expect(grossInput.dispatchEvent(readyEvent)).toBe(true);
+    expect(pressEnter(screen.getByLabelText('Gross, kg'))).toBe(false);
+    expect(pressEnter(screen.getByLabelText('Price, ₴/kg'))).toBe(false);
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('swallows Enter in «Видано готівкою» while the form is not ready, and leaves it alone once it is', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    // Not ready: no supplier chosen yet, so `canSubmit` is false.
+    expect(pressEnter(screen.getByLabelText('Paid in cash'))).toBe(false);
+    expect(createMock).not.toHaveBeenCalled();
+
+    // Ready: supplier picked, the one line filled, the preview settled — the
+    // last field's Enter is the browser's own submit, left alone.
+    previewMock.mockReturnValue(SETTLED);
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    expect(pressEnter(screen.getByLabelText('Paid in cash'))).toBe(true);
+  });
+
+  it('tabs product → grade → price → gross → tare type → count → «Інша тара», past the steppers', async () => {
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+
+    await user.selectOptions(screen.getByLabelText('Product'), 'Raspberry');
+    await user.tab();
+    expect(screen.getByLabelText('Grade')).toHaveFocus();
+    await user.tab();
+    expect(screen.getByLabelText('Price, ₴/kg')).toHaveFocus();
+    await user.tab();
+    expect(screen.getByLabelText('Gross, kg')).toHaveFocus();
+    await user.tab();
+    expect(screen.getByLabelText('Tare type 1')).toHaveFocus();
+    await user.tab();
+    expect(screen.getByLabelText('Tare units 1')).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Other tare' })).toHaveFocus();
+  });
+
+  it('steps the tare count with ↑/↓, never below 0', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    const units = screen.getByLabelText('Tare units 1');
+    await user.click(units);
+    await user.keyboard('{ArrowUp}{ArrowUp}{ArrowUp}');
+    expect(units).toHaveValue('3');
+    await user.keyboard('{ArrowDown}');
+    expect(units).toHaveValue('2');
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}');
+    expect(units).toHaveValue('0');
+  });
+
+  it('steps the price with ↑/↓ by one hryvnia, within the grade bounds (§2.10)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+    // g1: 10.00 ₴/kg, up to +3.00, down to −2.00.
+    await user.selectOptions(screen.getByLabelText('Product'), 'Raspberry');
+
+    const price = screen.getByLabelText('Price, ₴/kg');
+    await user.click(price);
+    await user.keyboard('{ArrowUp}');
+    expect(price).toHaveValue('11.00');
+    await user.keyboard('{ArrowUp}{ArrowUp}{ArrowUp}{ArrowUp}');
+    expect(price).toHaveValue('13.00');
+    await user.keyboard('{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}');
+    expect(price).toHaveValue('8.00');
   });
 });
 
@@ -1717,8 +1935,13 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     await user.type(price, '15');
     await user.tab();
     expect(price).toHaveValue('13.00');
-    // The deviation is said; the bound itself never is (§2.10).
-    expect(screen.getByText('+3.00 vs the grade price')).toBeInTheDocument();
+    // The deviation is said; the bound itself never is (§2.10). On screen it
+    // is the bare signed figure in the label's own row, ahead of the control
+    // (client, 24.10); a screen reader still hears the whole sentence.
+    const delta = screen.getByText('+3.00');
+    expect(delta.closest('div')).toHaveTextContent('Price, ₴/kg');
+    expect(delta.compareDocumentPosition(price) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(price).toHaveAccessibleDescription('+3.00 vs the grade price');
 
     await user.click(screen.getByRole('button', { name: 'Price up' }));
     expect(price).toHaveValue('13.00');
@@ -1789,24 +2012,47 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     expect(screen.getByLabelText('Pallet')).toBeInTheDocument();
   });
 
-  it('shows the row weight beside the tare stepper and warns at zero units', async () => {
+  it("says §2.11's «check the price» on «Ціна» for a wholesaler, not as a line (client, 24.10)", async () => {
     const user = userEvent.setup();
     renderReception();
+    const price = screen.getByLabelText('Price, ₴/kg');
+    expect(price).not.toHaveAccessibleDescription();
 
-    // The default line starts on one Czech crate (0.50 kg) at a count of 1.
-    expect(screen.getByText('0.50 kg')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'pick-wholesaler' }));
+    expect(price).toHaveAccessibleDescription('A wholesaler — check the price.');
 
-    const gross = screen.getByLabelText('Gross, kg');
-    await user.type(gross, '10');
-    const units = screen.getByLabelText('Tare units 1');
-    await user.clear(units);
-    await user.type(units, '0');
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    expect(price).not.toHaveAccessibleDescription();
+  });
 
-    expect(
-      screen.getByText(
-        'Enter the tare quantity — without it the gross weight would count entirely as net.',
-      ),
-    ).toBeInTheDocument();
+  it('shows the tare weight in the «Tare» heading and flags the count at zero units', async () => {
+    const user = userEvent.setup();
+    renderReception();
+    // The lines table's «Tare» column header is not the heading meant here.
+    const heading = () => screen.getByText('Tare', { ignore: 'th, script, style' }).closest('div')!;
+
+    // The default line starts on a Czech crate (0.50 kg each) at a count of
+    // 0 (client, 24.10) — so the tare takes nothing off yet…
+    expect(heading()).toHaveTextContent('0.00 kg');
+
+    // …and says so the moment there is a gross weight to take it from.
+    await user.type(screen.getByLabelText('Gross, kg'), '10');
+    const tareMissing =
+      'Enter the tare quantity — without it the gross weight would count entirely as net.';
+    // Said on the count itself (client, 24.10): no line under the preview to
+    // shift the card, only the field's own description.
+    expect(screen.getByLabelText('Tare units 1')).toHaveAccessibleDescription(tareMissing);
+
+    await user.type(screen.getByLabelText('Tare units 1'), '1');
+    expect(heading()).toHaveTextContent('0.50 kg');
+    expect(screen.getByLabelText('Tare units 1')).not.toHaveAccessibleDescription();
+    expect(screen.queryByText(tareMissing)).toBeNull();
+
+    // Every row adds into the one figure: 1 × 0.50 + 2 × 0.30 (a bucket).
+    await user.click(screen.getByRole('button', { name: 'Other tare' }));
+    await user.type(screen.getByLabelText('Tare units 2'), '2');
+    expect(heading()).toHaveTextContent('1.10 kg');
+    expect(screen.queryByText('0.60 kg')).toBeNull();
   });
 
   it('starts the first line on «Оберіть товар» — nothing pre-selected (client, 24.10)', () => {

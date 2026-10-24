@@ -25,8 +25,12 @@ function Pending() {
  * Піддон − Тара (in kg, the units in its `title`) = Нетто, × Ціна (the final
  * price, the bonus folded in as on the draft line and the receipt, #164) =
  * Сума. It sits AFTER the draft block, so its ✕ buttons are never Tab stops
- * between the picker and Брутто (spec §5.2), and with nothing committed it
- * renders nothing at all.
+ * between the picker and Брутто (spec §5.2).
+ *
+ * The table always holds room for eight rows (client, 24.10), committed or not, so
+ * the card does not jump as lines are added; it grows to fill the card when
+ * the settlement card beside it is taller, and scrolls inside under a sticky
+ * header once the lines outgrow it.
  */
 export function LinesTable({
   rows,
@@ -41,15 +45,14 @@ export function LinesTable({
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
 
-  if (rows.length === 0) return null;
-
   return (
-    <div className="px-4 pb-4">
-      <div className="overflow-x-auto">
+    // 250 px = 18 px header + 8 × (26 px row + 1 px divider) + the 16 px `pb-4`.
+    <div className="relative min-h-[250px] flex-1 px-4 pb-4">
+      <div className="absolute inset-x-4 top-0 bottom-4 overflow-auto">
         <table className="w-full min-w-[560px] text-xs">
           <caption className="sr-only">{t('reception.lines.title')}</caption>
           <thead>
-            <tr className="text-[10px] leading-4 font-medium tracking-[0.12em] whitespace-nowrap text-muted-foreground uppercase">
+            <tr className="sticky top-0 z-10 bg-card text-[10px] leading-4 font-medium tracking-[0.12em] whitespace-nowrap text-muted-foreground uppercase">
               <th scope="col" className="px-2 pb-0.5 text-left">
                 {t('reception.lines.col.grade')}
               </th>
