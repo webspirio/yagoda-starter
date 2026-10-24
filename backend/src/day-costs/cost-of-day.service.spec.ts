@@ -3,6 +3,7 @@ import { CostOfDayService } from './cost-of-day.service';
 import { add, div, sub, gte, mul, sum } from '../common/money';
 import { UserRole } from '../users/user-role.enum';
 import type { GradeTotalsRow } from '../reweighs/reweigh-reconciliation.service';
+import type { CostSplit } from './cost-split';
 
 /** kopiykas -> decimal string, as in `common/money.properties.spec.ts`. */
 const fromKopiyka = (k: bigint): string => `${k / 100n}.${(k % 100n).toString().padStart(2, '0')}`;
@@ -696,6 +697,9 @@ describe('one-table fields (spec 2026-10-23)', () => {
           expect(add(res.shortfall_per_kg!, res.expenses_per_kg!)).toBe(res.per_kg);
           for (const p of res.products) {
             expect(p.price_cost).toBe(add(p.price_was, res.per_kg!));
+            expect(p.price_cost).toBe(
+              add(p.price_was, add(p.shortfall_per_kg!, p.expenses_per_kg!)),
+            );
             // Review C4: the row's недостача is its kilograms × its price.
             expect(p.shortfall).toBe(mul(p.shortfall_kg, p.price_was));
           }
@@ -704,6 +708,199 @@ describe('one-table fields (spec 2026-10-23)', () => {
           expect(div(res.full_cost!, res.reweighed_kg)).toBe(res.price_cost_avg);
           expect(sum(res.products.map((p) => p.shortfall_share!))).toBe(res.shortfall_amount);
           expect(sum(res.products.map((p) => p.expenses_share!))).toBe(res.expenses_amount);
+          expect(res.checks).toEqual({ shares_ok: true, total_ok: true });
+        },
+      ),
+      { numRuns: 200 },
+    );
+  });
+});
+
+/**
+ * Spec 2026-10-24 — the same two amounts (`shortfall_amount`, `expenses_amount`)
+ * split three ways. Figures pinned with the real `allocate`/`div` on `DAY`
+ * (Малина 128 000,00 / 800 / 790, Ожина 3 900,00 / 65 / 64, витрати 3 800,00).
+ */
+describe('§8.5 split strategies (spec 2026-10-24)', () => {
+  const PINNED: Record<CostSplit, Record<string, string[]>> = {
+    //          shortfall_share, expenses_share, shortfall_per_kg, expenses_per_kg, price_cost, full_cost
+    weight: {
+      Малина: ['1535.60', '3515.22', '1.94', '4.45', '166.39', '131450.82'],
+      Ожина: ['124.40', '284.78', '1.94', '4.45', '66.39', '4249.18'],
+    },
+    value: {
+      Малина: ['1610.92', '3687.64', '2.04', '4.67', '166.71', '131698.56'],
+      Ожина: ['49.08', '112.36', '0.77', '1.76', '62.53', '4001.44'],
+    },
+    own: {
+      Малина: ['1600.00', '3687.64', '2.03', '4.67', '166.70', '131687.64'],
+      Ожина: ['60.00', '112.36', '0.94', '1.76', '62.70', '4012.36'],
+    },
+  };
+  const SPLITS: CostSplit[] = ['weight', 'value', 'own'];
+  const SPREADING: CostSplit[] = ['value', 'own'];
+
+  it.each(SPLITS)('%s matches the pinned table', async (split) => {
+    const out = await svc.forShift(owner, 's-1', split);
+    expect(out.split).toBe(split);
+    expect(out.split_applied).toBe(split);
+    for (const p of out.products) {
+      expect([
+        p.shortfall_share,
+        p.expenses_share,
+        p.shortfall_per_kg,
+        p.expenses_per_kg,
+        p.price_cost,
+        p.full_cost,
+      ]).toEqual(PINNED[split][p.product_name]);
+    }
+  });
+
+  it('keeps the day invariant across strategies', async () => {
+    const pick = (o: Awaited<ReturnType<typeof svc.forShift>>) => ({
+      full_cost: o.full_cost,
+      price_cost_avg: o.price_cost_avg,
+      basket: o.basket,
+      total_check: o.total_check,
+      checks: o.checks,
+      per_kg: o.per_kg,
+      shortfall_per_kg: o.shortfall_per_kg,
+      expenses_per_kg: o.expenses_per_kg,
+    });
+    const weight = pick(await svc.forShift(owner, 's-1', 'weight'));
+    expect(pick(await svc.forShift(owner, 's-1', 'value'))).toEqual(weight);
+    expect(pick(await svc.forShift(owner, 's-1', 'own'))).toEqual(weight);
+  });
+
+  it('weight is today’s response plus the new fields', async () => {
+    const byDefault = await svc.forShift(owner, 's-1');
+    expect(byDefault).toEqual(await svc.forShift(owner, 's-1', 'weight'));
+    expect(byDefault.split).toBe('weight');
+    expect(byDefault.split_applied).toBe('weight');
+    expect(byDefault.expenses_pct).toBeNull();
+    expect(byDefault.shortfall_pct).toBeNull();
+    for (const p of byDefault.products) {
+      expect(p.shortfall_per_kg).toBe(byDefault.shortfall_per_kg);
+      expect(p.expenses_per_kg).toBe(byDefault.expenses_per_kg);
+    }
+  });
+
+  it('prints the percentages', async () => {
+    const value = await svc.forShift(owner, 's-1', 'value');
+    expect(value.expenses_pct).toBe('2.88');
+    expect(value.shortfall_pct).toBe('1.26');
+    const own = await svc.forShift(owner, 's-1', 'own');
+    expect(own.expenses_pct).toBe('2.88');
+    expect(own.shortfall_pct).toBeNull();
+  });
+
+  it.each(SPREADING)(
+    '%s: row identity price_was + shortfall_per_kg + expenses_per_kg = price_cost',
+    async (split) => {
+      const out = await svc.forShift(owner, 's-1', split);
+      for (const p of out.products) {
+        expect(p.price_cost).toBe(add(p.price_was, add(p.shortfall_per_kg!, p.expenses_per_kg!)));
+      }
+    },
+  );
+
+  it.each(SPREADING)('%s: Σ shares = day totals, shares_ok true', async (split) => {
+    const out = await svc.forShift(owner, 's-1', split);
+    expect(sum(out.products.map((p) => p.shortfall_share!))).toBe(out.shortfall_amount);
+    expect(sum(out.products.map((p) => p.expenses_share!))).toBe(out.expenses_amount);
+    expect(out.checks).toEqual({ shares_ok: true, total_ok: true });
+  });
+
+  it.each(SPREADING)('%s: a partially weighed product collects nothing', async (split) => {
+    const out = await svcMixed.forShift(owner, 's-1', split);
+    const raspberry = out.products.find((p) => p.product_name === 'Малина')!;
+    expect(raspberry.complete).toBe(false);
+    for (const field of [
+      'shortfall_share',
+      'expenses_share',
+      'shortfall_per_kg',
+      'expenses_per_kg',
+      'price_cost',
+      'full_cost',
+    ] as const) {
+      expect(raspberry[field]).toBeNull();
+    }
+    const blackberry = out.products.find((p) => p.product_name === 'Ожина')!;
+    expect(blackberry.expenses_share).toBe('1000.00');
+    expect(out.checks).toEqual({ shares_ok: true, total_ok: true });
+  });
+
+  it.each(SPREADING)('%s: nothing weighed dashes everything', async (split) => {
+    const out = await svcWithNoReweigh.forShift(owner, 's-1', split);
+    for (const p of out.products) {
+      expect(p.shortfall_per_kg).toBeNull();
+      expect(p.expenses_per_kg).toBeNull();
+      expect(p.price_cost).toBeNull();
+    }
+    expect(out.expenses_pct).toBeNull();
+    expect(out.shortfall_pct).toBeNull();
+  });
+
+  it.each(SPREADING)('%s: zero-accrued day falls back to weight', async (split) => {
+    const free = build(DAY.map((g) => ({ ...g, intake_amount: '0.00' })));
+    const weight = await free.forShift(owner, 's-1', 'weight');
+    const out = await free.forShift(owner, 's-1', split);
+    expect(out.split).toBe(split);
+    expect(out.split_applied).toBe('weight');
+    expect(out.expenses_pct).toBeNull();
+    expect(out.shortfall_pct).toBeNull();
+    expect({ ...out, split: 'weight' }).toEqual(weight);
+  });
+
+  it('holds every identity under every strategy for any day (property)', async () => {
+    const kopiykas = (min: bigint, max: bigint) => fc.bigInt({ min, max }).map(fromKopiyka);
+    const product = fc
+      .record({
+        intakeKopiykas: fc.bigInt({ min: 1n, max: 999_999n }),
+        price: kopiykas(0n, 99_999n),
+        reweighFraction: fc.double({ min: 0, max: 1, noNaN: true }),
+      })
+      .map(({ intakeKopiykas, price, reweighFraction }) => {
+        const span = Number(intakeKopiykas - 1n);
+        const reweighKopiykas = 1n + BigInt(Math.floor(span * reweighFraction));
+        return {
+          intake: fromKopiyka(intakeKopiykas),
+          price,
+          reweigh: fromKopiyka(reweighKopiykas),
+        };
+      });
+
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(product, { minLength: 1, maxLength: 4 }),
+        kopiykas(0n, 9_999_999n),
+        fc.constantFrom<CostSplit>('weight', 'value', 'own'),
+        async (products, expenses, split) => {
+          const grades: GradeTotalsRow[] = products.map((p, i) => ({
+            product_id: `p-${i}`,
+            product_name: `Товар ${i}`,
+            product_grade_id: `g-${i}`,
+            product_grade_name: `Сорт ${i}`,
+            intake_net_kg: p.intake,
+            intake_amount: mul(p.intake, p.price),
+            reweigh_net_kg: p.reweigh,
+          }));
+          const s = build(grades, expenses);
+          const res = await s.forShift(owner, 's-1', split);
+          const weight = await s.forShift(owner, 's-1', 'weight');
+
+          for (const p of res.products) {
+            expect(p.price_cost).toBe(
+              add(p.price_was, add(p.shortfall_per_kg!, p.expenses_per_kg!)),
+            );
+            expect(p.full_cost).toBe(
+              add(sub(p.accrued, p.shortfall), add(p.shortfall_share!, p.expenses_share!)),
+            );
+          }
+          expect(sum(res.products.map((p) => p.shortfall_share!))).toBe(res.shortfall_amount);
+          expect(sum(res.products.map((p) => p.expenses_share!))).toBe(res.expenses_amount);
+          expect(res.full_cost).toBe(weight.full_cost);
+          expect(res.price_cost_avg).toBe(weight.price_cost_avg);
           expect(res.checks).toEqual({ shares_ok: true, total_ok: true });
         },
       ),

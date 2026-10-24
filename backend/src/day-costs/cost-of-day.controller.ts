@@ -1,8 +1,9 @@
-import { Controller, Get, Param, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { Auth } from '../auth/decorators/auth.decorators';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { UserRole } from '../users/user-role.enum';
 import { CostOfDayService, CostOfDayResponse } from './cost-of-day.service';
+import { CostOfDayQueryDto } from './dto/cost-of-day.query';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 /**
@@ -19,7 +20,8 @@ export class CostOfDayController {
   forShift(
     @CurrentUser() actor: AuthenticatedUser,
     @Param('shiftId', ParseUUIDPipe) shiftId: string,
+    @Query() query: CostOfDayQueryDto,
   ): Promise<CostOfDayResponse> {
-    return this.costOfDay.forShift(actor, shiftId);
+    return this.costOfDay.forShift(actor, shiftId, query.split ?? 'weight');
   }
 }

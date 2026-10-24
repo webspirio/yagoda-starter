@@ -8,6 +8,7 @@ import {
   isNegative,
   mul,
   mulWholeHryvnia,
+  percent,
   sub,
   sum,
 } from './money';
@@ -209,6 +210,18 @@ describe('money', () => {
 
     it('returns an empty array for no weights', () => {
       expect(allocate('100.00', [])).toEqual([]);
+    });
+  });
+
+  describe('percent — a caption, never an operand (spec 2026-10-24 §2.2)', () => {
+    it('is part ÷ whole × 100 at scale 2, half-up', () => {
+      expect(percent('3800.00', '131900.00')).toBe('2.88');
+      expect(percent('1660.00', '131900.00')).toBe('1.26');
+      expect(percent('1900.00', '113640.80')).toBe('1.67');
+    });
+
+    it('throws on a zero whole, like div', () => {
+      expect(() => percent('1.00', '0.00')).toThrow('divide by zero');
     });
   });
 });
