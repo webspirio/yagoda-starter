@@ -98,19 +98,16 @@ export function ReceptionPage() {
   // React Compiler cannot memoize safely (it bails out of the whole component).
   const values = useWatch({ control, defaultValue: form.getValues() }) as IntakeFormValues;
 
-  // The tare registry and the priced grades are both network reads, so the
-  // first draft is built before either default is knowable; seed them the
-  // moment each arrives. Every LATER line keeps `''` for its grade (the mock
-  // pre-selects only the first) and gets its tare default from `emptyLine`
-  // directly.
+  // The tare registry is a network read, so the first draft is built before
+  // its default is knowable; seed it the moment it arrives. Every LATER line
+  // gets its tare default from `emptyLine` directly. No line ever starts with
+  // a product chosen — «Оберіть товар» on every one (client, 24.10): a
+  // pre-picked first product is a berry nobody looked at.
   useEffect(() => {
     if (defaultTareTypeId !== '' && form.getValues('items.0.tare.0.tare_type_id') === '') {
       setValue('items.0.tare.0.tare_type_id', defaultTareTypeId);
     }
-    if (grades.data.length > 0 && form.getValues('items.0.product_grade_id') === '') {
-      setValue('items.0.product_grade_id', grades.data[0].id);
-    }
-  }, [defaultTareTypeId, form, setValue, grades.data]);
+  }, [defaultTareTypeId, form, setValue]);
 
   // The picker hands over the whole row when it is chosen; the form only
   // ever carries the id (`supplier_id`) that the document needs, so the two
@@ -365,10 +362,6 @@ export function ReceptionPage() {
   };
 
   const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? '';
-  // «Наділ» for `PointStrip`'s crates cell — read off the same
-  // `usePointOptionsQuery()` list `pages/crates` resolves it from, rather
-  // than a second network read for one field.
-  const targetCrates = (points ?? []).find((p) => p.id === pointId)?.target_crates ?? null;
   const actions = (
     <>
       {canPick ? (
@@ -434,7 +427,6 @@ export function ReceptionPage() {
           pointId={pointId}
           shift={stripShift}
           isOwner={isOwner}
-          targetCrates={targetCrates}
           onOpenReceipt={openReceipt}
         />
 

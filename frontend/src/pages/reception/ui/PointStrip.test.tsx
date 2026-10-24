@@ -4,15 +4,16 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import type { Intake } from '@/entities/intake';
 import type { Shift } from '@/entities/shift';
+import type { CrateStanding } from '@/entities/crate';
 import { PointStrip } from './PointStrip';
 
-const { pointCashMock, cashCountsMock, payoutsMock, intakesMock, crateBalancesMock } = vi.hoisted(
+const { pointCashMock, cashCountsMock, payoutsMock, intakesMock, crateStandingMock } = vi.hoisted(
   () => ({
     pointCashMock: vi.fn(),
     cashCountsMock: vi.fn(),
     payoutsMock: vi.fn(),
     intakesMock: vi.fn(),
-    crateBalancesMock: vi.fn(),
+    crateStandingMock: vi.fn(),
   }),
 );
 
@@ -29,7 +30,7 @@ vi.mock('@/entities/intake', () => ({
   useIntakesQuery: (...args: unknown[]) => intakesMock(...args),
 }));
 vi.mock('@/entities/crate', () => ({
-  useCrateBalancesQuery: (...args: unknown[]) => crateBalancesMock(...args),
+  useCrateStandingQuery: (...args: unknown[]) => crateStandingMock(...args),
 }));
 
 const page = <T,>(data: T[]) => ({
@@ -123,10 +124,25 @@ const INTAKES: Intake[] = [
   }),
 ];
 
-const BALANCES = [
-  { supplier_id: 's1', outstanding_units: 5 },
-  { supplier_id: 's2', outstanding_units: 7 },
-];
+const STANDING: CrateStanding = {
+  collection_point_id: 'p1',
+  allotment: 40,
+  received: 40,
+  on_hand: 25,
+  in_transit: 0,
+  in_field: 12,
+  with_berry: 2,
+  total: 39,
+  shortfall: 1,
+  deposit_units: 0,
+  deposit_held: '0.00',
+  holders: 2,
+};
+const standing = (over: Partial<CrateStanding> = {}) => ({
+  data: { ...STANDING, ...over },
+  isPending: false,
+  isError: false,
+});
 
 const SHIFT = {
   id: 's1',
@@ -151,7 +167,6 @@ function renderStrip(over: Partial<Props> = {}) {
         pointId="p1"
         shift={{ status: 'open', shift: SHIFT }}
         isOwner={false}
-        targetCrates={40}
         onOpenReceipt={vi.fn()}
         {...over}
       />
@@ -166,7 +181,7 @@ beforeEach(() => {
   cashCountsMock.mockReset().mockReturnValue(page(CASH_COUNTS));
   payoutsMock.mockReset().mockReturnValue(page(PAYOUTS));
   intakesMock.mockReset().mockReturnValue(page(INTAKES));
-  crateBalancesMock.mockReset().mockReturnValue(page(BALANCES));
+  crateStandingMock.mockReset().mockReturnValue(standing());
 });
 
 describe('PointStrip — the figures', () => {
@@ -190,9 +205,12 @@ describe('PointStrip — the figures', () => {
     const openToday = screen.getByText('open 700.00 ₴');
     expect(openToday).toHaveClass('text-amber');
 
-    expect(screen.getByText('Crates out with people')).toBeInTheDocument();
-    expect(screen.getByText('12 of 40')).toBeInTheDocument();
-    expect(screen.getByText('28 left to the allotment')).toBeInTheDocument();
+    // Every crate of the point against the allotment, in one bar.
+    expect(screen.getByText('Crates')).toBeInTheDocument();
+    expect(screen.getByText('39 of 40')).toBeInTheDocument();
+    expect(
+      screen.getByTitle('at the point 25 · with people 12 · with berries 2'),
+    ).toBeInTheDocument();
   });
 
   it('shows a dash for the morning count when there is no opening berry row', () => {
@@ -221,10 +239,29 @@ describe('PointStrip — the figures', () => {
     expect(screen.getByText('open 300.00 ₴')).toBeInTheDocument();
   });
 
-  it('reads «… / —» when the point has no target', () => {
-    renderStrip({ targetCrates: null });
-    expect(screen.getByText('12 of —')).toBeInTheDocument();
-    expect(screen.getByText('no allotment set')).toBeInTheDocument();
+  it('reads «… of —» when the point has no allotment — never a zero', () => {
+    crateStandingMock.mockReturnValue(standing({ allotment: null, shortfall: null }));
+    renderStrip();
+    expect(screen.getByText('39 of —')).toBeInTheDocument();
+  });
+
+  it('draws the three parts against the allotment, the rest of the track empty', () => {
+    const { container } = renderStrip();
+    const width = (key: string) =>
+      (container.querySelector(`[data-segment="${key}"]`) as HTMLElement).style.width;
+    // 25 + 12 + 2 = 39 of 40 — one crate short, so the track is not full.
+    expect(width('onHand')).toBe(`${(25 / 40) * 100}%`);
+    expect(width('inField')).toBe(`${(12 / 40) * 100}%`);
+    expect(width('withBerry')).toBe(`${(2 / 40) * 100}%`);
+  });
+
+  it('scales to the point’s own total when it holds more than the allotment', () => {
+    crateStandingMock.mockReturnValue(
+      standing({ allotment: 10, on_hand: 20, in_field: 20, with_berry: 0, total: 40 }),
+    );
+    const { container } = renderStrip();
+    const onHand = container.querySelector('[data-segment="onHand"]') as HTMLElement;
+    expect(onHand.style.width).toBe('50%');
   });
 });
 

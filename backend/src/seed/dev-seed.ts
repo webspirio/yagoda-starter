@@ -155,9 +155,9 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
 
     const pointId = new Map<string, string>();
     for (const p of SEED_POINTS) {
-      const found = await one<{ id: string; code: string }>(
+      const found = await one<{ id: string; code: string; target_crates: number | null }>(
         qr,
-        `SELECT id, code FROM collection_points WHERE lower(name) = lower($1)`,
+        `SELECT id, code, target_crates FROM collection_points WHERE lower(name) = lower($1)`,
         [p.name],
       );
       if (found) {
@@ -170,6 +170,19 @@ export async function seedDev(ds: DataSource): Promise<DevSeedSummary> {
         if (/^P\d{2,}$/.test(found.code) && found.code !== p.code) {
           await qr.query(`UPDATE collection_points SET code = $1 WHERE id = $2`, [
             p.code,
+            found.id,
+          ]);
+        }
+        // The same rule for the allotment: the old seed's 120 / 60 / 40 were
+        // written before the generated season put ~1 300 crates on each point,
+        // so they read as «понад наділ» everywhere. Only that exact seeded
+        // value moves; an allotment the owner set by hand stays.
+        if (
+          p.legacy_target_crates !== undefined &&
+          found.target_crates === p.legacy_target_crates
+        ) {
+          await qr.query(`UPDATE collection_points SET target_crates = $1 WHERE id = $2`, [
+            p.target_crates,
             found.id,
           ]);
         }

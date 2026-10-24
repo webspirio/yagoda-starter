@@ -96,7 +96,7 @@ vi.mock('@/entities/payout', () => ({
 }));
 
 vi.mock('@/entities/crate', () => ({
-  useCrateBalancesQuery: () => ({ data: undefined, isPending: true, isError: false }),
+  useCrateStandingQuery: () => ({ data: undefined, isPending: true, isError: false }),
   // «З них наших ящиків» — the picked supplier's crates (R8).
   useCrateBalanceQuery: (supplierId: string | null) => crateBalanceMock(supplierId),
 }));
@@ -1706,11 +1706,10 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     const user = userEvent.setup();
     renderReception();
 
-    // Line 0 is pre-selected onto the fixture's first grade (g1: 10.00, max_markup
-    // 3.00, max_discount 2.00) — see the "pre-selects" test below.
-    await waitFor(() => {
-      expect(screen.getByLabelText('Grade')).toHaveValue('g1');
-    });
+    // Choosing the product lands on its first grade (g1: 10.00, max_markup
+    // 3.00, max_discount 2.00) — nothing is pre-selected before that.
+    await user.selectOptions(screen.getByLabelText('Product'), 'Raspberry');
+    expect(screen.getByLabelText('Grade')).toHaveValue('g1');
     const price = screen.getByLabelText('Price, ₴/kg');
     expect(price).toHaveValue('10.00');
 
@@ -1733,9 +1732,8 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
   it('a new grade starts at its own price', async () => {
     const user = userEvent.setup();
     renderReception();
-    await waitFor(() => {
-      expect(screen.getByLabelText('Grade')).toHaveValue('g1');
-    });
+    await user.selectOptions(screen.getByLabelText('Product'), 'Raspberry');
+    expect(screen.getByLabelText('Grade')).toHaveValue('g1');
     const price = screen.getByLabelText('Price, ₴/kg');
     await user.click(screen.getByRole('button', { name: 'Price up' }));
     expect(price).toHaveValue('11.00');
@@ -1811,12 +1809,13 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     ).toBeInTheDocument();
   });
 
-  it('pre-selects the first priced grade on the first line', async () => {
+  it('starts the first line on «Оберіть товар» — nothing pre-selected (client, 24.10)', () => {
+    // The grades are loaded (the fixture answers at once), and still no
+    // product is chosen for the operator; every later line starts the same
+    // way through `emptyLine`.
     renderReception();
-
-    await waitFor(() => {
-      expect(screen.getByLabelText('Grade')).toHaveValue('g1');
-    });
+    expect(screen.getByLabelText('Product')).toHaveValue('');
+    expect(screen.getByLabelText('Grade')).toBeDisabled();
   });
 });
 
