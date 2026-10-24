@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { expectNoAxeViolations } from '../../../test-axe';
@@ -9,13 +9,12 @@ import type { Supplier } from '@/entities/supplier';
 import { PAGE_SIZE } from '../model/journalFilters';
 import { JournalPage } from './JournalPage';
 
-const { intakesMock, payoutsMock, suppliersMock, balancesMock, receiptMock, meMock, totalsMock } = vi.hoisted(() => ({
+const { intakesMock, payoutsMock, suppliersMock, receiptMock, meMock, totalsMock } = vi.hoisted(() => ({
   meMock: vi.fn(),
   totalsMock: vi.fn(),
   intakesMock: vi.fn(),
   payoutsMock: vi.fn(),
   suppliersMock: vi.fn(),
-  balancesMock: vi.fn(),
   receiptMock: vi.fn(),
 }));
 
@@ -40,9 +39,11 @@ vi.mock('@/entities/payout', () => ({
   usePayoutsQuery: (filter: unknown) => payoutsMock(filter),
 }));
 
+// ONE unpaged read names both the picker and the rows (audit D7): every
+// supplier at the scope, inactive ones too, so no row past the 100th goes
+// unnamed.
 vi.mock('@/entities/supplier', () => ({
-  useSuppliersQuery: (search: string, pointId?: string | null) => suppliersMock(search, pointId),
-  useSupplierBalancesQuery: (filter: unknown) => balancesMock(filter),
+  useSupplierTotalsQuery: (filter: unknown) => suppliersMock(filter),
   supplierName: (s: { first_name: string; last_name: string }) => `${s.first_name} ${s.last_name}`,
 }));
 
@@ -136,6 +137,9 @@ const page = <T,>(data: T[], total = data.length) => ({
   isError: false,
 });
 
+/** `/supplier-totals` is unpaged: a bare array. */
+const list = <T,>(data: T[]) => ({ data, isPending: false, isError: false });
+
 /** The StatTile that carries `label` — tiles and other page text share
  *  strings, so a bare getByText is ambiguous. */
 function tile(label: string): HTMLElement {
@@ -155,8 +159,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'], now: new Date('2026-09-08T09:00:00') });
   intakesMock.mockReset().mockReturnValue(page<Intake>([]));
   payoutsMock.mockReset().mockReturnValue(page<Payout>([]));
-  suppliersMock.mockReset().mockReturnValue(page<Supplier>([]));
-  balancesMock.mockReset().mockReturnValue(page<{ supplier_id: string; first_name: string; last_name: string }>([]));
+  suppliersMock.mockReset().mockReturnValue(list<Supplier>([]));
   receiptMock.mockReset();
   totalsMock.mockReset().mockReturnValue({ data: { accrued: '0.00', paid: '0.00' }, isPending: false, isError: false });
   meMock.mockReset().mockReturnValue({ data: OWNER });
@@ -215,6 +218,48 @@ describe('JournalPage — the default view', () => {
     totalsMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
     renderJournal();
     expect(tile('Cash paid out')).toHaveTextContent('—');
+  });
+
+  it('says the berries tile leaves top-ups out (#102)', () => {
+    renderJournal();
+    expect(tile('Berries received')).toHaveTextContent('without top-ups');
+  });
+
+  it('puts the unit in the header, leaves live rows without a status, and strikes a voided sum (audit D9)', () => {
+    intakesMock.mockReturnValue(
+      page<Intake>([
+        intake({ id: 'i1', code: 'KV-0001', amount: '1200.00' }),
+        intake({
+          id: 'i2',
+          code: 'KV-0002',
+          amount: '300.00',
+          voided_at: '2026-09-08T08:00:00Z',
+          void_reason: 'Wrong',
+        }),
+      ]),
+    );
+
+    renderJournal();
+
+    expect(screen.getByRole('columnheader', { name: 'Amount, ₴' })).toBeInTheDocument();
+    const live = screen.getByText('KV-0001').closest('tr')!;
+    const voided = screen.getByText('KV-0002').closest('tr')!;
+    expect(within(live).getByText('1,200.00')).toBeInTheDocument();
+    expect(live).not.toHaveTextContent('—');
+    expect(live).not.toHaveTextContent('₴');
+    expect(within(voided).getByText('300.00')).toHaveClass('line-through');
+    expect(within(voided).getByText('Voided')).toBeInTheDocument();
+  });
+
+  it('heads the code column «Document» on the payouts tab, «Receipt» on receipts', () => {
+    payoutsMock.mockReturnValue(page<Payout>([payout({ id: 'y1', code: 'VD-1', amount: '80.00' })]));
+    const { unmount } = renderJournal('/journal?kind=payouts');
+    expect(screen.getByRole('columnheader', { name: 'Document' })).toBeInTheDocument();
+    unmount();
+
+    intakesMock.mockReturnValue(page<Intake>([intake({ id: 'i1', code: 'KV-1', amount: '80.00' })]));
+    renderJournal();
+    expect(screen.getByRole('columnheader', { name: 'Receipt' })).toBeInTheDocument();
   });
 
   it('shows the empty state when nothing matches the period', () => {
@@ -409,7 +454,7 @@ describe('JournalPage — the point and supplier filters', () => {
   it('scopes the supplier picker to the chosen point and resets the page', async () => {
     const user = userEvent.setup();
     suppliersMock.mockReturnValue(
-      page<Supplier>([supplier({ id: SUP1, first_name: 'Olha', last_name: 'K.' })]),
+      list<Supplier>([supplier({ id: SUP1, first_name: 'Olha', last_name: 'K.' })]),
     );
 
     const { router } = renderJournal('/journal?page=2');
@@ -418,14 +463,37 @@ describe('JournalPage — the point and supplier filters', () => {
 
     expect(new URLSearchParams(router.state.location.search).get('point')).toBe(P1);
     expect(new URLSearchParams(router.state.location.search).get('page')).toBeNull();
-    expect(suppliersMock).toHaveBeenLastCalledWith('', P1);
+    expect(suppliersMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({ pointId: P1, status: 'all', sort: 'name' }),
+    );
     expect(screen.getByRole('option', { name: 'Olha K.' })).toBeInTheDocument();
+  });
+
+  it('names every row and offers every supplier, past the 100th and inactive ones too (audit D7)', () => {
+    const many = Array.from({ length: 150 }, (_, n) =>
+      supplier({
+        id: `11111111-1111-4111-8111-${String(n).padStart(12, '0')}`,
+        first_name: `Name${n}`,
+        last_name: 'X',
+        is_active: n !== 120,
+      }),
+    );
+    suppliersMock.mockReturnValue(list<Supplier>(many));
+    intakesMock.mockReturnValue(
+      page<Intake>([intake({ id: 'i1', code: 'KV-0001', amount: '100.00', supplier_id: many[120].id })]),
+    );
+
+    renderJournal();
+
+    expect(screen.getByRole('cell', { name: 'Name120 X' })).toBeInTheDocument();
+    expect(within(screen.getByLabelText('Select a supplier')).getAllByRole('option')).toHaveLength(151);
+    expect(screen.getByRole('option', { name: 'Name120 X (inactive)' })).toBeInTheDocument();
   });
 
   it('clears a stale supplier filter when the point changes', async () => {
     const user = userEvent.setup();
     suppliersMock.mockReturnValue(
-      page<Supplier>([supplier({ id: SUP1, first_name: 'Olha', last_name: 'K.' })]),
+      list<Supplier>([supplier({ id: SUP1, first_name: 'Olha', last_name: 'K.' })]),
     );
 
     const { router } = renderJournal(`/journal?page=2&supplier=${SUP1}`);

@@ -84,6 +84,13 @@ export class Intake {
   @Column({ type: 'numeric', precision: 12, scale: 2 })
   amount: string;
 
+  /** The supplier's debt right AFTER this receipt — and after the cash handed over with it
+   *  (§2.1 ⑥) — frozen at write under the supplier lock (audit 2026-10-24 A1, the twin of
+   *  `payouts.balance_after`, #145), so a reprint prints the «Залишок» the first print did.
+   *  A RECORD of what was printed, never a source of debt: `debtSql` is. A void leaves it. */
+  @Column({ type: 'numeric', precision: 12, scale: 2 })
+  balance_after: string;
+
   @Column({ type: 'uuid' })
   received_by_user_id: string;
 

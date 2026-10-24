@@ -14,7 +14,7 @@ import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Switch } from '@/shared/ui/switch';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { decimalRules } from '@/shared/lib/money';
+import { decimalRules, parseDecimal, toDecimalField } from '@/shared/lib/money';
 import { useCreateTareTypeMutation, useUpdateTareTypeMutation } from '../api/tareTypes';
 import { apiErrorToFields } from '../lib/apiErrorToFields';
 import type { TareType, TareTypeFormValues } from '../model/tareType';
@@ -29,7 +29,10 @@ const FIELD_NAMES = ['name', 'weight_kg', 'deposit_price'] as const;
  * `type="number"`: a number input coerces '1.20' into 1.2 before the form state
  * settles, reintroducing binary float into money. `decimalRules()` checks the one
  * grammar (zero legal, no minus), and `decimalRules`' `setValueAs` turns a comma into a dot
- * at submit (never `Number()`), so the value stays a string end to end.
+ * at submit (never `Number()`), so the value stays a string end to end. An
+ * edit prefills both the way the screen prints them («1,20» in uk,
+ * `toDecimalField`); a prefill is stored as given, so the submit reads each
+ * back through `parseDecimal`.
  * `is_active` appears only when editing — a new tare type is active.
  */
 export function TareTypeDialog({
@@ -41,7 +44,8 @@ export function TareTypeDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.resolvedLanguage;
   const create = useCreateTareTypeMutation();
   const update = useUpdateTareTypeMutation();
 
@@ -54,8 +58,8 @@ export function TareTypeDialog({
   } = useForm<TareTypeFormValues>({
     defaultValues: {
       name: tareType?.name ?? '',
-      weight_kg: tareType?.weight_kg ?? '',
-      deposit_price: tareType?.deposit_price ?? '',
+      weight_kg: toDecimalField(tareType?.weight_kg ?? '', locale),
+      deposit_price: toDecimalField(tareType?.deposit_price ?? '', locale),
       is_crate: tareType?.is_crate ?? false,
       is_active: tareType?.is_active ?? true,
     },
@@ -66,8 +70,9 @@ export function TareTypeDialog({
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
     const name = values.name.trim();
-    const weight_kg = values.weight_kg;
-    const deposit_price = values.deposit_price;
+    // `validate` refused anything `parseDecimal` cannot read.
+    const weight_kg = parseDecimal(values.weight_kg) ?? values.weight_kg;
+    const deposit_price = parseDecimal(values.deposit_price) ?? values.deposit_price;
     try {
       if (tareType) {
         await update.mutateAsync({

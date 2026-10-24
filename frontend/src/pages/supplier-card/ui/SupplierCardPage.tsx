@@ -21,13 +21,14 @@ import { usePayoutsQuery, type Payout } from '@/entities/payout';
 import { useIntakeTopUpsQuery, type IntakeTopUp } from '@/entities/intake-top-up';
 import { useMeQuery } from '@/entities/user';
 import { usePointOptionsQuery } from '@/entities/collection-point';
-import { ageInDays, formatShortDate } from '@/shared/lib/date';
+import { ageInDays, formatShortDate, toLocalIsoDate } from '@/shared/lib/date';
 import { PayoutDialog } from '@/features/settle-payout';
 import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
 import { TopUpDialog } from '@/features/top-up-intake';
 import { PayoutReceiptDialog, ReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
 import { OpenBalances } from './OpenBalances';
 import { SupplierTimeline } from './SupplierTimeline';
+import { historyHorizon, sinceHorizon } from '../model/historyHorizon';
 
 /**
  * `/suppliers/:id` — one supplier's card: header, season tiles and the
@@ -178,18 +179,37 @@ export function SupplierCardPage() {
   const debt = settlement.data.debt;
   const pointName = (points.data ?? []).find((p) => p.id === s.collection_point_id)?.name ?? '';
 
-  const intakeRows = intakes.data?.data ?? [];
-  const payoutRows = payouts.data?.data ?? [];
-  const topUpRows = topUps.data?.data ?? [];
-  // All three journals are read at a fixed `limit: 100` (spec §5.4) — the
-  // TIMELINE below can under-report past that, so it says so. The tiles
-  // above it cannot: they read server-computed season totals this flag never
-  // touches (§103/#148).
-  const truncated =
-    isTruncated(intakes.data) || isTruncated(payouts.data) || isTruncated(topUps.data);
+  const loadedIntakes = intakes.data?.data ?? [];
+  // All three journals are read at a fixed `limit: 100` (spec §5.4). Merged
+  // as loaded, a cut list would leave the others' older rows standing in a
+  // history that lost the documents around them (audit D3) — so the TIMELINE
+  // starts where every list is still complete, and says from when. The tiles
+  // above it cannot under-report: they read server-computed season totals
+  // (§103/#148), and OpenBalances reads the settlement, never these pages.
+  const horizon = historyHorizon([
+    { rows: loadedIntakes, truncated: isTruncated(intakes.data) },
+    { rows: payouts.data?.data ?? [], truncated: isTruncated(payouts.data) },
+    { rows: topUps.data?.data ?? [], truncated: isTruncated(topUps.data) },
+  ]);
+  const intakeRows = sinceHorizon(loadedIntakes, horizon);
+  const payoutRows = sinceHorizon(payouts.data?.data ?? [], horizon);
+  const topUpRows = sinceHorizon(topUps.data?.data ?? [], horizon);
+  // A LOCAL calendar day: `created_at` is an instant (see `toLocalIsoDate`).
+  const horizonDate = horizon === null ? null : toLocalIsoDate(horizon);
+  // The journal is owner-only; it covers what the card no longer shows, up to
+  // the cut — from the start of that year, the journal's range being by date.
+  const journalLink =
+    horizonDate !== null && me.data?.role === 'network_owner'
+      ? `/journal?${new URLSearchParams({
+          point: s.collection_point_id,
+          supplier: s.id,
+          from: `${horizonDate.slice(0, 4)}-01-01`,
+          to: horizonDate,
+        }).toString()}`
+      : null;
 
   const st = settlement.data;
-  const intakesById = new Map(intakeRows.map((i) => [i.id, i]));
+  const intakesById = new Map(loadedIntakes.map((i) => [i.id, i]));
   const openByLineId = new Map(st.lines.map((l) => [l.id, l.open]));
   const lineDate = new Map(st.lines.map((l) => [l.id, l.business_date]));
   const coversByPayoutId = new Map(
@@ -287,6 +307,7 @@ export function SupplierCardPage() {
           intakes: formatUah(st.intakes_total, i18n.language),
           topUps: formatUah(st.top_ups_total, i18n.language),
           payouts: formatUah(st.payouts_total, i18n.language),
+          debt: formatUah(debt, i18n.language),
         })}
       </p>
 
@@ -312,9 +333,24 @@ export function SupplierCardPage() {
           onAddTopUp={inactive ? undefined : openTopUp}
           onVoidTopUp={openVoidTopUp}
         />
-        {truncated ? (
+        {horizonDate !== null ? (
           <p className="mt-3 text-xs text-muted-foreground">
-            {t('supplierCard.timeline.truncated')}
+            <span>
+              {t('supplierCard.timeline.since', {
+                date: formatShortDate(horizonDate, i18n.language),
+              })}
+            </span>
+            {journalLink !== null ? (
+              <>
+                {' — '}
+                <Link
+                  to={journalLink}
+                  className="underline underline-offset-2 hover:text-foreground"
+                >
+                  {t('supplierCard.timeline.olderInJournal')}
+                </Link>
+              </>
+            ) : null}
           </p>
         ) : null}
       </SectionCard>

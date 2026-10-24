@@ -63,7 +63,9 @@ describe('ListSupplierBalancesQuery', () => {
       query.mockReset();
       query
         .mockResolvedValueOnce([row])
-        .mockResolvedValueOnce([{ total: 7, oldest_open_date: '2026-07-01', total_owed: '1250.00' }]);
+        .mockResolvedValueOnce([
+          { total: 7, oldest_open_date: '2026-07-01', total_owed: '1250.00', owed_count: 6 },
+        ]);
     });
 
     it('returns the standard envelope — rows mapped field by field, total and the oldest open date from a second count', async () => {
@@ -74,6 +76,7 @@ describe('ListSupplierBalancesQuery', () => {
         limit: 20,
         oldest_open_date: '2026-07-01',
         total_owed: '1250.00',
+        owed_count: 6,
       });
       expect(query).toHaveBeenCalledTimes(2);
     });
@@ -86,6 +89,13 @@ describe('ListSupplierBalancesQuery', () => {
         /COALESCE\(SUM\(b\.debt\) FILTER \(WHERE b\.debt > 0\), 0\.00\)::text AS total_owed/,
       );
       expect(countSql()).not.toMatch(/LIMIT/);
+    });
+
+    it('counts «Постачальників із залишком» over the rows owed money only (audit D9)', async () => {
+      await service.list(oksana, listQuery());
+
+      // A supplier in credit is a visible row (`total`) but nobody we owe.
+      expect(countSql()).toMatch(/COUNT\(\*\) FILTER \(WHERE b\.debt > 0\)::int AS owed_count/);
     });
 
     it("reads each row's oldest open line from LIVE allocations, top-ups under their parent's date (#101)", async () => {

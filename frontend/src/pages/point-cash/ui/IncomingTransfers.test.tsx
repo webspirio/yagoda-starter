@@ -143,7 +143,7 @@ describe('IncomingTransfers', () => {
     await waitFor(() => expect(acceptMock).toHaveBeenCalledWith('t1'));
   });
 
-  it('toasts the accepted title plus the figures that joined the cash and the target', async () => {
+  it('toasts the accepted title plus the figures that joined the cash and cut the shortfall', async () => {
     const user = userEvent.setup();
     mockTransfers({ sent: [transfer()] });
     render(<IncomingTransfers pointId="p1" canAct />);
@@ -151,7 +151,7 @@ describe('IncomingTransfers', () => {
     await user.click(screen.getByRole('button', { name: 'Accept' }));
     await waitFor(() =>
       expect(toastSuccessMock).toHaveBeenCalledWith('Transfer accepted', {
-        description: '50,000.00 ₴ and 120 crates joined the cash and the target.',
+        description: '50,000.00 ₴ and 120 crates joined the cash; the shortfall to target went down.',
       }),
     );
   });
@@ -257,6 +257,20 @@ describe('IncomingTransfers', () => {
       render(<IncomingTransfers pointId="p1" canAct={false} />);
 
       expect(screen.getByText(/Flagged .doesn't match./)).toBeInTheDocument();
+    });
+
+    // C3 — the point's own count IS credited until the owner resolves; the old
+    // «the cash hasn't moved by a single kopiyka» was false.
+    it('says the counted sum was credited to the drawer, pending the owner', () => {
+      mockTransfers({ disputed: [disputedTransfer()] });
+      render(<IncomingTransfers pointId="p1" canAct />);
+
+      expect(
+        screen.getByText(
+          '48,000.00 ₴ was credited to the drawer — what you counted. The owner will set the final amount.',
+        ),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(/kopiyka/)).toBeNull();
     });
 
     it('does not render a disputed transfer the owner has already resolved', () => {

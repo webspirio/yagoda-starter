@@ -83,10 +83,10 @@ describe('RecountDrawerDialog', () => {
     await userEvent.type(screen.getByRole('textbox'), '1500.00');
     await userEvent.click(screen.getByRole('button', { name: 'Recorded the count' }));
 
-    expect(await screen.findByText('Expected')).toBeInTheDocument();
+    expect(await screen.findByText('Should be')).toBeInTheDocument();
     expect(screen.getByText('Counted')).toBeInTheDocument();
     expect(screen.getAllByText('1,500.00 ₴')).toHaveLength(2);
-    expect(screen.getByText('Discrepancy')).toBeInTheDocument();
+    expect(screen.getByText('Matched')).toBeInTheDocument();
     // A matched recount carries no «cannot be changed» line.
     expect(screen.queryByText(/cannot be changed/i)).toBeNull();
     // The amount field is gone — only the result and its «Done» button remain.
@@ -195,13 +195,13 @@ describe('RecountDrawerDialog — the second recount of the day starts blank (Im
 
     await userEvent.type(screen.getByRole('textbox'), '1500.00');
     await userEvent.click(screen.getByRole('button', { name: 'Recorded the count' }));
-    expect(await screen.findByText('Expected')).toBeInTheDocument();
+    expect(await screen.findByText('Should be')).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Done' }));
     await userEvent.click(screen.getByRole('button', { name: 'Reopen' }));
 
     expect(screen.getByRole('textbox')).toHaveValue('');
-    expect(screen.queryByText('Expected')).toBeNull();
+    expect(screen.queryByText('Should be')).toBeNull();
     expect(screen.queryByRole('alert')).toBeNull();
   });
 });

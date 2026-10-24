@@ -40,7 +40,11 @@ const cell = (over: Partial<NetworkCostPoint>): NetworkCostPoint => ({
 // Лісове accepted 100 кг and has not weighed them.
 const day: NetworkCostOfDay = {
   date: '2026-10-22',
-  points: [],
+  points: [
+    { point_id: 'pt-shp', point_name: 'Шипинки', shift_id: 's-shp', provisional: false, expenses_amount: '3800.00', weighed: true },
+    { point_id: 'pt-hai', point_name: 'Гайове', shift_id: 's-hai', provisional: false, expenses_amount: '1050.00', weighed: true },
+    { point_id: 'pt-lis', point_name: 'Лісове', shift_id: 's-lis', provisional: false, expenses_amount: '500.00', weighed: false },
+  ],
   provisional: false,
   accrued: '175550.00',
   expenses_amount: '5350.00',
@@ -137,14 +141,25 @@ describe('NetworkCostTable', () => {
     expect(point).toBe('1 010,00');
     expect(base).toBe('1 000,00');
     expect(notArrived).toBe('−10,00');
-    expect(accrued).toMatch(/160 550,00/);
+    // Units in the header only (audit E9): the cells are plain figures.
+    expect(accrued).toBe('160 550,00');
     expect(priceWas).toBe('158,96');
     expect(own).toBe('−1 600,00');
     expect(share).toBe('1 600,00');
     expect(expenses).toBe('4 850,00');
-    expect(full).toMatch(/165 400,00/);
+    expect(full).toBe('165 400,00');
     expect(cost).toBe('165,40');
     expect(cost).not.toBe('163,42'); // (166,84 + 160,00) ÷ 2
+  });
+
+  it('says a product weighed at only some points is not the whole network — audit E1', () => {
+    render(<NetworkCostTable day={day} locale="uk" />);
+
+    const name = within(rowOf('Малина')).getAllByRole('cell')[0];
+    expect(within(name).getByText('перезважено 2 з 3 точок')).toBeInTheDocument();
+    expect(norm(name.textContent)).toContain('без 100,00 кг');
+    // Both share columns carry one name.
+    expect(screen.getAllByRole('columnheader', { name: 'Частка, ₴' })).toHaveLength(2);
   });
 
   it('opens a product into its two formulas and one sub-row per point, each with its own собівартість', async () => {
@@ -177,11 +192,16 @@ describe('NetworkCostTable', () => {
 
     const total = texts(container.querySelector('[data-total]') as HTMLTableRowElement);
     expect(total[0]).toBe('Усього');
-    expect(total[9]).toMatch(/165 400,00/);
+    expect(total[9]).toBe('165 400,00');
     expect(total[10]).toBe('');
 
     const formula = norm(container.querySelector('[data-day-formula]')?.textContent);
-    expect(formula).toContain('(нараховано 160 550,00 + витрати 4 850,00) ÷ 1 000,00');
+    // Лісове's 15 000,00 is out of the numerator, and the operand says so (E3).
+    expect(formula).toContain('(нараховано по перезваженому 160 550,00 + витрати 4 850,00) ÷ 1 000,00');
+    // …and the kilograms say whose they are (E1).
+    expect(norm(container.querySelector('[data-counted]')?.textContent)).toBe(
+      'Враховано 1 000,00 кг з 2 точок з 3.',
+    );
     expect(formula).toContain('= 165,40');
     expect(screen.getByText(/ніколи не середнє з середніх/)).toBeInTheDocument();
     expect(screen.getByText(/Не перезважено, не входить у підсумок: 100,00/)).toBeInTheDocument();

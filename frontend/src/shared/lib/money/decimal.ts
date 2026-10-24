@@ -57,7 +57,8 @@ export function div(a: string, by: number): string {
 /**
  * A decimal string times a WHOLE COUNT — «скільки важать десять ящиків»: the
  * reweigh screen's tare weight is `Σ units × tare_types.weight_kg`, and the
- * чиста вага falls out of it live, under the owner's hands at the scale.
+ * чиста вага falls out of it live, under the owner's hands at the scale; «Видати
+ * ящики» shows its deposit as `units × deposit_per_crate` the same way.
  *
  * `by` is a COUNT, not money, so it is a `number`; anything but a non-negative
  * integer is a caller bug. NO ROUNDING HAPPENS HERE and none is possible: a
@@ -66,11 +67,20 @@ export function div(a: string, by: number): string {
  * Two decimals multiplied together would need a rounding rule, and that rule
  * belongs on the server, beside the column it writes.
  */
-export function mul(value: string, by: number): string {
+export function mulInt(value: string, by: number): string {
   if (!Number.isInteger(by) || by < 0) {
     throw new Error(`Not a whole count: ${by}`);
   }
   return fromKopiykas(toKopiykas(value) * BigInt(by));
+}
+
+/**
+ * The first name of `mulInt`, kept so existing callers stay put. Prefer `mulInt` in new
+ * code: the backend's `money.mul` multiplies two DECIMALS and rounds, and a reader
+ * should not have to check which one they are looking at.
+ */
+export function mul(value: string, by: number): string {
+  return mulInt(value, by);
 }
 
 export const isNegative = (v: string): boolean => toKopiykas(v) < 0n;

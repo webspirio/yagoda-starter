@@ -195,7 +195,7 @@ export function CostOfDayPage() {
   );
 
   return (
-    <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5 px-4 py-6">
+    <div className="mx-auto flex w-full max-w-[1500px] flex-col gap-5">
       <PageHeader
         eyebrow={t('costOfDay.eyebrow')}
         title={t('costOfDay.title')}
@@ -217,7 +217,7 @@ export function CostOfDayPage() {
             {t('costOfDay.network.noShifts', { date: formatShortDate(date, locale) })}
           </p>
         ) : (
-          <div className="printable print-landscape rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+          <div className="printable print-landscape rounded-xl border border-line2 bg-card p-5">
             <SheetHeading date={date} pointName={pointName} locale={locale} />
             <NetworkCostOfDay day={networkDay} locale={locale} />
           </div>
@@ -227,7 +227,7 @@ export function CostOfDayPage() {
           {t('costOfDay.noShift', { date: formatShortDate(date, locale), point: pointName })}
         </p>
       ) : (
-        <div className="printable print-landscape rounded-xl bg-card p-5 ring-1 ring-foreground/10">
+        <div className="printable print-landscape rounded-xl border border-line2 bg-card p-5">
           <SheetHeading date={date} pointName={pointName} locale={locale} />
 
           <CostOfDayBody
@@ -242,8 +242,10 @@ export function CostOfDayPage() {
   );
 }
 
-/** The sheet's title on paper and its name-and-date line on screen — the
- *  same for one point and for «Усі точки». */
+/** The sheet's title — on PAPER only: on screen the header's point picker and
+ *  date stepper already say both, and a second name-and-date line under them
+ *  was the same words twice (audit 2026-10-24 E11). The same for one point
+ *  and for «Усі точки». */
 function SheetHeading({
   date,
   pointName,
@@ -255,19 +257,10 @@ function SheetHeading({
 }) {
   const { t } = useTranslation();
   return (
-    <>
-      <div className="print-only mb-4">
-        <div className="font-display text-lg font-semibold">
-          {t('costOfDay.sheetTitle', { date: formatLongDate(date, locale), point: pointName })}
-        </div>
+    <div className="print-only mb-4">
+      <div className="font-display text-lg font-semibold">
+        {t('costOfDay.sheetTitle', { date: formatLongDate(date, locale), point: pointName })}
       </div>
-
-      <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border pb-3">
-        <span className="font-display text-lg leading-none font-medium">{pointName}</span>
-        <span className="font-mono text-xs text-muted-foreground">
-          {formatShortDate(date, locale)}
-        </span>
-      </div>
-    </>
+    </div>
   );
 }

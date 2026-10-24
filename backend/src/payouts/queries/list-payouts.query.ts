@@ -37,7 +37,9 @@ export class ListPayoutsQuery {
     if (!query.include_voided) qb.andWhere('p.voided_at IS NULL');
 
     const [data, total] = await qb
-      .orderBy('p.created_at', 'DESC')
+      // The shift's day first, like the receipts' list (audit 2026-10-24 A3).
+      .orderBy('s.business_date', 'DESC')
+      .addOrderBy('p.created_at', 'DESC')
       .addOrderBy('p.id', 'ASC')
       .skip(skipOf(query))
       .take(query.limit)

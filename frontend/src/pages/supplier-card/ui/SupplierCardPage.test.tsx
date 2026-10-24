@@ -445,7 +445,9 @@ describe('SupplierCardPage', () => {
 
     expect(tile('Balance')).toHaveTextContent('4,000.00 ₴');
     expect(
-      screen.getByText('receipts 9,000.00 ₴ + top-ups 1,000.00 ₴ − paid out 6,000.00 ₴'),
+      screen.getByText(
+        'receipts 9,000.00 ₴ + top-ups 1,000.00 ₴ − paid out 6,000.00 ₴ = 4,000.00 ₴',
+      ),
     ).toBeInTheDocument();
   });
 
@@ -694,7 +696,7 @@ describe('SupplierCardPage', () => {
       settlement: { debt: '1000.00', intakes_total: '50000.00', payouts_total: '49000.00' },
     });
 
-    expect(screen.getByText('Showing the first 100 receipts and payouts')).toBeInTheDocument();
+    expect(screen.getByText('History shown from 09/08')).toBeInTheDocument();
     expect(tile('Receipts this season')).toHaveTextContent('200');
     expect(tile('Accrued')).toHaveTextContent('50,000.00 ₴');
   });
@@ -702,23 +704,78 @@ describe('SupplierCardPage', () => {
   it('shows no truncation note when every journal is complete', () => {
     renderCard();
 
-    expect(screen.queryByText('Showing the first 100 receipts and payouts')).toBeNull();
+    expect(screen.queryByText(/History shown from/)).toBeNull();
   });
 
-  it('shows a timeline note when intakes were truncated', () => {
-    intakesMock.mockReturnValue(page<Intake>([], 150));
+  /**
+   * Audit D3: 100 newest receipts but EVERY payout would put a payout in a
+   * history that lost the receipts around it. The merged rows are cut at the
+   * cut list's oldest loaded row, and the caption names that date.
+   */
+  it('cuts the merged history where a truncated list stops, and dates the cut', () => {
+    intakesMock.mockReturnValue(
+      page<Intake>(
+        [
+          intake({ id: 'i1', code: 'KV-0009', amount: '100.00', created_at: '2026-09-08T07:10:00Z' }),
+          intake({ id: 'i2', code: 'KV-0005', amount: '100.00', created_at: '2026-09-05T07:10:00Z' }),
+        ],
+        150,
+      ),
+    );
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({ id: 'y1', code: 'VD-NEW', amount: '50.00', created_at: '2026-09-07T09:00:00Z' }),
+        payout({ id: 'y2', code: 'VD-OLD', amount: '50.00', created_at: '2026-09-01T09:00:00Z' }),
+      ]),
+    );
 
     renderCard();
 
-    expect(screen.getByText('Showing the first 100 receipts and payouts')).toBeInTheDocument();
+    expect(screen.getByText('History shown from 09/05')).toBeInTheDocument();
+    expect(screen.getByText('VD-NEW')).toBeInTheDocument();
+    expect(screen.getByText('KV-0005')).toBeInTheDocument();
+    expect(screen.queryByText('VD-OLD')).toBeNull();
+    // The journal is the owner's screen — an operator gets no link into it.
+    expect(screen.queryByRole('link', { name: /Receipt journal/ })).toBeNull();
   });
 
-  it('shows a timeline note when payouts were truncated', () => {
-    payoutsMock.mockReturnValue(page<Payout>([], 150));
+  it('points the owner at the journal for the older documents', () => {
+    meMock.mockReturnValue({ data: OWNER, isPending: false, isError: false });
+    payoutsMock.mockReturnValue(
+      page<Payout>(
+        [payout({ id: 'y1', code: 'VD-0001', amount: '50.00', created_at: '2026-09-05T09:00:00Z' })],
+        150,
+      ),
+    );
 
     renderCard();
 
-    expect(screen.getByText('Showing the first 100 receipts and payouts')).toBeInTheDocument();
+    expect(screen.getByText('History shown from 09/05')).toBeInTheDocument();
+    const link = screen.getByRole('link', { name: 'older documents are in the «Receipt journal»' });
+    const href = new URL(link.getAttribute('href') ?? '', 'http://x');
+    expect(href.pathname).toBe('/journal');
+    expect(href.searchParams.get('supplier')).toBe('sup1');
+    expect(href.searchParams.get('point')).toBe('p1');
+    expect(href.searchParams.get('to')).toBe('2026-09-05');
+    expect(href.searchParams.get('from')).toBe('2026-01-01');
+  });
+
+  it('dates and times a payout row, not only a receipt (audit D5)', () => {
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({ id: 'y1', code: 'VD-0001', amount: '50.00', created_at: '2026-09-08T09:20:00Z' }),
+      ]),
+    );
+
+    renderCard();
+
+    const row = screen.getByText('VD-0001').closest('li')!;
+    const time = new Date('2026-09-08T09:20:00Z').toLocaleTimeString('en', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    expect(row).toHaveTextContent('09/08');
+    expect(row).toHaveTextContent(time);
   });
 
   it('waits for the intakes and payouts journals before rendering tiles, so they never flash 0', () => {
@@ -1252,7 +1309,7 @@ describe('SupplierCardPage — top-ups', () => {
 
     expect(tile('Accrued')).toHaveTextContent('1,750.00 ₴');
     expect(
-      screen.getByText('receipts 1,000.00 ₴ + top-ups 750.00 ₴ − paid out 250.00 ₴'),
+      screen.getByText('receipts 1,000.00 ₴ + top-ups 750.00 ₴ − paid out 250.00 ₴ = 1,500.00 ₴'),
     ).toBeInTheDocument();
   });
 
@@ -1266,7 +1323,9 @@ describe('SupplierCardPage — top-ups', () => {
       },
     });
 
-    expect(screen.getByText('receipts 1,000.00 ₴ − paid out 250.00 ₴')).toBeInTheDocument();
+    expect(
+      screen.getByText('receipts 1,000.00 ₴ − paid out 250.00 ₴ = 750.00 ₴'),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/top-ups/)).toBeNull();
   });
 
@@ -1274,7 +1333,7 @@ describe('SupplierCardPage — top-ups', () => {
     const user = userEvent.setup();
     renderCard();
 
-    await user.click(screen.getByRole('button', { name: /add a balance/i }));
+    await user.click(screen.getByRole('button', { name: /add a top-up/i }));
 
     expect(screen.getByTestId('top-up-dialog-mock')).toBeInTheDocument();
     expect(topUpDialogMock).toHaveBeenLastCalledWith(
@@ -1286,10 +1345,10 @@ describe('SupplierCardPage — top-ups', () => {
    * §10.2 — a whole ACTION is ABSENT for the operator, never disabled:
    * «заблокована кнопка вчить шукати обхід, відсутня не вчить нічого».
    */
-  it('never offers «Додати залишок» to an operator', () => {
+  it('never offers «Додати доплату» to an operator', () => {
     meMock.mockReturnValue({ data: OPERATOR, isPending: false, isError: false });
     renderCard();
-    expect(screen.queryByRole('button', { name: /add a balance/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add a top-up/i })).not.toBeInTheDocument();
   });
 
   it('offers no top-up on a VOIDED receipt — it would count for nothing', () => {
@@ -1308,7 +1367,21 @@ describe('SupplierCardPage — top-ups', () => {
 
     renderCard();
 
-    expect(screen.queryByRole('button', { name: /add a balance/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /add a top-up/i })).not.toBeInTheDocument();
+  });
+
+  it('badges a top-up «Top-up» and dates it from when it was written (audit D5, D6)', () => {
+    topUpsMock.mockReturnValue(
+      page<IntakeTopUp>([
+        topUp({ id: 't1', amount: '750.00', reason: 'Домовились', created_at: '2026-09-09T10:00:00Z' }),
+      ]),
+    );
+
+    renderCard();
+
+    const row = screen.getByText('Домовились').closest('li')!;
+    expect(within(row).getByText('Top-up')).toBeInTheDocument();
+    expect(row).toHaveTextContent('09/09');
   });
 
   it('voids a top-up through the shared dialog, titled with the PARENT code', async () => {

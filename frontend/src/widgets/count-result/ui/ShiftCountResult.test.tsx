@@ -6,7 +6,9 @@ import { ShiftCountResult } from './ShiftCountResult';
 
 const { cashCountsMock, noteMock } = vi.hoisted(() => ({ cashCountsMock: vi.fn(), noteMock: vi.fn() }));
 
-vi.mock('@/entities/cash-count', () => ({
+// The discrepancy reading (`describeDiscrepancy` & co.) stays REAL — only the read is mocked.
+vi.mock('@/entities/cash-count', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/cash-count')>()),
   useCashCountsQuery: (filter: unknown) => cashCountsMock(filter),
 }));
 vi.mock('@/features/set-operator-note/api/useSetOperatorNote', () => ({

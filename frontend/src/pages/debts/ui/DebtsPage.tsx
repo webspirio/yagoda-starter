@@ -15,7 +15,7 @@ import { Spinner } from '@/shared/ui/spinner';
 import { decimalKey, useClientSort } from '@/shared/ui/data-table-sort';
 import { StatGrid } from '@/shared/ui/stat-grid';
 import { StatTile } from '@/shared/ui/stat-tile';
-import { sub, cmp, isNegative, formatUah } from '@/shared/lib/money';
+import { sub, cmp, isNegative, formatUah, formatDecimal } from '@/shared/lib/money';
 import { ageInDays, formatShortDate } from '@/shared/lib/date';
 import { cn } from '@/shared/lib/cn';
 import { usePointScope } from '@/entities/user';
@@ -29,10 +29,26 @@ import { PayoutDialog } from '@/features/settle-payout';
 import { PayoutReceiptDialog, useReceiptOpener } from '@/widgets/receipt';
 
 /**
- * A balance older than this many days reads red, as in the mock's «Залишки за нами». A
- * threshold for the eye, not a rule — no section of the rules names one (#101).
+ * How long a balance has waited, as a three-step scale for the eye (#101, audit D9): up to a
+ * week neutral, then amber, and red only past a month — so 45 days no longer reads the same as
+ * 8. Thresholds for the eye, not rules — no section of the rules names one.
  */
-const STALE_AFTER_DAYS = 7;
+const AMBER_AFTER_DAYS = 7;
+const RED_AFTER_DAYS = 30;
+
+function ageTone(days: number): {
+  variant: 'secondary' | 'outline' | 'destructive';
+  className?: string;
+} {
+  if (days > RED_AFTER_DAYS) return { variant: 'destructive' };
+  if (days > AMBER_AFTER_DAYS) {
+    return {
+      variant: 'outline',
+      className: 'border-[var(--amber)]/40 bg-[var(--amber)]/10 text-[var(--amber)]',
+    };
+  }
+  return { variant: 'secondary' };
+}
 
 /**
  * «Залишки за нами» (spec §5.3) — every supplier who currently has an open
@@ -47,8 +63,10 @@ const STALE_AFTER_DAYS = 7;
  *
  * «Всього винні» and «Постачальників із залишком» are the server's own — the sum of the
  * POSITIVE balances (a supplier in credit must never shrink the total owed to suppliers
- * who are actually waiting on cash) and the count, both over every visible row, so
- * neither stops at the 100-row `limit` (#229).
+ * who are actually waiting on cash) and the count of rows owed money (`owed_count`, not the
+ * pager's `total`, which also counts a credit — audit D9), both over every visible row, so
+ * neither stops at the 100-row `limit` (#229). Until the read lands each tile shows «—»,
+ * never a zero (audit D2: a figure not yet known is not «nobody is owed»).
  *
  * «Найстаріший залишок» (#101) is the server's too: the oldest open line among EVERY row owed
  * money, not the loaded page. Each row says how many days its own oldest open line has waited;
@@ -101,7 +119,6 @@ export function DebtsPage() {
   const noMatch = needle !== '' && filteredRows.length === 0;
 
   const oldestOpen = data?.oldest_open_date ?? null;
-  const totalOwed = data?.total_owed ?? '0.00';
   // No point picked (owner default) is the only time rows can straddle more
   // than one point — a picked point makes the column redundant.
   const showPointColumn = pointId === null;
@@ -131,10 +148,11 @@ export function DebtsPage() {
     const days = openDays(row);
     if (days === null || row.oldest_open_date === null) return null;
     const since = t('debts.ageSince', { date: formatShortDate(row.oldest_open_date, locale) });
+    const tone = ageTone(days);
     return (
       <Badge
-        variant={days > STALE_AFTER_DAYS ? 'destructive' : 'secondary'}
-        className={cn('font-mono tabular-nums', className)}
+        variant={tone.variant}
+        className={cn('font-mono tabular-nums', tone.className, className)}
         title={since}
       >
         {t('debts.days', { count: days })}
@@ -156,7 +174,7 @@ export function DebtsPage() {
           // below) — without this the link's click would bubble into that
           // handler, firing the same navigation twice.
           onClick={(e) => e.stopPropagation()}
-          className="text-primary underline-offset-2 hover:underline"
+          className="text-brand underline-offset-2 hover:underline"
         >
           {supplierName(row)}
         </Link>
@@ -194,17 +212,18 @@ export function DebtsPage() {
 
   const balanceColumn: Column<SupplierBalanceRow> = {
     id: 'balance',
+    // The unit is in the header, the cells plain (audit rule 4).
     header: t('debts.col.balance'),
     align: 'right',
-    className: 'font-mono tabular-nums',
+    className: 'font-mono tabular-nums whitespace-nowrap',
     sortable: true,
     cell: (row) =>
       isNegative(row.debt) ? (
         <span className="text-[var(--leaf)]">
-          {t('debts.overpaid', { uah: formatUah(sub('0', row.debt), locale) })}
+          {t('debts.overpaid', { amount: formatDecimal(sub('0', row.debt), locale) })}
         </span>
       ) : (
-        <span className="text-[var(--amber)]">{formatUah(row.debt, locale)}</span>
+        <span className="text-[var(--amber)]">{formatDecimal(row.debt, locale)}</span>
       ),
   };
 
@@ -215,6 +234,8 @@ export function DebtsPage() {
     cell: (row) => (
       <Button
         size="sm"
+        // A column of these is a repeated row action, not the screen's one CTA (audit D8).
+        variant="outline"
         // The backend refuses a payout to an inactive supplier (SUPPLIER_INACTIVE),
         // so the row offers none — the supplier card doesn't either (#228).
         disabled={!row.is_active || cmp(row.debt, '0') !== 1}
@@ -242,14 +263,13 @@ export function DebtsPage() {
   return (
     <>
       <ListPage<SupplierBalanceRow>
-        eyebrow={t('debts.eyebrow', { count: total })}
         title={t('debts.title')}
         description={t('debts.description')}
         stats={
           <StatGrid columns={3}>
             <StatTile
               label={t('debts.tiles.totalOwed')}
-              value={formatUah(totalOwed, locale)}
+              value={data ? formatUah(data.total_owed, locale) : '—'}
               tone="amber"
             />
             <StatTile
@@ -261,7 +281,10 @@ export function DebtsPage() {
                   : undefined
               }
             />
-            <StatTile label={t('debts.tiles.withDebt')} value={total} />
+            <StatTile
+              label={t('debts.tiles.withDebt')}
+              value={data ? String(data.owed_count) : '—'}
+            />
           </StatGrid>
         }
         toolbar={

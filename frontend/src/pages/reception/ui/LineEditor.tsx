@@ -840,7 +840,9 @@ export function LineEditor({
               {t('reception.lines.remove')}
             </Button>
           ) : null}
-          <div className="flex min-w-0 flex-1 items-center justify-end gap-3">
+          {/* Its own row on a phone (B9): beside the tare buttons it was
+              squeezed under its button, which then overlapped «Піддон». */}
+          <div className="flex min-w-0 basis-full items-center justify-end gap-3 sm:flex-1 sm:basis-0">
             {/* At five lines the cap hint is said out loud; below it the
                 multi-grade hint rides on the button's title. The hint truncates
                 (whole sentence on hover) and claims no width of its own, so

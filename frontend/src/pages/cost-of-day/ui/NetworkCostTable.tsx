@@ -42,6 +42,8 @@ export function NetworkCostTable({ day, locale }: { day: NetworkCostOfDay; local
   const dash = (v: string | null | undefined, f: (s: string) => string = dec) =>
     v === null || v === undefined ? '—' : f(v);
   const anyUnweighed = day.products.some((p) => p.points.some((c) => !c.complete));
+  // Counting points is not arithmetic on money: «з 1 точки з 6» (audit E1).
+  const weighedPoints = day.points.filter((p) => p.weighed).length;
 
   const group = (label: string, span: number, tone: string) => (
     <TableHead
@@ -55,7 +57,7 @@ export function NetworkCostTable({ day, locale }: { day: NetworkCostOfDay; local
 
   return (
     <div>
-      <div className="overflow-hidden rounded-lg ring-1 ring-foreground/10">
+      <div className="overflow-hidden rounded-lg border border-line2">
         <Table className="[&_td]:px-3 [&_th]:h-auto [&_th]:px-3 [&_th]:py-2 [&_th]:leading-tight [&_th]:whitespace-normal">
           <TableHeader>
             <TableRow>
@@ -101,10 +103,10 @@ export function NetworkCostTable({ day, locale }: { day: NetworkCostOfDay; local
                 {t('costOfDay.table.ownShortfall')}
               </TableHead>
               <TableHead scope="col" className={`text-right ${AMBER}`}>
-                {t('costOfDay.network.table.shortfallShare')}
+                {t('costOfDay.network.table.share')}
               </TableHead>
               <TableHead scope="col" className={`text-right ${PLUM}`}>
-                {t('costOfDay.network.table.expensesShare')}
+                {t('costOfDay.network.table.share')}
               </TableHead>
               <TableHead scope="col" className={`text-right ${LEAF}`}>
                 {t('costOfDay.network.table.fullCost')}
@@ -133,9 +135,7 @@ export function NetworkCostTable({ day, locale }: { day: NetworkCostOfDay; local
               <TableCell className={NUM}>
                 <ShortfallValue value={w?.shortfall_kg ?? null} minus locale={locale} />
               </TableCell>
-              <TableCell className={`${NUM} ${SKY}`}>
-                {dash(w?.accrued, (v) => formatUah(v, locale))}
-              </TableCell>
+              <TableCell className={`${NUM} ${SKY}`}>{dash(w?.accrued)}</TableCell>
               <TableCell className={SKY} />
               <TableCell className={`${NUM} ${AMBER}`}>
                 <ShortfallValue value={w?.shortfall ?? null} minus locale={locale} />
@@ -144,9 +144,7 @@ export function NetworkCostTable({ day, locale }: { day: NetworkCostOfDay; local
                 <ShortfallValue value={w?.shortfall_share ?? null} locale={locale} />
               </TableCell>
               <TableCell className={`${NUM} ${PLUM}`}>{dash(w?.expenses_share)}</TableCell>
-              <TableCell className={`${NUM} ${LEAF}`}>
-                {dash(w?.full_cost, (v) => formatUah(v, locale))}
-              </TableCell>
+              <TableCell className={`${NUM} ${LEAF}`}>{dash(w?.full_cost)}</TableCell>
               <TableCell className={LEAF} />
             </TableRow>
 
@@ -170,7 +168,10 @@ export function NetworkCostTable({ day, locale }: { day: NetworkCostOfDay; local
           <p data-day-formula className="text-sm text-foreground">
             <Trans
               t={t}
-              i18nKey="costOfDay.table.dayFormula"
+              i18nKey={
+                // Some points' нараховано is not in this numerator — say so (E3).
+                anyUnweighed ? 'costOfDay.table.dayFormulaWeighed' : 'costOfDay.table.dayFormula'
+              }
               values={{
                 accrued: dec(w.accrued),
                 expenses: dec(day.expenses_weighed),
@@ -182,6 +183,18 @@ export function NetworkCostTable({ day, locale }: { day: NetworkCostOfDay; local
               }}
             />
           </p>
+          {/* The day's kilograms come from the points that weighed — a
+              figure that reads like the network's must say how much of the
+              network it is (audit E1). */}
+          {weighedPoints < day.points.length ? (
+            <p data-counted>
+              {t('costOfDay.network.counted', {
+                kg: formatKg(day.reweighed_kg, locale),
+                count: weighedPoints,
+                total: day.points.length,
+              })}
+            </p>
+          ) : null}
           <p>{t('costOfDay.network.rule')}</p>
         </div>
       ) : (
@@ -236,6 +249,20 @@ function ProductRows({
                 {t('costOfDay.berry.notReweighed')}
               </Badge>
             )}
+            {/* Weighed at SOME points: the row is theirs, not the network's
+                (audit E1) — say how many, and what it leaves out. */}
+            {p.complete && p.unweighed !== null ? (
+              <>
+                <Badge variant="outline" className="ml-1.5 font-normal">
+                  {t('costOfDay.network.partial', { n: counted.length, count: p.points.length })}
+                </Badge>
+                <div className="pl-5 text-xs font-normal text-muted-foreground">
+                  {t('costOfDay.network.partialWithout', {
+                    kg: formatKg(p.unweighed.intake_kg, locale),
+                  })}
+                </div>
+              </>
+            ) : null}
           </>
         }
         strong
@@ -336,7 +363,7 @@ function FigureRow({
         <ShortfallValue value={weighed ? f.shortfall_kg : null} minus locale={locale} />
       </TableCell>
       <TableCell className={`${NUM} ${SKY}`}>
-        {formatUah(f.accrued, locale)}
+        {dec(f.accrued)}
         {f.top_ups !== '0.00' ? (
           <div className="text-xs font-normal text-muted-foreground">
             <TopUps value={f.top_ups} locale={locale} />
@@ -353,9 +380,7 @@ function FigureRow({
         <ShortfallValue value={f.shortfall_share} locale={locale} />
       </TableCell>
       <TableCell className={`${NUM} ${PLUM}`}>{dash(f.expenses_share)}</TableCell>
-      <TableCell className={`${NUM} ${LEAF}`}>
-        {dash(f.full_cost, (v) => formatUah(v, locale))}
-      </TableCell>
+      <TableCell className={`${NUM} ${LEAF}`}>{dash(f.full_cost)}</TableCell>
       <TableCell
         className={`${NUM} ${LEAF} ${strong ? 'text-base font-bold text-[var(--leaf)]' : ''}`}
       >

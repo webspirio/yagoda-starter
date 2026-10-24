@@ -3,6 +3,7 @@ import { Ban } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
+import { Eyebrow } from '@/shared/ui/eyebrow';
 import { cn } from '@/shared/lib/cn';
 import { formatUah } from '@/shared/lib/money';
 import { formatShortDate, formatTime, formatDateTime } from '@/shared/lib/date';
@@ -11,7 +12,8 @@ import { useCrateIssuancesQuery, useCrateReturnsQuery } from '@/entities/crate';
 import type { CrateIssuance, CrateReturn } from '@/entities/crate';
 import { VoidDocumentDialog } from '@/features/void-document';
 
-type Doc = { kind: 'crateIssuance'; doc: CrateIssuance } | { kind: 'crateReturn'; doc: CrateReturn };
+type Doc =
+  { kind: 'crateIssuance'; doc: CrateIssuance } | { kind: 'crateReturn'; doc: CrateReturn };
 
 /**
  * One person's crate documents, newest first, voided ones kept and struck
@@ -32,10 +34,18 @@ export function PersonCrateDocs({ supplierId, isOwner }: { supplierId: string; i
   const [voiding, setVoiding] = useState<Doc | null>(null);
 
   if (issuances.isPending || returns.isPending) {
-    return <div className="flex justify-center py-4"><Spinner /></div>;
+    return (
+      <div className="flex justify-center py-4">
+        <Spinner />
+      </div>
+    );
   }
   if (issuances.isError || returns.isError) {
-    return <p role="alert" className="px-4 py-3 text-sm text-destructive">{t('crates.docs.failed')}</p>;
+    return (
+      <p role="alert" className="px-4 py-3 text-sm text-destructive">
+        {t('crates.docs.failed')}
+      </p>
+    );
   }
 
   const docs: Doc[] = [
@@ -67,11 +77,14 @@ export function PersonCrateDocs({ supplierId, isOwner }: { supplierId: string; i
   const label = (d: Doc) =>
     d.kind === 'crateIssuance'
       ? d.doc.code
-      : t('crates.docs.returnLabel', { units: d.doc.units, date: formatShortDate(d.doc.business_date, i18n.language) });
+      : t('crates.docs.returnLabel', {
+          units: d.doc.units,
+          date: formatShortDate(d.doc.business_date, i18n.language),
+        });
 
   return (
     <div className="flex flex-col gap-2 px-4 py-3">
-      <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{t('crates.docs.title')}</p>
+      <Eyebrow>{t('crates.docs.title')}</Eyebrow>
       {docs.length === 0 ? (
         <p className="text-sm text-muted-foreground">{t('crates.docs.empty')}</p>
       ) : (
@@ -79,13 +92,18 @@ export function PersonCrateDocs({ supplierId, isOwner }: { supplierId: string; i
           {docs.map((d) => {
             const voided = d.doc.voided_at !== null;
             return (
-              <li key={`${d.kind}-${d.doc.id}`}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-background px-3 py-2 text-sm ring-1 ring-foreground/10">
+              <li
+                key={`${d.kind}-${d.doc.id}`}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-line2 bg-background px-3 py-2 text-sm"
+              >
                 <span className="font-mono text-xs text-muted-foreground">
-                  {formatShortDate(d.doc.business_date, i18n.language)} · {formatTime(d.doc.created_at, i18n.language)}
+                  {formatShortDate(d.doc.business_date, i18n.language)} ·{' '}
+                  {formatTime(d.doc.created_at, i18n.language)}
                 </span>
                 <span className={cn(voided ? 'text-muted-foreground line-through' : undefined)}>
-                  {t(d.kind === 'crateIssuance' ? 'crates.docs.issued' : 'crates.docs.returned', { count: d.doc.units })}
+                  {t(d.kind === 'crateIssuance' ? 'crates.docs.issued' : 'crates.docs.returned', {
+                    count: d.doc.units,
+                  })}
                 </span>
                 <span className="text-xs text-muted-foreground">{terms(d)}</span>
                 {voided ? (
@@ -96,13 +114,22 @@ export function PersonCrateDocs({ supplierId, isOwner }: { supplierId: string; i
                     })}
                   </span>
                 ) : blocked(d) ? (
-                  <span className="ml-auto text-xs text-muted-foreground">{t('crates.docs.blockedByReturn')}</span>
+                  <span className="ml-auto text-xs text-muted-foreground">
+                    {t('crates.docs.blockedByReturn')}
+                  </span>
                 ) : linkedToIntake(d) ? (
                   <span className="ml-auto text-xs text-muted-foreground">
-                    {t('crates.docs.linkedToIntake', { code: d.kind === 'crateReturn' ? d.doc.intake_code : null })}
+                    {t('crates.docs.linkedToIntake', {
+                      code: d.kind === 'crateReturn' ? d.doc.intake_code : null,
+                    })}
                   </span>
                 ) : mayVoid(d) ? (
-                  <Button variant="ghost" size="sm" className="ml-auto h-7 px-2 text-destructive" onClick={() => setVoiding(d)}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto h-7 px-2 text-destructive"
+                    onClick={() => setVoiding(d)}
+                  >
                     <Ban className="size-3.5" aria-hidden="true" />
                     {t('crates.docs.void')}
                   </Button>

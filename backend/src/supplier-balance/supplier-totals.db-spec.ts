@@ -70,9 +70,9 @@ describe('ListSupplierTotalsQuery.list (Postgres)', () => {
     voided = false,
   ): Promise<string> => {
     const [intake] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id,
                             voided_at, voided_by_user_id, void_reason)
-       VALUES ($1, $2, $3, $4, $5,
+       VALUES ($1, $2, $3, $4, '0.00', $5,
                CASE WHEN $6 THEN now() END, CASE WHEN $6 THEN $5::uuid END,
                CASE WHEN $6 THEN 'test' END) RETURNING id`,
       [`IN-${run}-${++seq}`, shift, supplier, amount, userId, voided],

@@ -289,6 +289,7 @@ describe('GET /intakes?expand=items (HTTP, Postgres)', () => {
     expect(Object.keys(listed(body, createResponse.body.id)).sort()).toEqual(
       [
         'amount',
+        'balance_after',
         'business_date',
         'code',
         'collection_point_id',

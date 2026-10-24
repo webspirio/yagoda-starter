@@ -125,10 +125,25 @@ describe('ProfilePage', () => {
 
   // #250: the client wants an operator to see their own number — worded exactly
   // as the receipt header prints it, so the two can be matched at a glance.
-  it('shows the user\'s number as the receipt header prints it', async () => {
+  it("shows the user's number as the receipt header prints it", async () => {
     renderPage();
     expect(await screen.findByText('Operator No. 5')).toBeInTheDocument();
     expect(screen.getByText('Number')).toBeInTheDocument();
+  });
+
+  // Audit 2026-10-24, F11: the owner is not a «Приймальник №».
+  it('shows no receipt number row for the owner', async () => {
+    mock.onGet('/me').reply(200, { ...ME, role: 'network_owner', collection_point_id: null });
+    renderPage();
+    expect(await screen.findByText('Alice Operator')).toBeInTheDocument();
+    expect(screen.queryByText('Operator No. 5')).not.toBeInTheDocument();
+    expect(screen.queryByText('Number')).not.toBeInTheDocument();
+  });
+
+  it('heads the page with a level-one title and draws the first and last initials', async () => {
+    renderPage();
+    expect(await screen.findByRole('heading', { level: 1, name: 'Profile' })).toBeInTheDocument();
+    expect(screen.getByText('AO')).toBeInTheDocument();
   });
 
   it('shows the name as read-only text, with no field to edit it', async () => {
@@ -199,7 +214,9 @@ describe('ProfilePage', () => {
 
     pickAvatarFile(validAvatarFile());
 
-    expect(await screen.findByText("Couldn't upload the image. Use a JPEG, PNG or WebP under 10 MB.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Couldn't upload the image. Use a JPEG, PNG or WebP under 10 MB."),
+    ).toBeInTheDocument();
   });
 
   it('blames the connection, not the file, when the upload never reached the server', async () => {
@@ -209,7 +226,9 @@ describe('ProfilePage', () => {
 
     pickAvatarFile(validAvatarFile());
 
-    expect(await screen.findByText("Can't reach the server. Check your connection and try again.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Can't reach the server. Check your connection and try again."),
+    ).toBeInTheDocument();
   });
 
   // Two picks in quick succession must not start two concurrent uploads:

@@ -1,5 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Card } from '@/shared/ui/card';
+import { Eyebrow } from '@/shared/ui/eyebrow';
+import { formatCount } from '@/shared/lib/money';
 import { cn } from '@/shared/lib/cn';
 import type { CrateStanding } from '@/entities/crate';
 
@@ -19,7 +21,7 @@ import type { CrateStanding } from '@/entities/crate';
  */
 export function CrateStandingBar({ standing }: { standing: CrateStanding }) {
   const { t, i18n } = useTranslation();
-  const n = (value: number) => value.toLocaleString(i18n.language).replace('-', '−');
+  const n = (value: number) => formatCount(value, i18n.language);
   const {
     allotment,
     received,
@@ -28,6 +30,7 @@ export function CrateStandingBar({ standing }: { standing: CrateStanding }) {
     with_berry: withBerry,
     total,
     shortfall,
+    in_transit: inTransit,
   } = standing;
   const negative = onHand < 0;
 
@@ -42,12 +45,10 @@ export function CrateStandingBar({ standing }: { standing: CrateStanding }) {
     <Card className="p-5">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <div className="flex items-baseline gap-2">
-          <span className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            {t('crates.standing.allotment')}
-          </span>
+          <Eyebrow>{t('crates.standing.allotment')}</Eyebrow>
           <span
             className={cn(
-              'font-mono text-3xl leading-none font-semibold',
+              'font-mono text-[26px] leading-none font-semibold tracking-tight',
               allotment === null ? 'text-muted-foreground' : undefined,
             )}
           >
@@ -59,6 +60,13 @@ export function CrateStandingBar({ standing }: { standing: CrateStanding }) {
       <p className="text-xs text-muted-foreground">
         {t('crates.standing.received', { received: n(received) })}
       </p>
+      {/* Sent, not yet accepted: not empties at the point until the transfer is taken in
+          (audit 2026-10-24, F6) — said here, where the empties are counted. */}
+      {inTransit > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {t('crates.standing.inTransit', { in_transit: n(inTransit) })}
+        </p>
+      ) : null}
 
       <div className="mt-4 flex h-2.5 w-full gap-[2px] overflow-hidden rounded-full bg-muted">
         {barTotal > 0
@@ -91,7 +99,7 @@ export function CrateStandingBar({ standing }: { standing: CrateStanding }) {
       <div className="mt-4 flex flex-wrap items-baseline gap-x-3 gap-y-1 border-t border-line2 pt-3">
         {/* §8.4 — no allotment means no shortfall to name: a bare «—», no label at all. */}
         {allotment === null ? (
-          <span className="font-mono text-lg font-semibold text-muted-foreground">
+          <span className="font-mono text-xl font-semibold text-muted-foreground">
             {t('crates.standing.shortfallNone')}
           </span>
         ) : shortfall === 0 ? (
@@ -103,7 +111,7 @@ export function CrateStandingBar({ standing }: { standing: CrateStanding }) {
                 ? t('crates.standing.over')
                 : t('crates.standing.shortfall')}
             </span>
-            <span className="font-mono text-lg font-semibold">{n(Math.abs(shortfall ?? 0))}</span>
+            <span className="font-mono text-xl font-semibold">{n(Math.abs(shortfall ?? 0))}</span>
           </>
         )}
       </div>
@@ -115,12 +123,22 @@ export function CrateStandingBar({ standing }: { standing: CrateStanding }) {
   );
 }
 
-function Figure({ label, value, dot, tone }: { label: string; value: string; dot: string; tone?: string }) {
+function Figure({
+  label,
+  value,
+  dot,
+  tone,
+}: {
+  label: string;
+  value: string;
+  dot: string;
+  tone?: string;
+}) {
   return (
     <div className="flex items-center gap-2.5">
       <span className={cn('size-2.5 shrink-0 rounded-[3px]', dot)} aria-hidden="true" />
       <div className="min-w-0">
-        <p className="truncate text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">{label}</p>
+        <Eyebrow className="truncate">{label}</Eyebrow>
         <p className={cn('mt-0.5 font-mono text-xl leading-none font-semibold', tone)}>{value}</p>
       </div>
     </div>

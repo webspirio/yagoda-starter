@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { add, sub, sum, cmp, div, mul, isNegative, isZero } from './decimal';
+import { add, sub, sum, cmp, div, mul, mulInt, isNegative, isZero } from './decimal';
 
 describe('decimal-string arithmetic (integer kopiykas, never floats)', () => {
   it('adds and subtracts at scale 2', () => {
@@ -76,5 +76,29 @@ describe('mul', () => {
   it('refuses a non-whole multiplier — that is a caller bug, not a value to round', () => {
     expect(() => mul('1.00', 1.5)).toThrow();
     expect(() => mul('1.00', -1)).toThrow();
+  });
+});
+
+// Audit 2026-10-24, F5: «Завдаток: 6 × 25,00 = 150,00 ₴» on «Видати ящики» — a deposit
+// rate times a crate count, exact in kopiykas.
+describe('mulInt', () => {
+  it('multiplies a decimal string by a whole count, exactly', () => {
+    expect(mulInt('25.00', 6)).toBe('150.00');
+    expect(mulInt('0.07', 3)).toBe('0.21');
+    expect(mulInt('1234567.89', 1000)).toBe('1234567890.00');
+    expect(mulInt('-2.50', 4)).toBe('-10.00');
+    expect(mulInt('12.34', 0)).toBe('0.00');
+  });
+  it('is what `mul` has always done — `mul` stays as its old name', () => {
+    expect(mul('0.35', 3)).toBe(mulInt('0.35', 3));
+    expect(() => mul('1.00', 1.5)).toThrow();
+  });
+  it('refuses a fractional, negative or non-finite count', () => {
+    expect(() => mulInt('1.00', 1.5)).toThrow();
+    expect(() => mulInt('1.00', -1)).toThrow();
+    expect(() => mulInt('1.00', Number.NaN)).toThrow();
+  });
+  it('refuses a value that is not a decimal string', () => {
+    expect(() => mulInt('1,00', 2)).toThrow();
   });
 });

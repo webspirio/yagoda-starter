@@ -8,7 +8,7 @@ import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
 import { Spinner } from '@/shared/ui/spinner';
 import { formatShortDate, formatTime } from '@/shared/lib/date';
-import { formatKg } from '@/shared/lib/money';
+import { formatDecimal } from '@/shared/lib/money';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
 import { useVoidReweighItemMutation } from '@/entities/reweigh';
 import { useStaffQuery } from '@/entities/user';
@@ -76,7 +76,7 @@ export function DayLines({
   }
 
   return (
-    <div className="rounded-xl bg-card ring-1 ring-foreground/10">
+    <div className="rounded-xl border border-line2 bg-card">
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border/70 px-4 py-3">
         <Eyebrow>{t('reweigh.day.title', { date: formatShortDate(date, locale) })}</Eyebrow>
         <span className="text-xs text-muted-foreground">{t('reweigh.day.allPoints')}</span>
@@ -173,13 +173,15 @@ export function DayLines({
                     <TableCell className="font-mono text-xs">{formatTime(item.created_at, locale)}</TableCell>
                     <TableCell>{productGrade}</TableCell>
                     <TableCell className="text-right font-mono tabular-nums">
-                      <span className="whitespace-nowrap">{formatKg(item.net_kg, locale)}</span>
+                      <span className="whitespace-nowrap">{formatDecimal(item.net_kg, locale)}</span>
                       {formula ? (
                         <span className="block text-xs font-normal whitespace-nowrap text-muted-foreground">
                           {formula}
                         </span>
                       ) : null}
                     </TableCell>
+                    {/* Only a voided line is marked: a «проведено» badge on
+                        every live row said nothing (audit 2026-10-24 E11). */}
                     <TableCell>
                       {item.voided_at !== null ? (
                         <span className="flex flex-wrap items-center gap-1.5 text-xs">
@@ -188,9 +190,7 @@ export function DayLines({
                           <span>· {authorName} ·</span>
                           <span className="italic">«{item.void_reason}»</span>
                         </span>
-                      ) : (
-                        <Badge variant="secondary">{t('reweigh.day.posted')}</Badge>
-                      )}
+                      ) : null}
                     </TableCell>
                     <TableCell className="text-right">
                       {voided ? null : (

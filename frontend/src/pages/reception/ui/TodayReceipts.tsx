@@ -36,7 +36,9 @@ export function TodayReceipts({
   const columns = layout === 'columns';
   // An optional cell is always rendered so the columns stay put; in the
   // popover's flex row an empty one is hidden so it adds no gap.
-  const optional = columns ? 'text-right' : 'empty:hidden';
+  // Below `sm` the columns fold into a two-line card (a phone cannot hold eight
+  // fixed columns), so an empty cell hides there too.
+  const optional = columns ? 'text-right empty:hidden sm:empty:inline' : 'empty:hidden';
 
   const rows = [...(intakes.data?.data ?? [])].sort((a, b) =>
     a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0,
@@ -63,7 +65,7 @@ export function TodayReceipts({
                   className={cn(
                     'w-full min-w-0 items-center py-2 text-left text-sm transition-colors hover:text-brand',
                     columns
-                      ? 'grid grid-cols-[3rem_minmax(0,1fr)_6rem_6rem_minmax(0,11rem)_6rem_8rem_1rem] gap-3'
+                      ? 'flex flex-wrap gap-x-3 gap-y-0.5 sm:grid sm:grid-cols-[3rem_minmax(0,1fr)_6rem_6rem_minmax(0,11rem)_6rem_8rem_1rem] sm:gap-3'
                       : 'flex gap-2',
                     row.voided_at !== null && 'text-muted-foreground line-through',
                   )}
@@ -71,7 +73,7 @@ export function TodayReceipts({
                   <span className="shrink-0 font-mono text-xs tabular-nums text-muted-foreground">
                     {formatTime(row.created_at, locale)}
                   </span>
-                  <span className="min-w-0 flex-1 truncate">{row.supplier_name}</span>
+                  <span className="min-w-0 flex-1 basis-1/2 truncate">{row.supplier_name}</span>
                   <span className={cn('shrink-0 text-xs text-muted-foreground', optional)}>
                     {row.lines_count > 1
                       ? t('reception.today.positions', { count: row.lines_count })

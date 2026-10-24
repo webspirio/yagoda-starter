@@ -45,14 +45,14 @@ const renderIt = (over: Partial<CostOfDay> = {}, onOpenChange = vi.fn(), open = 
   );
 
 describe('ChecksDisclosure', () => {
-  it('prints both identities from server figures', () => {
+  it('prints both identities from server figures, each operand named by its product — audit E4', () => {
     const { container } = renderIt();
     const text = norm(container.textContent);
     expect(text).toContain(
-      '50,49 ₴ + 1 914,70 ₴ = 1 965,19 ₴ = недостача 265,19 ₴ + витрати 1 700,00 ₴',
+      'Кизил 50,49 + Малина 1 914,70 = 1 965,19 ₴ = недостача 265,19 ₴ + витрати 1 700,00 ₴',
     );
     expect(text).toContain(
-      '647,09 ₴ + 114 693,71 ₴ = 115 340,80 ₴ = нараховано 113 640,80 ₴ + витрати 1 700,00 ₴',
+      'Кизил 647,09 + Малина 114 693,71 = 115 340,80 ₴ = нараховано 113 640,80 ₴ + витрати 1 700,00 ₴',
     );
     expect(container.querySelector('details#cost-checks')).not.toBeNull();
   });

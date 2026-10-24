@@ -58,6 +58,7 @@ export const intake = (over: Record<string, unknown> = {}) => ({
   shift_id: SHIFT_ID,
   supplier_id: SUPPLIER,
   amount: '2103.30', // a pre-#56 record: a new receipt's line amounts are whole hryvnia (§2.12)
+  balance_after: '2103.30',
   received_by_user_id: 'u-oksana',
   voided_at: null,
   voided_by_user_id: null,
@@ -192,6 +193,8 @@ export function makeIntakesMocks() {
     writeReturn: jest.fn().mockResolvedValue({ ret: {}, allocations: [], tranches: [] }),
     voidReturnForIntake: jest.fn().mockResolvedValue(null),
   };
+  // The debt BEFORE the receipt, read under the supplier lock for `balance_after` (A1).
+  const debt = { debtFor: jest.fn().mockResolvedValue('0.00') };
   const allocations = {
     lockSupplier: jest.fn().mockResolvedValue(undefined),
     release: jest.fn().mockResolvedValue(undefined),
@@ -224,6 +227,7 @@ export function makeIntakesMocks() {
     payouts,
     crates,
     allocations,
+    debt,
   };
 }
 export type IntakesMocks = ReturnType<typeof makeIntakesMocks>;
@@ -243,6 +247,7 @@ export function buildIntakes(m: IntakesMocks) {
       m.dataSource as never,
       pricing,
       m.allocations as never,
+      m.debt as never,
       m.payouts as never,
       m.crates as never,
       m.audit as never,

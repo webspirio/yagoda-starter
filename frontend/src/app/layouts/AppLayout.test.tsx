@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createMemoryRouter, RouterProvider } from 'react-router';
@@ -19,7 +19,11 @@ function mockMatchMedia(matches: boolean) {
   }));
 }
 
-function renderLayout(initial = '/', page: React.ReactNode = <p>dashboard body</p>) {
+function renderLayout(
+  initial = '/',
+  page: React.ReactNode = <p>dashboard body</p>,
+  extra: { path: string; element: React.ReactNode }[] = [],
+) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const router = createMemoryRouter(
     [
@@ -28,6 +32,7 @@ function renderLayout(initial = '/', page: React.ReactNode = <p>dashboard body</
         children: [
           { path: '/', element: page },
           { path: '/login', element: <p>login screen</p> },
+          ...extra,
         ],
       },
     ],
@@ -227,30 +232,38 @@ describe('AppLayout', () => {
       mock.onGet('/collection-points').reply(200, POINTS);
     });
 
-    it('gives the owner a point select, on the warehouse until a point is picked', async () => {
+    // Audit 2026-10-24, rule 10: a select on a screen that is not about a point changed
+    // nothing on it. The point screens portal their own; everywhere else the place is empty.
+    it('gives the owner no point select on a screen that is not about a point', async () => {
       mock.onGet('/me').reply(200, OWNER);
       renderLayout('/');
       const banner = await screen.findByRole('banner');
-      const select = await within(banner).findByRole('combobox', { name: 'Pick a point' });
-      await within(select).findByRole('option', { name: 'Shypynky' });
-      expect(select).toHaveValue('22222222-2222-4222-8222-222222222222');
-
-      await userEvent.selectOptions(select, 'Shypynky');
-      expect(select).toHaveValue('11111111-1111-4111-8111-111111111111');
+      await within(banner).findByText('Ivan');
+      expect(within(banner).queryByRole('combobox')).not.toBeInTheDocument();
+      expect(within(banner).getByText(/all points/)).toBeInTheDocument();
     });
 
-    it('keeps the operator on the plain «your point» chip', async () => {
+    it("names the operator's point on the chip, not «your point»", async () => {
       mock.onGet('/me').reply(200, {
         id: 'u1',
         username: 'operator',
         display_name: 'Olha',
         role: 'point_operator',
-        collection_point_id: 'p1',
+        collection_point_id: '11111111-1111-4111-8111-111111111111',
       });
       renderLayout('/');
       const banner = await screen.findByRole('banner');
-      expect(await within(banner).findAllByText('your point')).not.toHaveLength(0);
+      expect(await within(banner).findAllByText(/Shypynky/)).not.toHaveLength(0);
+      expect(within(banner).queryByText(/your point/)).not.toBeInTheDocument();
       expect(within(banner).queryByRole('combobox')).not.toBeInTheDocument();
+    });
+
+    it('names the screen in the top bar for a phone', async () => {
+      mock.onGet('/me').reply(200, OWNER);
+      renderLayout('/', undefined, [{ path: '/suppliers/:id', element: <p>supplier card</p> }]);
+      // The overview first, then a nested route that the nav item owns.
+      const banner = await screen.findByRole('banner');
+      expect(within(banner).getByText('Summary')).toHaveClass('md:hidden');
     });
 
     it("puts a screen's own picker and title line in the bar, in place of the default", async () => {
@@ -292,19 +305,31 @@ describe('AppLayout', () => {
     const user = userEvent.setup();
     renderLayout('/');
 
-    const prices = await screen.findByRole('link', { name: 'Day prices' });
-    expect(prices).not.toHaveAttribute('title');
+    await screen.findByRole('link', { name: 'Day prices' });
+    expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Collapse menu' }));
 
     expect(screen.getByRole('navigation')).toHaveClass('md:w-16');
-    // Still named for assistive tech, and the name returns on hover.
-    expect(screen.getByRole('link', { name: 'Day prices' })).toHaveAttribute('title', 'Day prices');
-    expect(screen.getByText('Day prices')).toHaveClass('md:sr-only');
+    // Still named for assistive tech, and the name returns as a tooltip on focus/hover.
+    const prices = screen.getByRole('link', { name: 'Day prices' });
+    expect(within(prices).getByText('Day prices')).toHaveClass('md:sr-only');
+    act(() => prices.focus());
+    expect(await screen.findByRole('tooltip', { name: 'Day prices' })).toBeInTheDocument();
     expect(window.localStorage.getItem('web-starter:sidebar-collapsed')).toBe('1');
 
     await user.click(screen.getByRole('button', { name: 'Expand menu' }));
     expect(screen.getByRole('navigation')).not.toHaveClass('md:w-16');
     expect(window.localStorage.getItem('web-starter:sidebar-collapsed')).toBe('0');
+  });
+});
+
+describe('routeTitleKey', () => {
+  it('names a nested route by the nav item that owns it', async () => {
+    const { routeTitleKey } = await import('./nav');
+    expect(routeTitleKey('/')).toBe('nav.dashboard');
+    expect(routeTitleKey('/suppliers/abc')).toBe('nav.suppliers');
+    expect(routeTitleKey('/profile')).toBe('nav.profile');
+    expect(routeTitleKey('/nowhere')).toBeNull();
   });
 });

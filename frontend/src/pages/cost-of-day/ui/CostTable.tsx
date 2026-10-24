@@ -67,7 +67,7 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
 
   return (
     <div>
-      <div className="overflow-hidden rounded-lg ring-1 ring-foreground/10">
+      <div className="overflow-hidden rounded-lg border border-line2">
         {/* `Table` scrolls inside its own container below its natural width —
             the page never does; the product column stays put while it scrolls. */}
         <Table className="[&_td]:px-3 [&_th]:h-auto [&_th]:px-3 [&_th]:py-2 [&_th]:leading-tight [&_th]:whitespace-normal">
@@ -156,9 +156,7 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
               <TableCell className={NUM} data-group="shortfall-kg">
                 <ShortfallValue value={w?.shortfall_kg ?? null} minus locale={locale} />
               </TableCell>
-              <TableCell className={`${NUM} ${SKY}`}>
-                {dash(w?.accrued, (v) => formatUah(v, locale))}
-              </TableCell>
+              <TableCell className={`${NUM} ${SKY}`}>{dash(w?.accrued)}</TableCell>
               <TableCell className={SKY} />
               <TableCell className={`${NUM} ${AMBER}`} data-group="shortfall">
                 <ShortfallValue value={w?.shortfall ?? null} minus locale={locale} />
@@ -194,7 +192,12 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
           <p data-day-formula className="text-sm text-foreground">
             <Trans
               t={t}
-              i18nKey="costOfDay.table.dayFormula"
+              i18nKey={
+                // A product left out of the total is left out of this
+                // numerator too — so the operand says whose нараховано it is
+                // (audit E3).
+                anyUnweighed ? 'costOfDay.table.dayFormulaWeighed' : 'costOfDay.table.dayFormula'
+              }
               values={{
                 accrued: dec(w.accrued),
                 expenses: dec(day.expenses_amount),
@@ -233,11 +236,14 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
         // amber — amber is the недостача's, and there is none yet (§4.3).
         <div data-awaiting className="mt-2 rounded-lg bg-muted p-3 text-sm text-muted-foreground">
           <p className="font-medium text-foreground">{t('costOfDay.expenses.awaiting')}</p>
-          <p>
-            {t('costOfDay.expenses.awaitingAmount', {
-              amount: formatUah(day.expenses_amount, locale),
-            })}
-          </p>
+          {/* «0,00 ₴ не розподілено» says nothing — only a real sum waits. */}
+          {day.expenses_amount === '0.00' ? null : (
+            <p>
+              {t('costOfDay.expenses.awaitingAmount', {
+                amount: formatUah(day.expenses_amount, locale),
+              })}
+            </p>
+          )}
           <p className="text-xs">{t('costOfDay.expenses.awaitingNote')}</p>
         </div>
       )}

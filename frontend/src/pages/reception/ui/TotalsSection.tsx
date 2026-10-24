@@ -15,6 +15,15 @@ import {
   sub,
 } from '@/shared/lib/money';
 import { suggestedPaid, totalToPay } from '../lib/suggestedPaid';
+
+/**
+ * Where the supplier's balance read stands. `none` — no supplier picked;
+ * `pending` — no fresh figure yet; `error` — the read failed; `ready` — `debt`
+ * is the server's (and `null` there means no balance at all). Only `ready`
+ * may become part of «Разом» (B2, audit 2026-10-24): a total without the
+ * carried-in balance is a wrong total, not a partial one.
+ */
+export type DebtStatus = 'none' | 'pending' | 'error' | 'ready';
 import { ENTRY_FIELD } from '../lib/entryFields';
 
 /**
@@ -37,6 +46,7 @@ export function TotalsSection({
   accrued,
   lineCount,
   debt,
+  debtStatus,
   cash,
   cashUnavailable,
   paid,
@@ -56,6 +66,8 @@ export function TotalsSection({
    *  04.09.2026: «"Разом" дорівнює балансу»); a negative one is the supplier
    *  owing us and lowers it. */
   debt: string | null;
+  /** Whether `debt` is known yet — see `DebtStatus`. */
+  debtStatus: DebtStatus;
   /** `GET /point-cash/:id`'s `.cash` — the drawer for berries. `null` means
    *  UNKNOWN (still loading OR errored), never an empty drawer. */
   cash: string | null;
@@ -84,13 +96,18 @@ export function TotalsSection({
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
 
-  const carried = debt !== null && cmp(debt, '0') !== 0 ? debt : null;
-  const total = totalToPay(accrued, debt);
+  const debtKnown = debtStatus === 'ready';
+  const carried = debtKnown && debt !== null && cmp(debt, '0') !== 0 ? debt : null;
+  // Never a total without the balance it carries in (B2): «—» until it is read.
+  const total = debtKnown ? totalToPay(accrued, debt) : null;
   const drawer = cash !== null && cmp(cash, '0') === 1 ? cash : '0.00';
   // The cash-capped total, never below zero — same helper the page uses for
   // the default and for its own Enter guard, so the cap here, the suggestion
   // and the refusal can never drift apart.
   const cap = total === null ? null : suggestedPaid(accrued, debt, cash);
+  // What the supplier owed US walking in — today's berries pay that off
+  // first, so it is no debt of ours (B1).
+  const owedToUs = carried !== null && cmp(carried, '0') === -1 ? sub('0', carried) : '0.00';
   const paidField = useDecimalField(paid, {
     onBlur: () => {
       if (cap === null) return;
@@ -137,13 +154,17 @@ export function TotalsSection({
   const [paidFocused, setPaidFocused] = useState(false);
   const paidDisplay =
     paidParsed !== null && paid.trim() !== '' ? formatDecimal(paidParsed, locale) : paid;
-  // What THIS delivery adds to the balance (paid less than today's accrual),
-  // or how much of the earlier balance the cash pays down (paid more) —
-  // never both. Strings through `shared/lib/money`, never floats.
-  const newDebt =
-    accrued !== null && !overCap && cmp(accrued, paidValue) === 1 ? sub(accrued, paidValue) : null;
+  // What THIS delivery adds to the balance — today's accrual, less the cash,
+  // less whatever the supplier owed us (B1: max(0, accrued − paid − owed to
+  // us)) — or how much of the earlier balance the cash pays down (paid more
+  // than today accrues) — never both. Strings through `shared/lib/money`.
+  const newDebtRaw =
+    accrued !== null && total !== null && !overCap ? sub(sub(accrued, paidValue), owedToUs) : null;
+  const newDebt = newDebtRaw !== null && cmp(newDebtRaw, '0') === 1 ? newDebtRaw : null;
   const paysOld =
-    accrued !== null && !overCap && cmp(paidValue, accrued) === 1 ? sub(paidValue, accrued) : null;
+    accrued !== null && total !== null && !overCap && cmp(paidValue, accrued) === 1
+      ? sub(paidValue, accrued)
+      : null;
   const settle = (v: string) => onPaidChange(v);
   // The over-cap hint takes the Field hint slot first: it is the reason the
   // button is disabled (R1), so it must be said even when the drawer could
@@ -188,7 +209,17 @@ export function TotalsSection({
           </span>
         </div>
 
-        {carried !== null ? (
+        {debtStatus === 'pending' || debtStatus === 'error' ? (
+          // B2 — said, never silently left out of «Разом».
+          <div className="flex items-baseline justify-between gap-3 text-base">
+            <span className="text-muted-foreground">{t('reception.totals.debt')}</span>
+            {debtStatus === 'pending' ? (
+              <span className="font-mono text-muted-foreground">…</span>
+            ) : (
+              <span className="text-sm text-destructive">{t('reception.totals.debtFailed')}</span>
+            )}
+          </div>
+        ) : carried !== null ? (
           // Signed (§3.5): «+» is what the network owes the supplier, «−»
           // what the supplier owes the network — added to «Разом» either way.
           <div className="flex items-baseline justify-between gap-3 text-base">
@@ -212,7 +243,9 @@ export function TotalsSection({
           <span className="text-base font-semibold">{t('reception.totals.total')}</span>
           <span className="font-mono text-3xl leading-none font-semibold tracking-tight">
             {total === null ? (
-              <span className="text-base text-muted-foreground">{isPreviewing ? '…' : '—'}</span>
+              <span className="text-base text-muted-foreground">
+                {isPreviewing && debtStatus !== 'pending' && debtStatus !== 'error' ? '…' : '—'}
+              </span>
             ) : (
               formatUah(total, locale)
             )}
@@ -276,11 +309,14 @@ export function TotalsSection({
           </p>
         ) : null}
 
-        <div className="grid grid-cols-3 gap-2">
+        {/* One column on a phone, where three can't hold «Усе в залишок» (B9). */}
+        <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-3">
           <Button
             type="button"
             variant="outline"
             className="h-9 px-2 text-sm"
+            // B3 — no cap yet (the preview or the balance still out), nothing to set.
+            disabled={cap === null}
             onClick={() => settle(cap ?? '0')}
           >
             {t('reception.totals.all')}
@@ -336,11 +372,20 @@ export function TotalsSection({
             // M1: neither «Розраховано повністю» nor a balance claims
             // anything about a total that has not settled yet.
             '—'
-          ) : owed || stillOwesUs ? (
+          ) : owed ? (
             <>
               <span className="text-base font-semibold">{t('reception.totals.balanceAfter')}</span>
               <span className="font-mono text-xl font-semibold">
                 {formatUah(remainder, locale)}
+              </span>
+            </>
+          ) : stillOwesUs ? (
+            // B1 — a label about what WE owe never carries a minus: below zero
+            // it is the supplier who owes, and the figure is unsigned.
+            <>
+              <span className="text-base font-semibold">{t('reception.totals.supplierOwes')}</span>
+              <span className="font-mono text-xl font-semibold">
+                {formatUah(sub('0', remainder), locale)}
               </span>
             </>
           ) : (
@@ -373,7 +418,7 @@ export function TotalsSection({
       <Button
         type="submit"
         className="mt-auto h-auto min-h-12 w-full py-2 text-center text-base leading-tight font-semibold whitespace-normal"
-        disabled={disabled || isSubmitting || overCap}
+        disabled={disabled || isSubmitting || overCap || !debtKnown}
       >
         <Check className="size-5" />
         {label}

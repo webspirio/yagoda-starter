@@ -9,7 +9,9 @@ const { countsMock, explainMock } = vi.hoisted(() => ({
   explainMock: vi.fn(),
 }));
 
-vi.mock('@/entities/cash-count', () => ({
+// The discrepancy reading (`describeDiscrepancy` & co.) stays REAL — only the read is mocked.
+vi.mock('@/entities/cash-count', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/entities/cash-count')>()),
   useCashCountsQuery: (filter: unknown) => countsMock(filter),
 }));
 
@@ -84,8 +86,34 @@ describe('CashCountHistory', () => {
     countsMock.mockReturnValue(page([count()]));
     render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
 
-    expect(screen.getAllByText('1,500.00 ₴')).toHaveLength(2);
-    expect(screen.getByText('0.00 ₴')).toBeInTheDocument();
+    // Rule 4 — the unit is in the header, the cells are plain figures.
+    expect(screen.getByRole('columnheader', { name: 'Counted, ₴' })).toBeInTheDocument();
+    expect(screen.getAllByText('1,500.00')).toHaveLength(2);
+    // C7 — the difference is named, and said once (not again under «Explanation»).
+    expect(screen.getAllByText('Matched')).toHaveLength(1);
+  });
+
+  it('names a shortage and a surplus by direction and amount', () => {
+    countsMock.mockReturnValue(
+      page([
+        count({ id: 'a', discrepancy: '-90.00', is_open: true }),
+        count({ id: 'b', discrepancy: '50.00', is_open: true }),
+      ]),
+    );
+    render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
+
+    expect(screen.getByText('Short 90.00 ₴')).toHaveClass('text-destructive');
+    expect(screen.getByText('Over 50.00 ₴')).toHaveClass('text-[var(--amber)]');
+  });
+
+  it('says when the history is cut to the latest counts', () => {
+    countsMock.mockReturnValue({
+      data: { data: [count()], total: 140, page: 1, limit: 100 },
+      isPending: false,
+      isError: false,
+    });
+    render(<CashCountHistory pointId="p1" isOwner={false} meId="u1" />);
+    expect(screen.getByText('Showing the latest 1 count — older ones did not fit')).toBeInTheDocument();
   });
 
   it('names who counted', () => {

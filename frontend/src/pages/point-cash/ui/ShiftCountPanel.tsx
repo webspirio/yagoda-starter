@@ -1,16 +1,14 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Calculator, CheckCircle2, TriangleAlert } from 'lucide-react';
+import { Calculator } from 'lucide-react';
 import { SectionCard } from '@/shared/ui/section-card';
-import { LedgerRow } from '@/shared/ui/ledger-row';
-import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
-import { formatUah } from '@/shared/lib/money';
+import { formatUah, isZero } from '@/shared/lib/money';
 import { formatTime } from '@/shared/lib/date';
 import type { Shift } from '@/entities/shift';
-import type { CashCount } from '@/entities/cash-count';
-import { RecountDrawerDialog, discrepancyTone } from '@/features/count-shift';
+import { DiscrepancyBadge, DiscrepancyText, type CashCount } from '@/entities/cash-count';
+import { RecountDrawerDialog } from '@/features/count-shift';
 
 /**
  * The action states (R4), in the order the mock lists them. Computed once
@@ -70,17 +68,21 @@ function CountTexts({ count }: { count: CashCount }) {
   );
 }
 
-function DiscrepancyPill({ discrepancy }: { discrepancy: string }) {
+/**
+ * One opening/closing count as the panel reads it: which count, and its
+ * difference NAMED (C7) — «Недостача 90,00 ₴», never a green «✓ Розбіжність».
+ * The counted figure itself is the ledger's to print, not this panel's (C8).
+ */
+function CountLine({ count }: { count: CashCount }) {
   const { t } = useTranslation();
-  const tone = discrepancyTone(discrepancy);
   return (
-    <Badge
-      variant="outline"
-      className={tone === 'leaf' ? 'border-leaf/40 text-leaf' : 'border-destructive/40 text-destructive'}
-    >
-      {tone === 'leaf' ? <CheckCircle2 aria-hidden="true" /> : <TriangleAlert aria-hidden="true" />}
-      {t('pointCash.panel.discrepancy')}
-    </Badge>
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="text-muted-foreground">{t(`pointCash.countHistory.kind.${count.kind}`)}</span>
+        <DiscrepancyBadge difference={count.discrepancy} />
+      </div>
+      <CountTexts count={count} />
+    </div>
   );
 }
 
@@ -102,8 +104,10 @@ export type OpenShiftGate = 'allowed' | 'checking' | 'failed' | 'blocked';
 
 /**
  * «Зміна і перерахунок каси» (R4) — the shift's own line (open/closed, its
- * times, who closed it, each count's explanation and note), the day's opening
- * and closing counts, the day's midday recounts, and the operator's actions.
+ * times, who closed it), what the opening and closing counts came to (named,
+ * with each count's explanation and note), the day's midday recounts, and the
+ * operator's actions. NOT the ledger's figures again (audit 2026-10-24, C8):
+ * the opening and closing amounts live in «Звідки взялося це число».
  *
  * `counts` is the RAW `GET /cash-counts?shift_id=` page — narrowed to the
  * berry book and sorted by `counted_at` HERE (not by the caller), so the
@@ -286,24 +290,17 @@ export function ShiftCountPanel({
                 <span className="font-mono text-xs text-muted-foreground">{timeRange}</span>
               </div>
 
-              {opening ? (
-                <LedgerRow
-                  label={t('pointCash.panel.opening')}
-                  value={formatUah(opening.counted_amount, locale)}
-                />
+              {/* A matching opening says nothing new; a mismatch is the
+                  previous close not agreeing with this morning — and a count
+                  carrying a text keeps its line, so the text has a home. */}
+              {opening &&
+              (!isZero(opening.discrepancy) ||
+                opening.explained ||
+                opening.explanation ||
+                opening.operator_note) ? (
+                <CountLine count={opening} />
               ) : null}
-              {opening && discrepancyTone(opening.discrepancy) !== 'leaf' ? (
-                <DiscrepancyPill discrepancy={opening.discrepancy} />
-              ) : null}
-              {opening ? <CountTexts count={opening} /> : null}
-              {closing ? (
-                <LedgerRow
-                  label={t('pointCash.panel.closing')}
-                  value={formatUah(closing.counted_amount, locale)}
-                />
-              ) : null}
-              {closing ? <DiscrepancyPill discrepancy={closing.discrepancy} /> : null}
-              {closing ? <CountTexts count={closing} /> : null}
+              {closing ? <CountLine count={closing} /> : null}
 
               {shift.status !== 'open' ? (
                 <p className="text-xs text-muted-foreground">
@@ -345,15 +342,7 @@ export function ShiftCountPanel({
                       {t('pointCash.panel.countAt', { time: formatTime(c.counted_at, locale) })}
                     </span>
                     <span aria-hidden="true">·</span>
-                    <span
-                      className={
-                        discrepancyTone(c.discrepancy) === 'leaf' ? 'text-leaf' : 'text-destructive'
-                      }
-                    >
-                      {discrepancyTone(c.discrepancy) === 'leaf'
-                        ? t('pointCash.panel.matched')
-                        : t('pointCash.panel.mismatched')}
-                    </span>
+                    <DiscrepancyText difference={c.discrepancy} />
                   </span>
                   <span className="font-mono tabular-nums">
                     {formatUah(c.counted_amount, locale)}

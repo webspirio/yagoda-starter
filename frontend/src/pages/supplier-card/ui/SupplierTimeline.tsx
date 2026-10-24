@@ -4,7 +4,7 @@ import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { cn } from '@/shared/lib/cn';
-import { formatShortDate } from '@/shared/lib/date';
+import { formatShortDate, formatTime, toLocalIsoDate } from '@/shared/lib/date';
 import { formatUah, formatKg, formatDecimal, add, cmp, isZero } from '@/shared/lib/money';
 import { canVoidIntake, type Intake } from '@/entities/intake';
 import { canVoidPayout, type Payout } from '@/entities/payout';
@@ -143,8 +143,22 @@ export function SupplierTimeline({
     return <EmptyState title={t('supplierCard.timeline.empty')} />;
   }
 
+  // Every kind of row is dated and timed the same way (audit D5). A top-up has
+  // no business date, so its day is when it was written, in LOCAL time.
+  const when = (row: TimelineRow) => (
+    <>
+      <span className="font-mono text-xs text-muted-foreground tabular-nums">
+        {formatShortDate(row.businessDate || toLocalIsoDate(row.createdAt), locale)}
+      </span>
+      <span className="font-mono text-xs text-muted-foreground tabular-nums">
+        {formatTime(row.createdAt, locale)}
+      </span>
+    </>
+  );
+
   const payoutBody = (row: Extract<TimelineRow, { kind: 'payout' }>) => (
     <>
+      {when(row)}
       <Badge variant="outline">{t('supplierCard.timeline.payout')}</Badge>
       <span className="font-mono">{row.code}</span>
       {row.voided ? <span className="text-xs">{row.reason}</span> : null}
@@ -190,7 +204,7 @@ export function SupplierTimeline({
         >
           {row.kind === 'intake' ? (
             <>
-              {/* The receipt opens on click; «Додати залишок» is a SIBLING, not
+              {/* The receipt opens on click; «Додати доплату» is a SIBLING, not
                   nested — a button inside a button is invalid markup and the
                   inner one would never receive the click. */}
               <button
@@ -199,15 +213,7 @@ export function SupplierTimeline({
                 className="flex flex-1 flex-col items-stretch gap-1.5 text-left"
               >
                 <span className="flex items-center gap-3">
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {formatShortDate(row.businessDate, locale)}
-                  </span>
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {new Date(row.createdAt).toLocaleTimeString(locale, {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
+                  {when(row)}
                   <span className="font-mono">{row.code}</span>
                   <Badge variant="secondary">{t('supplierCard.timeline.intake')}</Badge>
                   {row.voided ? <span className="text-xs">{row.reason}</span> : null}
@@ -293,6 +299,7 @@ export function SupplierTimeline({
             </>
           ) : row.kind === 'topUp' ? (
             <>
+              {when(row)}
               <Badge variant="secondary">{t('supplierCard.timeline.topUp')}</Badge>
               <span className="font-mono text-xs text-muted-foreground">
                 {t('supplierCard.timeline.againstReceipt', { code: row.code })}

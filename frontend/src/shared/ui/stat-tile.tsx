@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { cn } from '@/shared/lib/cn';
+import { Eyebrow } from './eyebrow';
 
 /**
  * Ported from the mock's `bits.tsx` (frontend migration, issue #14): the
@@ -21,13 +22,16 @@ export function StatTile({
   label: string;
   value: React.ReactNode;
   hint?: React.ReactNode;
+  /** `berry` is the brand accent, not «money»: a plain cash or accrued figure stays
+   *  `default` (neutral ink) — rule 1 of the 2026-10-24 audit. `amber` is something
+   *  owed or short, `leaf` is settled. */
   tone?: 'default' | 'berry' | 'amber' | 'leaf';
   icon?: React.ReactNode;
   className?: string;
 }) {
   const toneClass = {
     default: 'text-foreground',
-    berry: 'text-primary',
+    berry: 'text-brand',
     amber: 'text-[var(--amber)]',
     leaf: 'text-[var(--leaf)]',
   }[tone];
@@ -36,14 +40,12 @@ export function StatTile({
     <div
       data-slot="stat-tile"
       className={cn(
-        'flex min-w-0 flex-col justify-between rounded-xl bg-card px-4 py-3.5 ring-1 ring-foreground/10',
+        'flex min-w-0 flex-col justify-between rounded-xl border border-line2 bg-card px-4 py-3.5',
         className,
       )}
     >
       <div className="flex items-start justify-between gap-2">
-        <span className="truncate text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
-          {label}
-        </span>
+        <Eyebrow className="truncate">{label}</Eyebrow>
         {icon ? <span className="shrink-0 text-muted-foreground">{icon}</span> : null}
       </div>
       <div

@@ -81,8 +81,10 @@ const page = (
   total = data.length,
   oldest_open_date: string | null = '2026-07-01',
   total_owed = '18670.40',
+  // Rows owed money — `total` also counts a credit (audit D9).
+  owed_count = data.filter((r) => Number.parseFloat(r.debt) > 0).length,
 ) => ({
-  data: { data, total, page: 1, limit: 100, oldest_open_date, total_owed },
+  data: { data, total, page: 1, limit: 100, oldest_open_date, total_owed, owed_count },
   isPending: false,
   isError: false,
 });
@@ -120,27 +122,51 @@ beforeEach(() => {
 });
 
 describe('DebtsPage — the operator', () => {
-  it('titles the page, totals only the positive balances and counts every supplier from the envelope', async () => {
+  it('titles the page, totals only the positive balances and counts only the suppliers owed money', async () => {
     const { container } = renderDebts();
 
     expect(screen.getByRole('heading', { level: 1, name: 'Balances owed' })).toBeInTheDocument();
-    expect(screen.getByText('3 suppliers')).toBeInTheDocument();
+    // No eyebrow repeating the count tile (audit D9).
+    expect(screen.queryByText('3 suppliers')).toBeNull();
 
     expect(screen.getByText('Total owed').closest('[data-slot="stat-tile"]')).toHaveTextContent(
       '18,670.40 ₴',
     );
+    // Three rows, one of them a credit — the server's `owed_count`, not the pager's `total`.
     expect(
       screen.getByText('Suppliers with a balance').closest('[data-slot="stat-tile"]'),
-    ).toHaveTextContent('3');
+    ).toHaveTextContent(/^Suppliers with a balance2$/);
 
     await expectNoAxeViolations(container);
+  });
+
+  it.each([
+    ['loading', { data: undefined, isPending: true, isError: false }],
+    ['failed', { data: undefined, isPending: false, isError: true }],
+  ])('shows a dash, never a zero, in every tile while the read is %s (audit D2)', (_, state) => {
+    balancesMock.mockReturnValue(state);
+    renderDebts();
+
+    for (const label of ['Total owed', 'Oldest balance', 'Suppliers with a balance']) {
+      const tile = screen.getByText(label).closest('[data-slot="stat-tile"]');
+      expect(tile).toHaveTextContent('—');
+      expect(tile).not.toHaveTextContent(/0/);
+    }
+  });
+
+  it('offers «Pay out without berries» as an outline row action, not a column of primaries (audit D8)', () => {
+    renderDebts();
+
+    expect(
+      within(tableRow('Оксана Кушнірук')).getByRole('button', { name: /Pay out without berries/ }),
+    ).toHaveAttribute('data-variant', 'outline');
   });
 
   it('marks an inactive supplier and shows an overpaid balance as a credit, not a debt', () => {
     renderDebts();
 
     expect(within(tableRow('Петро Іваненко')).getByText('inactive')).toBeInTheDocument();
-    expect(within(tableRow('Марія Бондар')).getByText('overpaid 500.00 ₴')).toBeInTheDocument();
+    expect(within(tableRow('Марія Бондар')).getByText('overpaid 500.00')).toBeInTheDocument();
   });
 
   it('disables "Pay out without berries" for a supplier who does not actually owe anything', () => {
@@ -313,22 +339,25 @@ describe('DebtsPage — how old the balances are (#101)', () => {
     expect(oldestTile()).toHaveTextContent('—');
   });
 
-  it('counts the days per row, in red past a week, and none for a credit', () => {
+  it('counts the days per row, amber past a week, and none for a credit', () => {
     renderDebts();
 
     const stale = within(ageCell('Оксана Кушнірук')).getByText('15 days');
-    expect(stale).toHaveAttribute('data-variant', 'destructive');
+    expect(stale).toHaveAttribute('data-variant', 'outline');
+    expect(stale).toHaveClass('text-[var(--amber)]');
     const fresh = within(ageCell('Петро Іваненко')).getByText('4 days');
     expect(fresh).toHaveAttribute('data-variant', 'secondary');
     expect(within(tableRow('Марія Бондар')).queryByText(/days?$/)).toBeNull();
   });
 
-  it('turns red only past seven days, and says «1 day» in the singular', () => {
+  it('scales the colour: neutral to a week, amber to a month, red past it — and «1 day» singular', () => {
     balancesMock.mockReturnValue(
       page([
         { ...rowA, oldest_open_date: '2026-07-09' }, // 7 days
         { ...rowB, is_active: true, oldest_open_date: '2026-07-08' }, // 8 days
         { ...rowC, debt: '10.00', oldest_open_date: '2026-07-15' }, // 1 day
+        { ...rowA, supplier_id: 's4', first_name: 'Лідія', oldest_open_date: '2026-06-16' }, // 30 days
+        { ...rowA, supplier_id: 's5', first_name: 'Ніна', oldest_open_date: '2026-06-15' }, // 31 days
       ]),
     );
     renderDebts();
@@ -338,6 +367,14 @@ describe('DebtsPage — how old the balances are (#101)', () => {
       'secondary',
     );
     expect(within(ageCell('Петро Іваненко')).getByText('8 days')).toHaveAttribute(
+      'data-variant',
+      'outline',
+    );
+    expect(within(ageCell('Лідія Кушнірук')).getByText('30 days')).toHaveAttribute(
+      'data-variant',
+      'outline',
+    );
+    expect(within(ageCell('Ніна Кушнірук')).getByText('31 days')).toHaveAttribute(
       'data-variant',
       'destructive',
     );
@@ -489,7 +526,7 @@ describe('DebtsPage — sorting by a column (#229)', () => {
     renderDebts();
 
     expect(names()).toEqual(['Оксана Кушнірук', 'Петро Іваненко', 'Анна Ткач', 'Марія Бондар']);
-    expect(screen.getByRole('columnheader', { name: 'Balance' })).toHaveAttribute(
+    expect(screen.getByRole('columnheader', { name: 'Balance, ₴' })).toHaveAttribute(
       'aria-sort',
       'descending',
     );
@@ -508,9 +545,9 @@ describe('DebtsPage — sorting by a column (#229)', () => {
     expect(names()).toEqual(['Анна Ткач', 'Оксана Кушнірук', 'Петро Іваненко', 'Марія Бондар']);
 
     // A credit is the smallest balance, compared as a decimal, not as text.
-    await user.click(screen.getByRole('button', { name: 'Balance' }));
+    await user.click(screen.getByRole('button', { name: 'Balance, ₴' }));
     expect(names()).toEqual(['Марія Бондар', 'Анна Ткач', 'Петро Іваненко', 'Оксана Кушнірук']);
-    await user.click(screen.getByRole('button', { name: 'Balance' }));
+    await user.click(screen.getByRole('button', { name: 'Balance, ₴' }));
     expect(names()).toEqual(['Оксана Кушнірук', 'Петро Іваненко', 'Анна Ткач', 'Марія Бондар']);
   });
 
@@ -574,7 +611,7 @@ describe('DebtsPage — sorting by a column (#229)', () => {
     await act(() => router.navigate('/debts?point=p1'));
 
     expect(screen.queryByRole('columnheader', { name: 'Point' })).toBeNull();
-    expect(screen.getByRole('columnheader', { name: 'Balance' })).toHaveAttribute(
+    expect(screen.getByRole('columnheader', { name: 'Balance, ₴' })).toHaveAttribute(
       'aria-sort',
       'descending',
     );

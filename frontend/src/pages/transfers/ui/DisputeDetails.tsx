@@ -2,10 +2,10 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { HandCoins } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
-import { cn } from '@/shared/lib/cn';
-import { formatUah, isZero } from '@/shared/lib/money';
+import { formatUah, sub } from '@/shared/lib/money';
 import { formatDateTime } from '@/shared/lib/date';
 import type { Transfer } from '@/entities/transfer';
+import { DiscrepancyText } from '@/entities/cash-count';
 
 /**
  * What one disputed transfer says (#76): when it left, what was sent, what
@@ -48,7 +48,6 @@ function DisputeDetails({
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
   const money = (v: string | null) => (v == null ? '—' : formatUah(v, locale));
-  const cashOff = transfer.cash_discrepancy != null && !isZero(transfer.cash_discrepancy);
   const cratesOff = transfer.crates_discrepancy != null && transfer.crates_discrepancy !== 0;
   return (
     <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2 text-sm">
@@ -64,9 +63,17 @@ function DisputeDetails({
             <span className="font-mono tabular-nums">{money(transfer.reported_cash)}</span>
           </Item>
           <Item label={t('transfers.dispute.discrepancy')}>
-            <span className={cn('font-mono font-semibold tabular-nums', cashOff && 'text-destructive')}>
-              {money(transfer.cash_discrepancy)}
-            </span>
+            {/* C7 — the shared reading: «Недостача 2 000,00 ₴» when less
+                arrived than was sent. `cash_discrepancy` is sent − arrived,
+                so it is negated into «arrived − sent». */}
+            {transfer.cash_discrepancy == null ? (
+              <span className="font-mono">—</span>
+            ) : (
+              <DiscrepancyText
+                className="font-mono font-semibold tabular-nums"
+                difference={sub('0', transfer.cash_discrepancy)}
+              />
+            )}
           </Item>
         </dl>
         {cratesOff ? (

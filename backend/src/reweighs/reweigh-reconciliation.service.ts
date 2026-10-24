@@ -146,6 +146,13 @@ export interface ReconciliationProduct {
    * `null` when the point's kilograms are zero (nothing to divide by).
    */
   rate: string | null;
+  /**
+   * `rate`'s numerator — the product's нараховано INCLUDING доплати — and the
+   * доплати inside it ('0.00' when none), so the screen can print the rate as
+   * the division it is: «113 044,20 ÷ 596,80 = 189,42» (audit 2026-10-24 E5).
+   */
+  accrued: string;
+  top_ups: string;
   crates: ReconciliationCrates;
 }
 
@@ -354,9 +361,8 @@ export class ReweighReconciliationService {
       const intakeNet = sum(productGrades.map((g) => g.intake_net_kg));
       const reweighNet = sum(productGrades.map((g) => g.reweigh_net_kg ?? '0.00'));
       // Accrued INCLUDING доплати (spec §3.12, review §0) — 265,19 ₴, not 229,99.
-      const accrued = sum(
-        productGrades.map((g) => add(g.intake_amount, topUps.get(g.product_grade_id) ?? '0.00')),
-      );
+      const productTopUps = sum(productGrades.map((g) => topUps.get(g.product_grade_id) ?? '0.00'));
+      const accrued = add(sum(productGrades.map((g) => g.intake_amount)), productTopUps);
       const rate = isZero(intakeNet) ? null : div(accrued, intakeNet);
       const crates = mergeCrates(productGrades.flatMap((g) => cratesOf(g.product_grade_id).by_type));
 
@@ -374,6 +380,8 @@ export class ReweighReconciliationService {
           missing_kg: null,
           missing_amount: null,
           rate,
+          accrued,
+          top_ups: productTopUps,
           crates,
         });
         continue;
@@ -392,6 +400,8 @@ export class ReweighReconciliationService {
         missing_kg: missing.kg,
         missing_amount: missing.amount,
         rate,
+        accrued,
+        top_ups: productTopUps,
         crates,
       });
     }

@@ -16,6 +16,7 @@ import { useMeQuery } from '@/entities/user';
 import { useNetworkSettingsQuery } from '@/entities/network-settings';
 import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
 import { buildPayoutReceipt } from '../model/buildPayoutReceipt';
+import { RECEIPT_DIALOG_CLASS, RECEIPT_SCROLL_CLASS } from './receiptDialogLayout';
 
 /**
  * The receipt for one standalone payout — `GET /payouts/:id` composed with the
@@ -81,6 +82,7 @@ export function PayoutReceiptDialog({
   // Trimmed: before the payout loads there is no code, and the bare
   // «Квитанція видачі {{code}}» would end in a dangling space.
   let title = t('receipt.payoutTitle', { code: payout?.code ?? '' }).trim();
+  let description = t('receipt.payoutDescription');
 
   if (isError) {
     content = (
@@ -90,6 +92,9 @@ export function PayoutReceiptDialog({
     );
   } else if (payout && supplier && me) {
     title = t('receipt.payoutTitle', { code: payout.code });
+    const showVoid = canVoidPayout(me, payout);
+    // «тут можна анулювати» only where the button is (audit 2026-10-24 A4).
+    if (showVoid) description = t('receipt.payoutDescriptionVoidable');
 
     content = (
       <>
@@ -110,7 +115,7 @@ export function PayoutReceiptDialog({
 
     actions = (
       <>
-        {canVoidPayout(me, payout) ? (
+        {showVoid ? (
           <Button type="button" variant="destructive" onClick={openVoid}>
             {t('receipt.void')}
           </Button>
@@ -140,15 +145,15 @@ export function PayoutReceiptDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => !next && onClose()}>
-      <DialogContent className="sm:w-[420px] sm:max-w-[420px]" showCloseButton={false}>
-        <DialogHeader>
+      <DialogContent className={RECEIPT_DIALOG_CLASS} showCloseButton={false}>
+        <DialogHeader className="shrink-0">
           <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{t('receipt.payoutDescription')}</DialogDescription>
+          <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
-        {content}
+        <div className={RECEIPT_SCROLL_CLASS}>{content}</div>
 
-        <DialogFooter className="print-hide">
+        <DialogFooter className="print-hide shrink-0">
           <Button type="button" variant="ghost" onClick={onClose}>
             {t('common.close')}
           </Button>

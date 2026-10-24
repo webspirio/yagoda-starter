@@ -6,6 +6,7 @@ import { allocationViolations } from '../testing/allocation-invariants';
 import { onHandSql } from '../crates/crate-balance.service';
 import { seedDev } from './dev-seed';
 import { REBUILD_BALANCE_AFTER_SQL } from '../migrations/1788600000023-PayoutBalanceAfter';
+import { REBUILD_INTAKE_BALANCE_AFTER_SQL } from '../migrations/1788600000025-IntakeBalanceAfter';
 import {
   DEV_OPERATOR_PASSWORD,
   SEED_GRADES,
@@ -134,6 +135,28 @@ describe('dev seed', () => {
         `SELECT p.id, p.balance_after::text AS balance_after FROM payouts p WHERE ${scope}`,
       );
       const want = new Map(rebuilt.map((r) => [r.id, r.balance_after]));
+      for (const r of stored) expect([r.id, r.balance_after]).toEqual([r.id, want.get(r.id)]);
+    } finally {
+      await qr.rollbackTransaction();
+      await qr.release();
+    }
+  });
+
+  it('stores each seeded receipt the as-of balance, not the insert placeholder (audit 2026-10-24 A1)', async () => {
+    const qr = ds.createQueryRunner();
+    await qr.startTransaction(); // the rebuild below rewrites rows; the rollback puts them back
+    try {
+      const scope = `i."supplier_id" IN (SELECT s.id FROM suppliers s JOIN collection_points cp
+                      ON cp.id = s.collection_point_id WHERE cp.code IN ('SHP', 'KON', 'HAI'))`;
+      const read = (): Promise<{ id: string; balance_after: string }[]> =>
+        qr.query(`SELECT i.id, i.balance_after::text AS balance_after FROM intakes i WHERE ${scope}`);
+      const stored = await read();
+      expect(stored.length).toBeGreaterThan(0);
+      // Every receipt is > 0 and the seed never drives a debt negative, so no row may still
+      // hold the 0.00 it was inserted with.
+      expect(stored.filter((r) => r.balance_after === '0.00')).toEqual([]);
+      await qr.query(`${REBUILD_INTAKE_BALANCE_AFTER_SQL} WHERE ${scope}`);
+      const want = new Map((await read()).map((r) => [r.id, r.balance_after]));
       for (const r of stored) expect([r.id, r.balance_after]).toEqual([r.id, want.get(r.id)]);
     } finally {
       await qr.rollbackTransaction();

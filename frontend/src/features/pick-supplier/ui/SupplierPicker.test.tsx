@@ -97,7 +97,8 @@ describe('SupplierPicker', () => {
     // English — so the actual separators are en's (comma group, dot decimal), not
     // uk's (space group, comma decimal). Both alternatives are kept so the test
     // still passes if a future change reads locale differently.
-    expect(within(list).getByText(/10.944,00|10,944\.00/)).toBeInTheDocument();
+    // The amber figure names itself: it is the supplier's balance (B7).
+    expect(within(list).getByText(/^(залишок 10.944,00|balance 10,944\.00) ₴$/)).toBeInTheDocument();
     expect(within(list).getByText(/телефон не вказано|no phone/)).toBeInTheDocument();
     await userEvent.keyboard('{ArrowDown}{Enter}');
     expect(onChange).toHaveBeenCalledWith(nina);

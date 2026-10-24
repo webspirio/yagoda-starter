@@ -1,19 +1,16 @@
 import type * as React from 'react';
+import { Fragment } from 'react';
 import { Link } from 'react-router';
 import { ChevronDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Eyebrow } from '@/shared/ui/eyebrow';
-import { Popover, PopoverContent, PopoverTrigger } from '@/shared/ui/popover';
 import { cn } from '@/shared/lib/cn';
-import { add, cmp, formatKg, formatUah, sum } from '@/shared/lib/money';
+import { add, cmp, formatKg, formatUah, sub, sum } from '@/shared/lib/money';
 import { isTruncated } from '@/shared/api';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
-import { useCashCountsQuery } from '@/entities/cash-count';
-import { usePayoutsQuery } from '@/entities/payout';
 import { useIntakesQuery } from '@/entities/intake';
 import { useCrateStandingQuery, type CrateStanding } from '@/entities/crate';
 import type { Shift } from '@/entities/shift';
-import { TodayReceipts } from './TodayReceipts';
 
 export type StripShift =
   | { status: 'pending' }
@@ -25,10 +22,15 @@ export type StripShift =
  * One horizontal strip above the intake form: the berry drawer,
  * the point's crates against its allotment and today's receipts — what the operator would
  * otherwise have to leave the form to look up. The figures come from the SAME
- * reads «Каса точки» and «Ящики» use for themselves: every one is a straight
- * `sum` over the live rows of the same entity reads, never re-derived a
+ * reads «Каса точки» and «Ящики» use for themselves, never re-derived a
  * different way (a second arithmetic path could silently disagree with the
- * first).
+ * first): the drawer and every term under it are `GET /point-cash/:id`'s own
+ * `breakdown` (#73) — «на ранок · + надійшло · − видано · + повернуто», which
+ * adds up to the figure (B4, audit 2026-10-24) — and today's cell is a `sum`
+ * over the live rows of the shift's receipts.
+ *
+ * Today's receipts are listed ONCE, in the card under the form (B6): the cell
+ * here is their summary, and a click takes the operator to that card.
  *
  * The shift's status is NOT here: it sits in the page header, and a day
  * with no open shift replaces the form itself (`ShiftClosedState`).
@@ -37,12 +39,14 @@ export function PointStrip({
   pointId,
   shift,
   isOwner,
-  onOpenReceipt,
+  onShowToday,
 }: {
   pointId: string;
   shift: StripShift;
   isOwner: boolean;
-  onOpenReceipt: (intakeId: string) => void;
+  /** Takes the operator to today's receipts card; absent while there is no
+   *  card to go to (no open shift), and then the cell is a plain summary. */
+  onShowToday?: () => void;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
@@ -52,20 +56,12 @@ export function PointStrip({
   // «Видано готівкою») — the drawer has a figure whether or not a shift is
   // open today, and this is the one place on the intake screen that says so.
   const cash = usePointCashForPointQuery(pointId);
-  const cashCounts = useCashCountsQuery({ shiftId });
-  const payouts = usePayoutsQuery({ shiftId });
   const intakes = useIntakesQuery({ shiftId });
   // The same read «Ящики» draws its allotment bar from — on the point, with
   // people, with berries and the allotment, all the server's.
   const standing = useCrateStandingQuery({ pointId, isOwner });
 
-  const openingBerry = (cashCounts.data?.data ?? []).find(
-    (row) => row.kind === 'opening' && row.book === 'berry',
-  );
-  const paidOut = sum(
-    (payouts.data?.data ?? []).filter((row) => row.voided_at === null).map((row) => row.amount),
-  );
-  // «Відкрито за сьогоднішніми квитанціями» — Σ open_amount over today's LIVE
+  // «Не виплачено за сьогоднішніми квитанціями» — Σ open_amount over today's LIVE
   // receipts: what is still owed for them now, from allocations. Never
   // negative, unlike amount − paid_amount when cash also closed older debt.
   const liveRows = (intakes.data?.data ?? []).filter((row) => row.voided_at === null);
@@ -73,9 +69,8 @@ export function PointStrip({
   const liveNetKg = sum(liveRows.map((row) => row.net_kg));
   // The sums above run over `page.data` — capped at 100 rows, server-side
   // (`Paginated<T>`'s `limit`) — never the whole shift. A busy point can
-  // legitimately clear 100 receipts or payouts before close, and without
-  // this caption the cell would silently read as the day's true total.
-  const paidOutTruncated = isTruncated(payouts.data);
+  // legitimately clear 100 receipts before close, and without this caption
+  // the cell would silently read as the day's true total.
   const todayTruncated = isTruncated(intakes.data);
 
   const openTodayText = t('reception.today.open', { uah: formatUah(openToday, locale) });
@@ -88,11 +83,35 @@ export function PointStrip({
   const cratesHref = isOwner ? `/crates?point=${pointId}` : '/crates';
 
   const cashNow = cash.data?.cash ?? null;
-
-  const openingText = openingBerry ? formatUah(openingBerry.counted_amount, locale) : '—';
-  const paidOutText = paidOutTruncated
-    ? `${t('reception.state.paidOut', { uah: formatUah(paidOut, locale) })} · ${t('reception.state.truncatedCaption')}`
-    : t('reception.state.paidOut', { uah: formatUah(paidOut, locale) });
+  // An open day's drawer is its terms; any other day's is a count the
+  // terms do not reach (closed, carried, none), so none are named.
+  const breakdown = cash.data?.breakdown;
+  const terms = breakdown?.kind === 'open' ? breakdown : null;
+  const isNonZero = (value: string | null): value is string =>
+    value !== null && cmp(value, '0') !== 0;
+  const cashTerms =
+    terms === null
+      ? []
+      : [
+          t('reception.state.openingCash', { uah: formatUah(terms.opening ?? '0.00', locale) }),
+          isNonZero(terms.transfers_in)
+            ? t('reception.state.cashIn', { uah: formatUah(terms.transfers_in, locale) })
+            : null,
+          t('reception.state.paidOut', { uah: formatUah(terms.payouts ?? '0.00', locale) }),
+          isNonZero(terms.returns)
+            ? t('reception.state.returned', { uah: formatUah(terms.returns, locale) })
+            : null,
+        ].filter((part): part is string => part !== null);
+  // Each term whole on a phone, where the line wraps: never «15 000,00 / ₴».
+  // The « · » sits OUTSIDE the unbreakable span, so the line can wrap between terms.
+  const cashAside = cashTerms.map((term, i) => (
+    <Fragment key={term}>
+      {i > 0 ? ' · ' : null}
+      <span className="whitespace-nowrap">{term}</span>
+    </Fragment>
+  ));
+  // What went out of the drawer net of the voids that brought it back.
+  const paidOut = terms === null ? null : sub(terms.payouts ?? '0.00', terms.returns ?? '0.00');
   const crates = standing.data ?? null;
   const n = (value: number) => value.toLocaleString(locale).replace('-', '−');
   const cratesAside =
@@ -113,8 +132,10 @@ export function PointStrip({
         <Meter
           to={pointCashHref}
           title={t('reception.state.cashTitle')}
-          aside={`${paidOutText} · ${t('reception.state.openingCash', { uah: openingText })}`}
-          value={cashNow === null ? '…' : formatUah(cashNow, locale)}
+          aside={cashAside}
+          asideTitle={cashTerms.join(' · ')}
+          // Loading reads «…», a failed read «—» — never a zero (rule 8).
+          value={cashNow === null ? (cash.isError ? '—' : '…') : formatUah(cashNow, locale)}
           className="xl:flex-[1.4]"
         >
           <CashBar cash={cashNow} paidOut={paidOut} />
@@ -139,44 +160,80 @@ export function PointStrip({
           <CratesBar crates={crates} />
         </Meter>
 
-        <Popover>
-          <PopoverTrigger className="min-w-0 rounded-md text-left outline-none hover:text-brand focus-visible:ring-2 focus-visible:ring-ring sm:col-span-2 xl:shrink-0 xl:text-right">
-            <span className="flex min-w-0 items-baseline gap-2 leading-4 xl:justify-end">
-              <Eyebrow className="flex shrink-0 items-center gap-1 leading-4 tracking-wide">
-                {t('reception.today.trigger')}
-                <ChevronDown className="size-3" aria-hidden="true" />
-              </Eyebrow>
-              {cmp(openToday, '0') === 1 ? (
-                <span
-                  className="min-w-0 truncate font-mono text-xs font-semibold text-amber"
-                  title={openTodayText}
-                >
-                  {openTodayText}
-                </span>
-              ) : null}
-              {todayTruncated ? (
-                <span
-                  className="min-w-0 truncate text-[10px] text-muted-foreground"
-                  title={t('reception.state.truncatedCaption')}
-                >
-                  {t('reception.state.truncatedCaption')}
-                </span>
-              ) : null}
-            </span>
-            <span
-              className="mt-1 block truncate font-mono text-sm leading-5 font-semibold"
-              title={todaySummary}
-            >
-              {todaySummary}
-            </span>
-          </PopoverTrigger>
-          <PopoverContent className="w-[420px] max-w-[calc(100vw-2rem)]">
-            <Eyebrow className="mb-2 truncate">{t('reception.today.title')}</Eyebrow>
-            <TodayReceipts shiftId={shiftId} onOpen={onOpenReceipt} />
-          </PopoverContent>
-        </Popover>
+        <TodayCell
+          onShowToday={onShowToday}
+          openText={cmp(openToday, '0') === 1 ? openTodayText : null}
+          truncated={todayTruncated}
+          summary={todaySummary}
+        />
       </div>
     </section>
+  );
+}
+
+/**
+ * «Сьогодні» — the day's receipts in one line. A button that takes the
+ * operator to the list (the card under the form) when there is one to go to;
+ * otherwise the same summary as plain text.
+ */
+function TodayCell({
+  onShowToday,
+  openText,
+  truncated,
+  summary,
+}: {
+  onShowToday?: () => void;
+  openText: string | null;
+  truncated: boolean;
+  summary: string;
+}) {
+  const { t } = useTranslation();
+  const body = (
+    <>
+      <span className="flex min-w-0 items-baseline gap-2 leading-4 xl:justify-end">
+        <Eyebrow className="flex shrink-0 items-center gap-1 leading-4 tracking-wide">
+          {t('reception.today.trigger')}
+          {onShowToday ? <ChevronDown className="size-3" aria-hidden="true" /> : null}
+        </Eyebrow>
+        {openText !== null ? (
+          <span
+            className="min-w-0 truncate font-mono text-xs font-semibold text-amber"
+            title={openText}
+          >
+            {openText}
+          </span>
+        ) : null}
+        {truncated ? (
+          <span
+            className="min-w-0 truncate text-[11px] text-muted-foreground"
+            title={t('reception.state.truncatedCaption')}
+          >
+            {t('reception.state.truncatedCaption')}
+          </span>
+        ) : null}
+      </span>
+      <span
+        className="mt-1 block truncate font-mono text-sm leading-5 font-semibold"
+        title={summary}
+      >
+        {summary}
+      </span>
+    </>
+  );
+  const className = 'min-w-0 text-left sm:col-span-2 xl:shrink-0 xl:text-right';
+  return onShowToday ? (
+    <button
+      type="button"
+      onClick={onShowToday}
+      className={cn(
+        className,
+        'rounded-md outline-none hover:text-brand focus-visible:ring-2 focus-visible:ring-ring',
+      )}
+    >
+      {body}
+    </button>
+  ) : (
+    <div className={className}>{body}</div>
   );
 }
 
@@ -224,12 +281,14 @@ function Meter({
         className,
       )}
     >
-      <div className="flex min-w-0 items-baseline justify-between gap-3 leading-4">
+      {/* On a phone the note wraps under the title rather than being cut —
+          its terms are what make the figure add up (B4). */}
+      <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 leading-4 sm:flex-nowrap">
         <Eyebrow className="shrink-0 leading-4 tracking-wide group-hover:text-brand">
           {title}
         </Eyebrow>
         <span
-          className="min-w-0 truncate font-mono text-xs text-muted-foreground"
+          className="min-w-0 font-mono text-xs text-muted-foreground sm:truncate"
           title={asideTitle ?? (typeof aside === 'string' ? aside : undefined)}
         >
           {aside}
@@ -262,15 +321,15 @@ function Track({ children, label }: { children?: React.ReactNode; label: string 
 
 /** The day's berry money as two parts: what is still in the drawer, then what
  *  went out. Both are printed above it; the bar only shows the proportion. */
-function CashBar({ cash, paidOut }: { cash: string | null; paidOut: string }) {
+function CashBar({ cash, paidOut }: { cash: string | null; paidOut: string | null }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
-  if (cash === null) return <Track label="" />;
+  if (cash === null || paidOut === null) return <Track label="" />;
   const inDrawer = cmp(cash, '0') === 1 ? cash : '0.00';
   const whole = add(inDrawer, paidOut);
   const left = cmp(whole, '0') === 1 ? share(inDrawer, whole) : 0;
   const tone =
-    cmp(inDrawer, '0') !== 1 ? 'bg-destructive' : left < CASH_LOW_SHARE ? 'bg-amber' : 'bg-success';
+    cmp(inDrawer, '0') !== 1 ? 'bg-destructive' : left < CASH_LOW_SHARE ? 'bg-amber' : 'bg-leaf';
   return (
     <Track
       label={t('reception.state.cashBar', {

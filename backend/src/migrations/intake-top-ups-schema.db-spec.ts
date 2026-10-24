@@ -40,8 +40,8 @@ describe('intake_top_ups schema (Postgres)', () => {
       [pointId, userId],
     );
     [{ id: intakeId }] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '100.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '100.00', '0.00', $4) RETURNING id`,
       [`T-IN-${run}`, shiftId, supplierId, userId],
     );
   });

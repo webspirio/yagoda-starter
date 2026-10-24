@@ -15,6 +15,8 @@ const weighed = (over: Partial<ReconciliationProduct> = {}): ReconciliationProdu
   missing_kg: '2.50',
   missing_amount: '175.00',
   rate: '70.00',
+  accrued: '23870.00',
+  top_ups: '0.00',
   crates: NO_CRATES,
   ...over,
 });
@@ -47,12 +49,50 @@ const view = (over: Partial<Props> = {}) =>
   );
 
 describe('Reconciliation', () => {
-  it('shows the point, ours, the difference and the money when the shift is closed', () => {
+  it('shows the point, the base, the difference and the money when the shift is closed', () => {
     view();
     const row = screen.getByRole('row', { name: /Малина/ });
-    expect(within(row).getByText('341.00 kg')).toBeInTheDocument();
-    expect(within(row).getByText('338.50 kg')).toBeInTheDocument();
-    expect(within(row).getByText('−2.50 kg')).toBeInTheDocument();
+    // Units live in the headers (audit E9); the column names follow the
+    // glossary «Пункт · База · Різниця» (E6).
+    expect(within(row).getByText('341.00')).toBeInTheDocument();
+    expect(within(row).getByText('338.50')).toBeInTheDocument();
+    expect(within(row).getByText('−2.50')).toBeInTheDocument();
+    for (const name of ['Point, kg', 'Base, kg', 'Difference, kg', 'Shortfall, ₴']) {
+      expect(screen.getByRole('columnheader', { name })).toBeInTheDocument();
+    }
+  });
+
+  it('explains the rate as the division it is, доплати named — audit E5', () => {
+    view({
+      products: [
+        weighed({
+          intake_net_kg: '596.80',
+          reweigh_net_kg: '595.40',
+          missing_kg: '1.40',
+          rate: '189.42',
+          missing_amount: '265.19',
+          accrued: '113044.20',
+          top_ups: '15000.00',
+        }),
+        weighed({ product_id: 'p2', product_name: 'Кизил', missing_kg: '0.00', missing_amount: '0.00' }),
+      ],
+      missingTotalKg: '1.40',
+      missingTotalAmount: '265.19',
+    });
+    expect(
+      screen.getByText(
+        'Малина: average purchase price incl. top-ups — 113,044.20 ÷ 596.80 = 189.42 ₴/kg',
+      ),
+    ).toBeInTheDocument();
+    // Only a product with a shortfall has a rate to explain.
+    expect(screen.queryByText(/^Кизил: average/)).not.toBeInTheDocument();
+  });
+
+  it('says plainly «average purchase price» when there are no доплати', () => {
+    view();
+    expect(
+      screen.getByText('Малина: average purchase price — 23,870.00 ÷ 341.00 = 70.00 ₴/kg'),
+    ).toBeInTheDocument();
   });
 
   it('prints the shortfall money as a formula a calculator re-checks, in amber — W3', () => {
@@ -62,9 +102,9 @@ describe('Reconciliation', () => {
       missingTotalAmount: '265.19',
     });
     const row = screen.getByRole('row', { name: /Малина/ });
-    const money = within(row).getByText('1.40 × 189.42 = 265.19 ₴');
+    const money = within(row).getByText('1.40 × 189.42 = 265.19');
     expect(money).toHaveClass('text-amber');
-    expect(within(row).getByText('−1.40 kg')).toHaveClass('text-amber');
+    expect(within(row).getByText('−1.40')).toHaveClass('text-amber');
   });
 
   it('prints the day total from the SERVER, never a browser sum of the rows — W2', () => {
@@ -77,7 +117,8 @@ describe('Reconciliation', () => {
       missingTotalKg: '1.40',
       missingTotalAmount: '265.19',
     });
-    expect(screen.getByTestId('missing-total')).toHaveTextContent('−1.40 kg · 265.19 ₴');
+    // Under the label «Shortfall total» the figure carries no sign (audit E11).
+    expect(screen.getByTestId('missing-total')).toHaveTextContent(/^1\.40 kg · 265\.19 ₴$/);
   });
 
   it('holds the claim back while the shift is open — a dash, and it says why', () => {
@@ -103,7 +144,7 @@ describe('Reconciliation', () => {
     });
     const row = screen.getByRole('row', { name: /Малина/ });
     expect(within(row).getByText(/not reweighed|не перезважено/i)).toBeInTheDocument();
-    expect(within(row).queryByText('0.00 kg')).not.toBeInTheDocument();
+    expect(within(row).queryByText('0.00')).not.toBeInTheDocument();
   });
 
   it('counts the products still without a line', () => {
@@ -116,7 +157,7 @@ describe('Reconciliation', () => {
     expect(screen.getByText(/not reweighed:\s*1\b|не перезважено товарів:\s*1\b/i)).toBeInTheDocument();
   });
 
-  it('reports unposted drafts on their own line and leaves «Наша» untouched', () => {
+  it('reports unposted drafts on their own line and leaves «База» untouched', () => {
     view({
       drafts: [
         {
@@ -134,7 +175,7 @@ describe('Reconciliation', () => {
       ],
     });
     const row = screen.getByRole('row', { name: /Малина/ });
-    expect(within(row).getByText('338.50 kg')).toBeInTheDocument(); // NOT 350.50
+    expect(within(row).getByText('338.50')).toBeInTheDocument(); // NOT 350.50
     expect(screen.getByText(/12\.00/)).toBeInTheDocument();
     expect(screen.getByText(/not recorded yet|не проведено/i)).toBeInTheDocument();
   });
@@ -151,7 +192,7 @@ describe('Reconciliation', () => {
       missingTotalAmount: '0.00',
     });
     const row = screen.getByRole('row', { name: /Малина/ });
-    const diff = within(row).getByText('+4.00 kg');
+    const diff = within(row).getByText('+4.00');
     expect(diff).toHaveClass('text-muted-foreground');
     expect(within(row).queryByText(/280/)).not.toBeInTheDocument();
     expect(screen.queryByText(/surplus|надлишок/i)).not.toBeInTheDocument();
@@ -203,8 +244,8 @@ describe('Reconciliation', () => {
       ],
     });
     const second = screen.getByRole('row', { name: /2 сорт/ });
-    expect(within(second).getByText('263.10 kg')).toBeInTheDocument();
-    expect(within(second).getByText('368.00 kg')).toBeInTheDocument();
+    expect(within(second).getByText('263.10')).toBeInTheDocument();
+    expect(within(second).getByText('368.00')).toBeInTheDocument();
     expect(screen.getByRole('row', { name: /1 сорт/ })).toBeInTheDocument();
   });
 

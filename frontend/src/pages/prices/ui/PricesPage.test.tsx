@@ -157,11 +157,29 @@ describe('PricesPage — the sheet', () => {
     await user.click(within(row).getByRole('button', { name: /Малина · Вищий сорт.*Гайове/i }));
 
     const dialog = await screen.findByRole('dialog');
+    const base = within(dialog).getByLabelText(/base price/i);
+    await user.clear(base);
+    await user.type(base, '155.00');
     await user.click(within(dialog).getByRole('button', { name: /^save$/i }));
 
     await waitFor(() => expect(setPriceMock).toHaveBeenCalledTimes(1));
     expect(setPriceMock.mock.calls[0][0].collection_point_id).toBe('p2');
     expect(bulkMock).not.toHaveBeenCalled();
+  });
+
+  // Audit 2026-10-24, F7: saving the price a point already has wrote a «change» into the
+  // day's feed that changed nothing.
+  it('writes nothing when one point is saved with the price it already has', async () => {
+    const user = userEvent.setup();
+    render(<PricesPage />, { wrapper: MemoryRouter });
+
+    const row = rowFor('Вищий сорт');
+    await user.click(within(row).getByRole('button', { name: /Малина · Вищий сорт.*Гайове/i }));
+    const dialog = await screen.findByRole('dialog');
+    await user.click(within(dialog).getByRole('button', { name: /^save$/i }));
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(setPriceMock).not.toHaveBeenCalled();
   });
 
   describe('the money fields (#72)', () => {

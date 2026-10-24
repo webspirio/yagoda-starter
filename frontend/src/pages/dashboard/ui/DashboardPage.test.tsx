@@ -132,7 +132,7 @@ beforeEach(() => {
     isError: false,
   });
   balancesMock.mockReset().mockReturnValue({
-    data: { data: [balanceRow(), balanceRow({ supplier_id: 'sup2', first_name: 'Olena', last_name: 'Bila', collection_point_id: 'p2', debt: '5.00' })], total: 2, page: 1, limit: 100 },
+    data: { data: [balanceRow(), balanceRow({ supplier_id: 'sup2', first_name: 'Olena', last_name: 'Bila', collection_point_id: 'p2', debt: '5.00' })], total: 2, page: 1, limit: 100, oldest_open_date: null, total_owed: '15.00' },
     isPending: false,
     isError: false,
   });
@@ -148,20 +148,21 @@ describe('DashboardPage — the owner', () => {
 
     const tile = (label: string) => screen.getByText(label).closest('[data-slot="stat-tile"]');
     expect(tile('Points open')).toHaveTextContent('1 / 2');
-    expect(tile('Receipts today')).toHaveTextContent('3');
-    expect(tile('Accrued')).toHaveTextContent('128.00 ₴');
+    expect(tile('Receipts')).toHaveTextContent('3');
+    // Receipts only — cost of day's «нараховано» adds the доплати (audit E2).
+    expect(tile('Receipts total')).toHaveTextContent('128.00 ₴');
     expect(tile('Paid')).toHaveTextContent('40.00 ₴');
-    expect(tile('Network balances')).toHaveTextContent('15.00 ₴');
+    expect(tile('Total owed')).toHaveTextContent('15.00 ₴');
 
     await expectNoAxeViolations(container);
   });
 
-  it('shows a row per active point, with the no-shift point flagged unopened', () => {
+  it('shows a row per working point and folds the idle ones into one line — audit E11', () => {
     renderDashboard();
 
     expect(screen.getByText('Shypynky')).toBeInTheDocument();
-    expect(screen.getByText('Haiove')).toBeInTheDocument();
-    expect(screen.getByText('Shift not opened yet')).toBeInTheDocument();
+    expect(screen.getByText('No shift opened yet: Haiove')).toBeInTheDocument();
+    expect(screen.queryByText('Shift not opened yet')).toBeNull();
 
     const p1Row = screen.getByText('Shypynky').closest('[data-slot="card"]') as HTMLElement;
     expect(within(p1Row).getByRole('link', { name: 'Point cash' })).toHaveAttribute(
@@ -174,24 +175,38 @@ describe('DashboardPage — the owner', () => {
     );
   });
 
-  it('lists the biggest balances, linking each to that supplier’s point', () => {
+  it('lists the biggest balances, linking each to that supplier’s card — audit E11', () => {
     renderDashboard();
 
     const links = screen.getAllByRole('link', { name: /Ivan Koval|Olena Bila/ });
-    expect(links[0]).toHaveAttribute('href', '/debts?point=p1');
-    expect(links[1]).toHaveAttribute('href', '/debts?point=p2');
+    expect(links[0]).toHaveAttribute('href', '/suppliers/sup1');
+    expect(links[1]).toHaveAttribute('href', '/suppliers/sup2');
   });
 
-  it('hints that balances are partial only once the server has more than 100', () => {
+  it('reads «Total owed» from the server over EVERY row, not a sum of the first 100 — audit E7', () => {
     balancesMock.mockReturnValue({
-      data: { data: [balanceRow()], total: 150, page: 1, limit: 100 },
+      data: { data: [balanceRow()], total: 150, page: 1, limit: 100, oldest_open_date: null, total_owed: '98765.43' },
       isPending: false,
       isError: false,
     });
 
     renderDashboard();
 
-    expect(screen.getByText('first 100')).toBeInTheDocument();
+    const tile = screen.getByText('Total owed').closest('[data-slot="stat-tile"]');
+    expect(tile).toHaveTextContent('98,765.43 ₴');
+    // The figure is whole, so it carries no «first 100».
+    expect(screen.queryByText('first 100')).toBeNull();
+  });
+
+  it('keeps every money figure on one line and the tiles in one column on a phone — audit E10', () => {
+    const { container } = renderDashboard();
+
+    const grid = container.querySelector('[data-slot="stat-tile"]')?.parentElement as HTMLElement;
+    expect(grid.className).toContain('max-[399px]:grid-cols-1');
+    const money = within(
+      screen.getByText('Receipts total').closest('[data-slot="stat-tile"]') as HTMLElement,
+    ).getByText('128.00 ₴');
+    expect(money.className).toContain('whitespace-nowrap');
   });
 
   it('says nothing about truncation when the balances page is not the server’s only one', () => {
@@ -213,14 +228,14 @@ describe('DashboardPage — the owner', () => {
     renderDashboard();
 
     const tile = (label: string) => screen.getByText(label).closest('[data-slot="stat-tile"]');
-    expect(tile('Receipts today')).toHaveTextContent('first 100 per point');
-    expect(tile('Accrued')).toHaveTextContent('first 100 per point');
+    expect(tile('Receipts')).toHaveTextContent('first 100 per point');
+    expect(tile('Receipts total')).toHaveTextContent('first 100 per point');
     expect(tile('Paid')).toHaveTextContent('first 100 per point');
 
     const p1Row = screen.getByText('Shypynky').closest('[data-slot="card"]') as HTMLElement;
     expect(within(p1Row).getByText('first 100 per point')).toBeInTheDocument();
-    const p2Row = screen.getByText('Haiove').closest('[data-slot="card"]') as HTMLElement;
-    expect(within(p2Row).queryByText('first 100 per point')).toBeNull();
+    // Haiove has no shift today, so it has no card of its own to carry a hint.
+    expect(screen.getByText('No shift opened yet: Haiove')).toBeInTheDocument();
   });
 
   it('lists a shift left open on an earlier day, above today’s points, linking to that day', async () => {
@@ -364,7 +379,7 @@ describe('DashboardPage — the operator', () => {
     expect(screen.getByText('Shypynky')).toBeInTheDocument();
     expect(screen.queryByText('Haiove')).toBeNull();
     expect(screen.queryByText('Points open')).toBeNull();
-    expect(screen.queryByText('Network balances')).toBeNull();
+    expect(screen.queryByText('Total owed')).toBeNull();
 
     expect(balancesMock).toHaveBeenCalledWith(
       expect.objectContaining({ enabled: false }),

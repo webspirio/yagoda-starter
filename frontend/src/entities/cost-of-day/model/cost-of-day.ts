@@ -40,8 +40,9 @@ export interface CostOfDayProduct {
   price_was: string;
   /** «собівартість» — було + на кілограм. `null` when there is no на кілограм. */
   price_cost: string | null;
-  /** «нараховане ÷ наша вага» — the third of §8.4's three prices. */
-  price_by_our_weight: string | null;
+  // `price_by_our_weight` (§8.4's «нараховане ÷ наша вага») still rides on
+  // the wire but no screen prints it since the single-table redesign — left
+  // off this type so nothing starts reading it by accident (audit E11).
   /** §3.15 — every grade this product had this shift is on the scale. */
   complete: boolean;
   /** The product's grades — a breakdown, not a second недостача: the

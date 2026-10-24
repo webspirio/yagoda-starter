@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { axe } from 'vitest-axe';
 import type { AxeResults } from 'axe-core';
 import { ApiError } from '@/shared/api';
+import { todayIso } from '@/shared/lib/date';
 import type { PointOption } from '@/entities/collection-point';
 import type { ReconciliationGrade } from '@/entities/reweigh';
 import { ReweighPage } from './ReweighPage';
@@ -23,6 +24,7 @@ const {
   setPointMock,
   initialPointIdRef,
   toastErrorMock,
+  dateParamRef,
 } = vi.hoisted(() => ({
   workingPointMock: vi.fn(),
   pointsMock: vi.fn(),
@@ -43,6 +45,8 @@ const {
   // as the real hook.
   initialPointIdRef: { current: 'p1' as string | null },
   toastErrorMock: vi.fn(),
+  // `?date=` — `null` (today) unless a test sets a past day.
+  dateParamRef: { current: null as string | null },
 }));
 
 // The post's failure toast is the ONLY place the refusal's cause reaches the
@@ -82,7 +86,7 @@ vi.mock('@/entities/collection-point', () => ({
 }));
 
 vi.mock('@/shared/lib/url-state', () => ({
-  useUrlParam: () => [null, setDateMock],
+  useUrlParam: () => [dateParamRef.current, setDateMock],
 }));
 
 vi.mock('@/entities/shift', () => ({
@@ -224,11 +228,28 @@ afterEach(() => {
 });
 
 describe('ReweighPage', () => {
-  it('says the shift was never opened, and offers no form', () => {
+  it('says the point did not work that day — ONE empty state, no form (audit E8)', () => {
     shiftMock.mockReturnValue({ data: null, isPending: false });
     render(<ReweighPage />);
-    expect(screen.getByText(/never opened|не відкривали/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /add position|додати позицію/i })).toBeDisabled();
+    expect(screen.getAllByText(/did not work that day/i)).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /add position|додати позицію/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Reconciliation with the point/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/was not opened/)).not.toBeInTheDocument();
+  });
+
+  it('offers «Today» from a past date, and only there (audit E11)', async () => {
+    const { unmount } = render(<ReweighPage />);
+    expect(screen.queryByRole('button', { name: /^today$/i })).not.toBeInTheDocument();
+    unmount();
+
+    dateParamRef.current = '2026-09-19';
+    try {
+      render(<ReweighPage />);
+      await userEvent.click(screen.getByRole('button', { name: /^today$/i }));
+      expect(setDateMock).toHaveBeenLastCalledWith(todayIso());
+    } finally {
+      dateParamRef.current = null;
+    }
   });
 
   /**
@@ -245,7 +266,7 @@ describe('ReweighPage', () => {
     shiftMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
     render(<ReweighPage />);
     expect(screen.getByRole('alert')).toBeInTheDocument();
-    expect(screen.queryByText(/never opened|не відкривали/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/did not work that day/i)).not.toBeInTheDocument();
   });
 
   it('reports a failed reconciliation read as a failure, not as a day nobody bought on', () => {
@@ -271,7 +292,7 @@ describe('ReweighPage', () => {
     // grid's failure branch, so a single-alert assertion would quietly pass
     // if only one of the two ever learned about the failure.
     expect(screen.getAllByRole('alert').length).toBeGreaterThan(0);
-    expect(screen.queryByText(/never opened|не відкривали/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/did not work that day/i)).not.toBeInTheDocument();
   });
 
   /**
@@ -296,7 +317,7 @@ describe('ReweighPage', () => {
   it('waits for the shift read rather than answering §6.1 from an empty cache', () => {
     shiftMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
     render(<ReweighPage />);
-    expect(screen.queryByText(/never opened|не відкривали/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/did not work that day/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
@@ -310,7 +331,7 @@ describe('ReweighPage', () => {
     shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
     reweighMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
     render(<ReweighPage />);
-    expect(screen.getByText(/never opened|не відкривали/i)).toBeInTheDocument();
+    expect(screen.getByText(/did not work that day/i)).toBeInTheDocument();
   });
 
   it('posts each draft as its own line, in the order they were entered', async () => {

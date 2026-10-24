@@ -93,7 +93,7 @@ describe('ExpensesStrip', () => {
     renderPanel();
 
     await user.type(screen.getByPlaceholderText('Підпис витрати'), 'водій');
-    await user.type(screen.getByPlaceholderText('₴'), '500');
+    await user.type(screen.getByLabelText('Сума витрати, ₴'), '500');
     await user.click(screen.getByRole('button', { name: 'Додати витрату' }));
 
     await waitFor(() =>
@@ -108,7 +108,7 @@ describe('ExpensesStrip', () => {
     renderPanel();
 
     await user.type(screen.getByPlaceholderText('Підпис витрати'), 'водій');
-    await user.type(screen.getByPlaceholderText('₴'), '500');
+    await user.type(screen.getByLabelText('Сума витрати, ₴'), '500');
     await user.click(screen.getByRole('button', { name: 'Додати витрату' }));
 
     // A line that vanishes without a word is worse than one that refuses out
@@ -118,7 +118,7 @@ describe('ExpensesStrip', () => {
     // checked here.
     await waitFor(() => expect(createMock).toHaveBeenCalled());
     expect(screen.getByPlaceholderText('Підпис витрати')).toHaveValue('водій');
-    expect(screen.getByPlaceholderText('₴')).toHaveValue('500');
+    expect(screen.getByLabelText('Сума витрати, ₴')).toHaveValue('500');
   });
 
   // A title paired with a description is one sentence of what happened; the
@@ -129,7 +129,7 @@ describe('ExpensesStrip', () => {
     renderPanel();
 
     await user.type(screen.getByPlaceholderText('Підпис витрати'), 'водій');
-    await user.type(screen.getByPlaceholderText('₴'), '500');
+    await user.type(screen.getByLabelText('Сума витрати, ₴'), '500');
     await user.click(screen.getByRole('button', { name: 'Додати витрату' }));
 
     await waitFor(() => expect(toastErrorMock).toHaveBeenCalled());
@@ -138,12 +138,21 @@ describe('ExpensesStrip', () => {
     });
   });
 
+  it('opens the inline editor with the amount as the screen prints it — «1000,00»', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(screen.getByRole('button', { name: 'Змінити «пальне»' }));
+    expect(screen.getByDisplayValue('1000,00')).toBeInTheDocument();
+    expect(screen.queryByDisplayValue('1000.00')).not.toBeInTheDocument();
+  });
+
   it('patches only the field that actually moved', async () => {
     const user = userEvent.setup();
     renderPanel();
 
     await user.click(screen.getByRole('button', { name: 'Змінити «пальне»' }));
-    const amount = screen.getByDisplayValue('1000.00');
+    const amount = screen.getByDisplayValue('1000,00');
     await user.clear(amount);
     await user.type(amount, '1300');
     await user.click(screen.getByRole('button', { name: 'Зберегти' }));
@@ -159,7 +168,7 @@ describe('ExpensesStrip', () => {
     renderPanel();
 
     await user.click(screen.getByRole('button', { name: 'Змінити «пальне»' }));
-    // Leave the amount input untouched at '1000.00' — only the label field
+    // Leave the amount input untouched at «1000,00» — only the label field
     // is edited below.
     const labelInput = screen.getByDisplayValue('пальне');
     await user.clear(labelInput);
@@ -201,7 +210,7 @@ describe('ExpensesStrip', () => {
     // stand mid-keystroke, and `CreateDayExpenseDto`'s `@Matches` refuses it.
     // The refusal belongs on this side as a disabled button — a round trip
     // that comes back «щось пішло не так» says nothing about the field.
-    await user.type(screen.getByLabelText('₴'), '12.');
+    await user.type(screen.getByLabelText('Сума витрати, ₴'), '12.');
 
     expect(screen.getByRole('button', { name: 'Додати витрату' })).toBeDisabled();
     await user.click(screen.getByRole('button', { name: 'Додати витрату' }));
@@ -213,7 +222,7 @@ describe('ExpensesStrip', () => {
     renderPanel();
 
     await user.click(screen.getByRole('button', { name: 'Змінити «пальне»' }));
-    const amount = screen.getByDisplayValue('1000.00');
+    const amount = screen.getByDisplayValue('1000,00');
     await user.clear(amount);
     await user.type(amount, '13.');
 
@@ -229,7 +238,7 @@ describe('ExpensesStrip', () => {
     renderPanel();
 
     await user.type(screen.getByLabelText('Підпис витрати'), 'водій');
-    await user.type(screen.getByLabelText('₴'), '12.');
+    await user.type(screen.getByLabelText('Сума витрати, ₴'), '12.');
 
     // Mid-keystroke: the button is blocked, the message waits.
     expect(screen.getByRole('button', { name: 'Додати витрату' })).toBeDisabled();
@@ -237,7 +246,7 @@ describe('ExpensesStrip', () => {
     await user.tab();
 
     expect(screen.getByRole('alert')).toHaveTextContent('Введіть число, напр. 12000 або 980,40');
-    expect(screen.getByLabelText('₴')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByLabelText('Сума витрати, ₴')).toHaveAttribute('aria-invalid', 'true');
     expect(screen.getByRole('button', { name: 'Додати витрату' })).toBeDisabled();
   });
 
@@ -246,7 +255,7 @@ describe('ExpensesStrip', () => {
     renderPanel();
 
     await user.click(screen.getByRole('button', { name: 'Змінити «пальне»' }));
-    const amount = screen.getByDisplayValue('1000.00');
+    const amount = screen.getByDisplayValue('1000,00');
     await user.clear(amount);
     await user.type(amount, '13.');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
@@ -260,7 +269,7 @@ describe('ExpensesStrip', () => {
     renderPanel();
 
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    await user.type(screen.getByLabelText('₴'), '12.5');
+    await user.type(screen.getByLabelText('Сума витрати, ₴'), '12.5');
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
@@ -269,8 +278,8 @@ describe('ExpensesStrip', () => {
     renderPanel();
 
     await user.type(screen.getByLabelText('Підпис витрати'), 'водій');
-    await user.type(screen.getByLabelText('₴'), '1 500');
-    expect(screen.getByLabelText('₴')).toHaveValue('1500');
+    await user.type(screen.getByLabelText('Сума витрати, ₴'), '1 500');
+    expect(screen.getByLabelText('Сума витрати, ₴')).toHaveValue('1500');
     await user.click(screen.getByRole('button', { name: 'Додати витрату' }));
 
     await waitFor(() =>
@@ -278,12 +287,61 @@ describe('ExpensesStrip', () => {
     );
   });
 
-  it('removes a line', async () => {
+  it('removes a line only once the removal is confirmed — audit E11', async () => {
     const user = userEvent.setup();
     renderPanel();
 
     await user.click(screen.getByRole('button', { name: 'Прибрати «пальне»' }));
+    // A stray click on a trash can no longer deletes money from the day.
+    expect(removeMock).not.toHaveBeenCalled();
+    expect(screen.getByText('Прибрати «пальне»?')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Прибрати' }));
     await waitFor(() => expect(removeMock).toHaveBeenCalledWith({ id: 'e1' }));
+  });
+
+  it('keeps the line when the removal is cancelled', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(screen.getByRole('button', { name: 'Прибрати «пальне»' }));
+    await user.click(screen.getByRole('button', { name: 'Скасувати' }));
+
+    expect(removeMock).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Прибрати «пальне»' })).toBeInTheDocument();
+  });
+
+  it('keeps «Додати» disabled on a zero amount — the server refuses it', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByPlaceholderText('Підпис витрати'), 'водій');
+    await user.type(screen.getByLabelText('Сума витрати, ₴'), '0');
+    expect(screen.getByRole('button', { name: 'Додати витрату' })).toBeDisabled();
+  });
+
+  it('adds with Enter from the amount field', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.type(screen.getByPlaceholderText('Підпис витрати'), 'водій');
+    await user.type(screen.getByLabelText('Сума витрати, ₴'), '500{Enter}');
+
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith({ shiftId: 's1', label: 'водій', amount: '500' }),
+    );
+  });
+
+  it('saves an edit with Enter', async () => {
+    const user = userEvent.setup();
+    renderPanel();
+
+    await user.click(screen.getByRole('button', { name: 'Змінити «пальне»' }));
+    const amount = screen.getByDisplayValue('1000,00');
+    await user.clear(amount);
+    await user.type(amount, '1300{Enter}');
+
+    await waitFor(() => expect(updateMock).toHaveBeenCalledWith({ id: 'e1', amount: '1300' }));
   });
 
   it("sums the day's expenses and their rate in plum", () => {

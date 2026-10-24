@@ -69,9 +69,9 @@ describe('ListSupplierBalancesQuery.list (Postgres)', () => {
   let seq = 0;
   const insertIntake = async (shift: string, supplier: string, amount: string, voided = false) => {
     await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id,
                             voided_at, voided_by_user_id, void_reason)
-       VALUES ($1, $2, $3, $4, $5,
+       VALUES ($1, $2, $3, $4, '0.00', $5,
                CASE WHEN $6 THEN now() END, CASE WHEN $6 THEN $5::uuid END,
                CASE WHEN $6 THEN 'test' END)`,
       [`IN-${run}-${++seq}`, shift, supplier, amount, userId, voided],
@@ -234,6 +234,8 @@ describe('ListSupplierBalancesQuery.list (Postgres)', () => {
     expect(names(page)).not.toContain('Богдан');
     // «Всього винні» is pinned with the rows: point A's 70 + 40 + 40, Степан's credit out (#229).
     expect(page.total_owed).toBe('150.00');
+    // …and so is «Постачальників із залишком»: four visible rows, three we owe (audit D9).
+    expect(page.owed_count).toBe(3);
   });
 
   it('lets the owner filter to one point, and see all points without a filter', async () => {

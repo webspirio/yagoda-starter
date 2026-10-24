@@ -12,9 +12,6 @@ import { ShiftCountPanel } from './ShiftCountPanel';
 // own job is only to open/close it, which a stub with the same `open` prop
 // proves just as well.
 vi.mock('@/features/count-shift', async (importOriginal) => {
-  // `discrepancyTone` is the REAL feature export — this panel's own pill and
-  // midday rows call it directly, and stubbing it away would just be
-  // re-implementing it a second time in this file.
   const actual = await importOriginal<typeof import('@/features/count-shift')>();
   return {
     ...actual,
@@ -109,7 +106,9 @@ describe('ShiftCountPanel — the shift line and names', () => {
     expect(screen.getByText('07:00 AM to 03:30 PM')).toBeInTheDocument();
   });
 
-  it('shows the opening and closing counted figures', () => {
+  // C8 — the counted figures are the ledger's; the panel names what each
+  // count came to and nothing more.
+  it('names what the closing count came to — not the counted figures the ledger prints', () => {
     render(
       <ShiftCountPanel
         shift={shift({ status: 'closed', closed_by_name: 'Petro' })}
@@ -127,10 +126,12 @@ describe('ShiftCountPanel — the shift line and names', () => {
       />,
     );
 
-    expect(screen.getByText('Counted this morning')).toBeInTheDocument();
-    expect(screen.getByText('1,000.00 ₴')).toBeInTheDocument();
-    expect(screen.getByText('Counted at close')).toBeInTheDocument();
-    expect(screen.getByText('1,450.00 ₴')).toBeInTheDocument();
+    expect(screen.queryByText('1,000.00 ₴')).toBeNull();
+    expect(screen.queryByText('1,450.00 ₴')).toBeNull();
+    // A matching opening adds nothing; the closing says it matched.
+    expect(screen.queryByText('Opening')).toBeNull();
+    expect(screen.getByText('Closing')).toBeInTheDocument();
+    expect(screen.getByText('Matched')).toBeInTheDocument();
   });
 
   it('shows no closing row, and no discrepancy pill, on a shift still open', () => {
@@ -148,8 +149,8 @@ describe('ShiftCountPanel — the shift line and names', () => {
       />,
     );
 
-    expect(screen.queryByText('Counted at close')).toBeNull();
-    expect(screen.queryByText('Discrepancy')).toBeNull();
+    expect(screen.queryByText('Closing')).toBeNull();
+    expect(screen.queryByText(/^(Matched|Short|Over)/)).toBeNull();
   });
 
   it('shows a leaf discrepancy pill when the closing count matched', () => {
@@ -167,7 +168,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
       />,
     );
 
-    expect(screen.getByText('Discrepancy').closest('span')).toHaveClass('text-leaf');
+    expect(screen.getByText('Matched').closest('[data-slot="badge"]')).toHaveClass('text-leaf');
   });
 
   it('shows a destructive discrepancy pill when the closing count did not match', () => {
@@ -185,7 +186,10 @@ describe('ShiftCountPanel — the shift line and names', () => {
       />,
     );
 
-    expect(screen.getByText('Discrepancy').closest('span')).toHaveClass('text-destructive');
+    // C7 — named with its amount, never a bare «Discrepancy» pill.
+    expect(screen.getByText('Short 25.00 ₴').closest('[data-slot="badge"]')).toHaveClass(
+      'text-destructive',
+    );
   });
 
   it('names who closed the shift', () => {
@@ -203,7 +207,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
       />,
     );
 
-    expect(screen.getByText('closed by Petro')).toBeInTheDocument();
+    expect(screen.getByText('Closed by: Petro')).toBeInTheDocument();
   });
 
   const renderWith = (counts: CashCount[]) =>
@@ -242,8 +246,8 @@ describe('ShiftCountPanel — the shift line and names', () => {
       count({ id: 'c', kind: 'closing', operator_note: 'вечір' }),
     ]);
     const FOLLOWING = Node.DOCUMENT_POSITION_FOLLOWING;
-    const openingLabel = screen.getByText('Counted this morning');
-    const closingLabel = screen.getByText('Counted at close');
+    const openingLabel = screen.getByText('Opening');
+    const closingLabel = screen.getByText('Closing');
     const morning = screen.getByText(/ранок/);
     const evening = screen.getByText(/вечір/);
     // Each text sits after its own label and before the next one.
@@ -254,7 +258,8 @@ describe('ShiftCountPanel — the shift line and names', () => {
 
   it('shows the opening discrepancy pill when the opening count did not match', () => {
     renderWith([count({ kind: 'opening', discrepancy: '-50.00', is_open: true })]);
-    expect(screen.getByText('Discrepancy')).toBeInTheDocument();
+    expect(screen.getByText('Opening')).toBeInTheDocument();
+    expect(screen.getByText('Short 50.00 ₴')).toBeInTheDocument();
   });
 
   it('reads a legacy «awaiting_explanation» shift as closed', () => {
@@ -275,7 +280,7 @@ describe('ShiftCountPanel — the shift line and names', () => {
     );
 
     expect(screen.getByText('Shift closed')).toBeInTheDocument();
-    expect(screen.getByText('closed by Petro')).toBeInTheDocument();
+    expect(screen.getByText('Closed by: Petro')).toBeInTheDocument();
   });
 
   it('shows no shift line at all when the date has no shift', () => {
@@ -386,7 +391,7 @@ describe('ShiftCountPanel — a failed shift/counts read is not «no shift»', (
       screen.getByRole('alert'),
     ).toHaveTextContent('The shift could not be read — reload the page');
     expect(screen.queryByText('Shift open')).toBeNull();
-    expect(screen.queryByText('Counted this morning')).toBeNull();
+    expect(screen.queryByText('Opening')).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
   });
 
@@ -411,7 +416,7 @@ describe('ShiftCountPanel — a failed shift/counts read is not «no shift»', (
 });
 
 describe('ShiftCountPanel — the day’s recounts', () => {
-  it('says the drawer was not recounted today when the midday list is empty', () => {
+  it('says the drawer was not recounted on this day when the midday list is empty', () => {
     render(
       <ShiftCountPanel
         shift={shift()}
@@ -426,10 +431,10 @@ describe('ShiftCountPanel — the day’s recounts', () => {
       />,
     );
 
-    expect(screen.getByText('The drawer has not been recounted today.')).toBeInTheDocument();
+    expect(screen.getByText('The drawer was not recounted on this day.')).toBeInTheDocument();
   });
 
-  it('lists a midday row with its time, ✓/⚠ and the counted figure — ignoring the crates book', () => {
+  it('lists a midday row with its time, its named difference and the counted figure — ignoring the crates book', () => {
     vi.stubEnv('TZ', 'UTC');
     render(
       <ShiftCountPanel
@@ -455,13 +460,13 @@ describe('ShiftCountPanel — the day’s recounts', () => {
     );
 
     expect(screen.getByText('Count at 10:00 AM')).toBeInTheDocument();
-    expect(screen.getByText('✓ matched')).toBeInTheDocument();
+    expect(screen.getByText('Matched')).toBeInTheDocument();
     expect(screen.getByText('1,200.00 ₴')).toBeInTheDocument();
     expect(screen.queryByText('999.00 ₴')).toBeNull();
     vi.unstubAllEnvs();
   });
 
-  it('marks a mismatched midday recount ⚠, in destructive tone', () => {
+  it('names a short midday recount with its amount, in destructive tone', () => {
     render(
       <ShiftCountPanel
         shift={shift()}
@@ -476,7 +481,7 @@ describe('ShiftCountPanel — the day’s recounts', () => {
       />,
     );
 
-    const mismatch = screen.getByText('⚠ did not match');
+    const mismatch = screen.getByText('Short 15.00 ₴');
     expect(mismatch).toHaveClass('text-destructive');
   });
 
@@ -533,7 +538,7 @@ describe('ShiftCountPanel — the day’s recounts', () => {
     );
 
     expect(screen.getByText(/^Count at/)).toBeInTheDocument();
-    expect(screen.getByText('⚠ did not match')).toBeInTheDocument();
+    expect(screen.getByText('Short 90.00 ₴')).toBeInTheDocument();
     expect(screen.queryByText(/Recounted/)).toBeNull();
   });
 });

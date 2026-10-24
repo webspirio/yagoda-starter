@@ -15,8 +15,16 @@ import { DecimalInput } from '@/shared/ui/decimal-input';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { toBannerError, type BannerError } from '@/shared/lib/api-error';
-import { decimalRules, cratesRules } from '@/shared/lib/money';
+import {
+  decimalRules,
+  cratesRules,
+  formatUah,
+  parseDecimal,
+  sub,
+  toDecimalField,
+} from '@/shared/lib/money';
 import type { Transfer } from '@/entities/transfer';
+import { DiscrepancyText } from '@/entities/cash-count';
 import { useResolveTransferMutation } from '../api/useResolveTransfer';
 
 interface ResolveFormValues {
@@ -41,7 +49,8 @@ export function ResolveTransferDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const locale = i18n.language;
   const resolveTransfer = useResolveTransferMutation();
   const [formError, setFormError] = useState<BannerError | null>(null);
 
@@ -51,7 +60,9 @@ export function ResolveTransferDialog({
     formState: { errors, isSubmitting },
   } = useForm<ResolveFormValues>({
     defaultValues: {
-      resolved_cash: transfer.reported_cash ?? '0.00',
+      // Shown the way the screen prints money («49500,00» in uk); a prefill is
+      // stored as given, so the submit reads it back through `parseDecimal`.
+      resolved_cash: toDecimalField(transfer.reported_cash ?? '0.00', locale),
       resolved_crates: String(transfer.reported_crates ?? 0),
     },
   });
@@ -61,7 +72,8 @@ export function ResolveTransferDialog({
     try {
       await resolveTransfer.mutateAsync({
         id: transfer.id,
-        resolved_cash: values.resolved_cash,
+        // `validate` refused anything `parseDecimal` cannot read.
+        resolved_cash: parseDecimal(values.resolved_cash) ?? values.resolved_cash,
         resolved_crates: Number(values.resolved_crates.trim()),
       });
       toast.success(t('transfer.resolve.toast'));
@@ -80,6 +92,36 @@ export function ResolveTransferDialog({
             {t('transfer.resolve.note', { note: transfer.dispute_note })}
           </DialogDescription>
         </DialogHeader>
+
+        {/* C11 — what the owner is deciding between, before the inputs:
+            sent, what the point counted, and the difference named. */}
+        <dl className="grid grid-cols-3 gap-3 rounded-lg border border-line2 px-3 py-2 text-sm">
+          <div className="flex min-w-0 flex-col">
+            <dt className="text-xs text-muted-foreground">{t('transfer.resolve.sentCash')}</dt>
+            <dd className="whitespace-nowrap font-mono tabular-nums">
+              {formatUah(transfer.cash, locale)}
+            </dd>
+          </div>
+          <div className="flex min-w-0 flex-col">
+            <dt className="text-xs text-muted-foreground">{t('transfer.resolve.reportedCash')}</dt>
+            <dd className="whitespace-nowrap font-mono tabular-nums">
+              {transfer.reported_cash == null ? '—' : formatUah(transfer.reported_cash, locale)}
+            </dd>
+          </div>
+          <div className="flex min-w-0 flex-col">
+            <dt className="text-xs text-muted-foreground">{t('transfer.resolve.difference')}</dt>
+            <dd>
+              {transfer.reported_cash == null ? (
+                '—'
+              ) : (
+                <DiscrepancyText
+                  className="font-mono tabular-nums"
+                  difference={sub(transfer.reported_cash, transfer.cash)}
+                />
+              )}
+            </dd>
+          </div>
+        </dl>
 
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
           <Field

@@ -59,8 +59,8 @@ describe('ListIntakeTopUpsQuery.list (Postgres)', () => {
       [pointId, ownerId],
     );
     const [intake] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '100.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '100.00', '0.00', $4) RETURNING id`,
       [`${label}-IN-${run}`, shift.id, supplier.id, ownerId],
     );
     const [topUp] = await ds.query(
@@ -89,8 +89,8 @@ describe('ListIntakeTopUpsQuery.list (Postgres)', () => {
     };
     const intake = async (supplierId: string, label: string): Promise<string> => {
       const [row] = await ds.query(
-        `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-         VALUES ($1, $2, $3, '100.00', $4) RETURNING id`,
+        `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+         VALUES ($1, $2, $3, '100.00', '0.00', $4) RETURNING id`,
         [`${label}-IN-${run}`, shift.id, supplierId, ownerId],
       );
       return row.id;

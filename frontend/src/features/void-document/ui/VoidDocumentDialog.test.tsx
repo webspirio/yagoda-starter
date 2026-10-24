@@ -212,7 +212,7 @@ describe('VoidDocumentDialog — open shift', () => {
   it('with no bound payout, asks for the one debt checkbox', () => {
     renderOpenShiftIntake(null);
     expect(screen.getAllByRole('checkbox')).toHaveLength(1);
-    expect(screen.getByText(/debt drops by/)).toBeInTheDocument();
+    expect(screen.getByText(/the balance drops by/)).toBeInTheDocument();
   });
 
   it('a payout void asks for cash-back and reopen', () => {

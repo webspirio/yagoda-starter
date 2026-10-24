@@ -103,7 +103,6 @@ const day = {
       full_cost: '133460.00',
       price_was: '160.00',
       price_cost: '166.39',
-      price_by_our_weight: '162.03',
       complete: true,
       grades: [],
     },
@@ -227,6 +226,17 @@ describe('CostOfDayPage', () => {
     expect(container.querySelector('p.print-only')).toHaveTextContent(/разом із доплатами/);
   });
 
+  it('names the point and the date on paper only — the header already shows both on screen', () => {
+    const { container } = render(<CostOfDayPage />);
+    const sheet = container.querySelector('.printable') as HTMLElement;
+
+    expect(sheet.querySelector('.print-only')).toHaveTextContent(/Шипинки/);
+    const onScreen = Array.from(sheet.querySelectorAll('span')).filter(
+      (el) => el.textContent === 'Шипинки' && !el.closest('.print-only'),
+    );
+    expect(onScreen).toHaveLength(0);
+  });
+
   it('marks an open shift as still moving', () => {
     render(<CostOfDayPage />);
     expect(screen.getByText('Зміна ще відкрита — цифри рухаються')).toBeInTheDocument();
@@ -262,7 +272,7 @@ describe('CostOfDayPage', () => {
     dayMock.mockReturnValue(ok({ ...day, products: [] }));
     render(<CostOfDayPage />);
 
-    expect(screen.getByText('Цього дня на цьому пункті прийомки не було.')).toBeInTheDocument();
+    expect(screen.getByText('Цього дня на цій точці прийомки не було.')).toBeInTheDocument();
   });
 
   // The strip is the application's ONLY write path to `day_expenses`.
@@ -275,7 +285,7 @@ describe('CostOfDayPage', () => {
     dayMock.mockReturnValue(ok({ ...day, products: [] }));
     render(<CostOfDayPage />);
 
-    expect(screen.getByText('Цього дня на цьому пункті прийомки не було.')).toBeInTheDocument();
+    expect(screen.getByText('Цього дня на цій точці прийомки не було.')).toBeInTheDocument();
     expect(screen.getByText('Витрати дня')).toBeInTheDocument();
   });
 
@@ -333,7 +343,7 @@ describe('CostOfDayPage', () => {
       const user = userEvent.setup();
       render(<CostOfDayPage />);
 
-      const picker = screen.getByRole('combobox', { name: 'Пункт' });
+      const picker = screen.getByRole('combobox', { name: 'Точка' });
       expect(screen.getAllByRole('option')[0]).toHaveTextContent('Усі точки');
 
       await user.selectOptions(picker, 'Усі точки');
@@ -349,7 +359,7 @@ describe('CostOfDayPage', () => {
       const user = userEvent.setup();
       render(<CostOfDayPage />);
 
-      await user.selectOptions(screen.getByRole('combobox', { name: 'Пункт' }), 'Шипинки');
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Точка' }), 'Шипинки');
       expect(setPointId).toHaveBeenCalledWith('p1');
     });
 
@@ -359,7 +369,7 @@ describe('CostOfDayPage', () => {
       render(<CostOfDayPage />);
 
       expect(networkMock).toHaveBeenLastCalledWith(expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
-      expect(screen.getByRole('combobox', { name: 'Пункт' })).toHaveValue('all');
+      expect(screen.getByRole('combobox', { name: 'Точка' })).toHaveValue('all');
     });
 
     it('has no expense entry — only each point’s expenses, read back', () => {
@@ -372,6 +382,22 @@ describe('CostOfDayPage', () => {
         /Шипинки 3\s800,00.*Гайове 1\s050,00.*разом 4\s850,00/,
       );
       expect(screen.getByText('Зміна ще відкрита: Гайове')).toBeInTheDocument();
+    });
+
+    it('drops «разом» when only one point entered expenses — audit E11', () => {
+      pointParamMock.mockReturnValue('all');
+      networkMock.mockReturnValue(
+        ok({
+          ...network,
+          points: [network.points[0], { ...network.points[1], expenses_amount: '0.00' }],
+          expenses_amount: '3800.00',
+        }),
+      );
+      const { container } = render(<CostOfDayPage />);
+
+      const line = container.querySelector('[data-network-expenses]');
+      expect(line).toHaveTextContent(/Витрати дня: Шипинки 3\s800,00/);
+      expect(line).not.toHaveTextContent('разом');
     });
 
     it('prints as «Усі точки»', () => {
@@ -403,7 +429,7 @@ describe('CostOfDayPage', () => {
       pointParamMock.mockReturnValue('all');
       render(<CostOfDayPage />);
 
-      expect(screen.queryByRole('combobox', { name: 'Пункт' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('combobox', { name: 'Точка' })).not.toBeInTheDocument();
       expect(networkMock).toHaveBeenLastCalledWith(null);
       expect(screen.getByText('Витрати дня')).toBeInTheDocument();
     });

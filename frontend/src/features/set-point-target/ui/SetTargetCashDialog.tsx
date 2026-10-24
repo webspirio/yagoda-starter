@@ -22,6 +22,7 @@ import {
   sub,
   formatUah,
   decimalRules,
+  toDecimalField,
 } from '@/shared/lib/money';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
 import { useSetPointTargetMutation } from '../api/useSetPointTarget';
@@ -75,7 +76,9 @@ export function SetTargetCashDialog({
     handleSubmit,
     formState: { errors, isSubmitting },
   } = useForm<SetTargetFormValues>({
-    defaultValues: { target_cash: currentTarget ?? '', reason: '' },
+    // Shown the way the screen prints money («600000,00» in uk); a prefill is
+    // stored as given, so the submit reads it back through `parseDecimal`.
+    defaultValues: { target_cash: toDecimalField(currentTarget ?? '', locale), reason: '' },
   });
 
   // `useWatch` rather than `form.watch()`: the latter returns a function the
@@ -104,7 +107,8 @@ export function SetTargetCashDialog({
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
     try {
-      const target_cash = values.target_cash;
+      // `validate` refused anything `parseDecimal` cannot read.
+      const target_cash = parseDecimal(values.target_cash) ?? values.target_cash;
       await setTarget.mutateAsync({
         pointId,
         target_cash,

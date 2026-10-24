@@ -125,6 +125,7 @@ function buildIntake(overrides: Partial<IntakeDetail> = {}): IntakeDetail {
     business_date: '2026-09-08',
     supplier_id: 'supplier-1',
     amount: '14560.00',
+    balance_after: '9000.00',
     received_by_user_id: 'user-1',
     voided_at: null,
     voided_by_user_id: null,
@@ -182,7 +183,7 @@ function settingsState(over: {
 
 function setUp({
   intake = buildIntake(),
-  debt = '9000.00',
+  liveDebt = '9000.00',
   me = OPERATOR_OTHER,
   intakeIsError = false,
   grades = [GRADE_1],
@@ -190,7 +191,8 @@ function setUp({
   note = null,
 }: {
   intake?: IntakeDetail | null;
-  debt?: string;
+  /** The supplier's LIVE debt — which the receipt must NOT print (A1). */
+  liveDebt?: string;
   me?: typeof OPERATOR_AUTHOR | typeof OPERATOR_OTHER | typeof OWNER;
   intakeIsError?: boolean;
   grades?: Array<typeof GRADE_1>;
@@ -204,7 +206,7 @@ function setUp({
   });
   supplierMock.mockReturnValue({ data: SUPPLIER, isPending: false, isError: false });
   balanceMock.mockReturnValue({
-    data: { supplier_id: 'supplier-1', debt },
+    data: { supplier_id: 'supplier-1', debt: liveDebt },
     isPending: false,
     isError: false,
   });
@@ -225,6 +227,7 @@ function setUp({
 
 beforeEach(() => {
   voidDialogMock.mockReset();
+  balanceMock.mockClear();
   settlementMock.mockReset();
 });
 
@@ -370,8 +373,8 @@ describe('ReceiptDialog', () => {
   });
 
   it('prints the agreed footer in order and ends with the tare tally', () => {
-    // 14 560 accrued, nothing paid, the live balance 20 000: owed 5 440 before.
-    setUp({ debt: '20000.00' });
+    // 14 560 accrued, nothing paid, the frozen balance 20 000: owed 5 440 before.
+    setUp({ intake: buildIntake({ balance_after: '20000.00' }) });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
     const last = (text: string) => {
@@ -490,14 +493,57 @@ describe('ReceiptDialog', () => {
     expect(screen.queryByText(/September 8, 2026/)).not.toBeInTheDocument();
   });
 
-  it('counts the single line too — «· 1 line», not the bare code (M4)', () => {
+  // Audit 2026-10-24 A1: a later document of the supplier moved every reprint.
+  it('prints the frozen balance_after, never the live debt, and does not read the live balance', () => {
+    setUp({ intake: buildIntake({ balance_after: '20000.00' }), liveDebt: '99999.00' });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    const balance = screen.getAllByText('Balance');
+    expect(balance[balance.length - 1].parentElement).toHaveTextContent('20,000.00 ₴');
+    expect(screen.queryByText(/99,999\.00/)).not.toBeInTheDocument();
+    expect(balanceMock).not.toHaveBeenCalled();
+  });
+
+  it('prints a voided receipt without the balance block (A2)', () => {
+    setUp({
+      intake: buildIntake({
+        voided_at: '2026-09-08T10:00:00.000Z',
+        voided_by_user_id: 'user-9',
+        void_reason: 'Помилка ваги',
+      }),
+      me: OWNER,
+    });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+
+    expect(screen.getByText('Voided — not counted in the balance')).toBeInTheDocument();
+    for (const label of ['Debt', 'Total', 'Paid out', 'Balance']) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
+    }
+  });
+
+  it('titles the dialog with the code alone and counts the single line underneath (M4, A4)', () => {
     setUp();
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText('Receipt SHP-IN-20260908-00412 · 1 line')).toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Receipt SHP-IN-20260908-00412' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('1 line')).toBeInTheDocument();
   });
 
-  it('shows the plural title when the intake has more than one line', () => {
+  it('says the document can be voided here only when «Void» is shown (A4)', () => {
+    setUp({ me: OWNER });
+    const { unmount } = render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+    expect(screen.getByText('1 line · you can void the document here')).toBeInTheDocument();
+    unmount();
+
+    setUp({ me: OPERATOR_OTHER });
+    render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
+    expect(screen.getByText('1 line')).toBeInTheDocument();
+    expect(screen.queryByText(/you can void/)).not.toBeInTheDocument();
+  });
+
+  it('shows the plural line count when the intake has more than one line', () => {
     const base = buildIntake();
     setUp({
       intake: buildIntake({
@@ -506,7 +552,7 @@ describe('ReceiptDialog', () => {
     });
     render(<ReceiptDialog intakeId="intake-1" open onClose={vi.fn()} />);
 
-    expect(screen.getByText('Receipt SHP-IN-20260908-00412 · 2 lines')).toBeInTheDocument();
+    expect(screen.getByText('2 lines')).toBeInTheDocument();
   });
 
   it('has no Pay out button — the payout now happens from the reception screen (#116)', () => {

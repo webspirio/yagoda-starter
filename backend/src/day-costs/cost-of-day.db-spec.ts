@@ -91,8 +91,8 @@ describe('CostOfDayService.forShift (DB)', () => {
 
     // Raspberry receipt — 800 кг accepted at 160,00 ₴/кг = 128 000,00.
     const [raspberryIntake] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '128000.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '128000.00', '0.00', $4) RETURNING id`,
       [`${short}-IN-1`, shift.id, supplier.id, ownerId],
     );
     await ds.query(
@@ -104,8 +104,8 @@ describe('CostOfDayService.forShift (DB)', () => {
 
     // Ожина receipt — 65 кг accepted at 60,00 ₴/кг = 3 900,00.
     const [blackberryIntake] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '3900.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '3900.00', '0.00', $4) RETURNING id`,
       [`${short}-IN-2`, shift.id, supplier.id, ownerId],
     );
     await ds.query(
@@ -251,8 +251,8 @@ describe('CostOfDayService.forShift (DB)', () => {
     // One receipt per line, so the доплата lands on сорт 1 alone.
     const receipt = async (n: number, grade: string, kg: string, price: string, amount: string) => {
       const [intake] = await ds.query(
-        `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-         VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+        `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+         VALUES ($1, $2, $3, $4, '0.00', $5) RETURNING id`,
         [`${short}-IN-${n}`, shift.id, supplier.id, amount, ownerId],
       );
       await ds.query(
@@ -377,8 +377,8 @@ describe('CostOfDayService.forShift (DB)', () => {
     );
 
     const [intake] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '18000.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '18000.00', '0.00', $4) RETURNING id`,
       [`${short}-PW-1`, shift.id, supplier.id, ownerId],
     );
     await ds.query(

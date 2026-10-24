@@ -1,9 +1,11 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, afterEach, beforeEach } from 'vitest';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import MockAdapter from 'axios-mock-adapter';
 import { httpClient } from '@/shared/api';
+import { i18n } from '@/shared/lib/i18n';
+import uk from '@/shared/lib/i18n/locales/uk.json';
 import type { Transfer } from '@/entities/transfer';
 import { ResolveTransferDialog } from './ResolveTransferDialog';
 
@@ -50,6 +52,14 @@ function setup(onClose = () => {}) {
 }
 
 describe('ResolveTransferDialog', () => {
+  // C11 — what the owner decides between, before any input.
+  it('shows sent · the point counted · the difference, named', () => {
+    setup();
+    expect(screen.getByText('Sent').nextElementSibling).toHaveTextContent('50,000.00 ₴');
+    expect(screen.getByText('The point counted').nextElementSibling).toHaveTextContent('49,500.00 ₴');
+    expect(screen.getByText('Short 500.00 ₴')).toHaveClass('text-destructive');
+  });
+
   it('defaults to what the point reported — the owner confirms or overrides', () => {
     // Дефолт саме reported_*: доки спір не вирішено, каса точки й так рахує
     // ЇЇ ВЛАСНЕ число (§7.9, ред. 09.09.2026). Дефолт, що дорівнює
@@ -102,6 +112,27 @@ describe('the shared money field (#72)', () => {
     await waitFor(() => expect(mock.history.post).toHaveLength(1));
     expect(JSON.parse(mock.history.post[0].data as string)).toMatchObject({
       resolved_cash: '49500.00',
+    });
+  });
+});
+
+describe('the prefill reads in the locale, the API gets the canonical form', () => {
+  beforeEach(async () => {
+    await act(() => i18n.changeLanguage('uk'));
+  });
+  afterEach(async () => {
+    await act(() => i18n.changeLanguage('en'));
+  });
+
+  it('shows reported_cash with the decimal comma and sends it untouched as «49500.00»', async () => {
+    setup();
+    expect(screen.getByLabelText(uk.transfer.resolve.resolvedCash)).toHaveValue('49500,00');
+    mock.onPost('/transfers/t1/resolve').reply(200, { ...disputed, resolved_at: 'now' });
+    await userEvent.click(screen.getByRole('button', { name: uk.transfer.resolve.submit }));
+    await waitFor(() => expect(mock.history.post).toHaveLength(1));
+    expect(JSON.parse(mock.history.post[0].data as string)).toEqual({
+      resolved_cash: '49500.00',
+      resolved_crates: 118,
     });
   });
 });

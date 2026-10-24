@@ -14,11 +14,12 @@ import { TextInput } from '@/shared/ui/text-input';
 import { SelectField } from '@/shared/ui/select-field';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
-import { cratesRules } from '@/shared/lib/money';
+import { cratesRules, formatCount, formatUah, isZero, mulInt } from '@/shared/lib/money';
 import { cn } from '@/shared/lib/cn';
 import { toBannerError, type BannerError } from '@/shared/lib/api-error';
 import { useSuppliersQuery, supplierName } from '@/entities/supplier';
 import { useCrateStandingQuery, type CrateIssuanceMode } from '@/entities/crate';
+import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { useIssueCratesMutation } from '../api/useIssueCrates';
 
 interface IssueFormValues {
@@ -45,7 +46,10 @@ interface IssueFormValues {
  *
  * THE DEPOSIT PRICE IS NOT ENTERED HERE. It comes from whichever tare type is
  * marked as the crate, and the server reads it; a field would invite someone
- * to type a different number than the catalogue says.
+ * to type a different number than the catalogue says. The dialog SHOWS it —
+ * «Завдаток: 6 × 25,00 ₴ = 150,00 ₴», from the same catalogue row (audit
+ * 2026-10-24, F5) — and the toast prints what the server actually took
+ * (`deposit_taken`), so a price changed in between never goes unnoticed.
  */
 export function IssueCratesDialog({
   pointId,
@@ -60,12 +64,15 @@ export function IssueCratesDialog({
 }) {
   const { t, i18n } = useTranslation();
   // A count, not money; the true minus sign, as «Ящики» prints it.
-  const n = (value: number) => value.toLocaleString(i18n.language).replace('-', '−');
+  const lang = i18n.language;
+  const n = (value: number) => formatCount(value, lang);
   const issue = useIssueCratesMutation();
   const suppliers = useSuppliersQuery('', pointId ?? null);
   const standing = useCrateStandingQuery({ pointId: pointId ?? null, isOwner: Boolean(pointId) });
   const onHand = standing.data?.on_hand;
   const inTransit = standing.data?.in_transit ?? 0;
+  const tareTypes = useTareTypeOptionsQuery();
+  const depositPrice = tareTypes.data?.find((tt) => tt.is_crate)?.deposit_price;
 
   const {
     register,
@@ -85,18 +92,31 @@ export function IssueCratesDialog({
   const unitsOk = cratesRules('crates.errors.unitsFormat').validate(unitsText) === true;
   const units = unitsOk ? Number.parseInt(unitsText.trim(), 10) : undefined;
   const after = onHand !== undefined && units !== undefined ? onHand - units : undefined;
+  const depositLine =
+    mode === 'deposit' && units !== undefined && depositPrice !== undefined
+      ? t('crates.issue.depositLine', {
+          units: n(units),
+          price: formatUah(depositPrice, lang),
+          total: formatUah(mulInt(depositPrice, units), lang),
+        })
+      : null;
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
     try {
-      await issue.mutateAsync({
+      const issued = await issue.mutateAsync({
         ...(pointId ? { collection_point_id: pointId } : {}),
         supplier_id: values.supplier_id,
         // A row COUNT, not money — parsed as an integer, never through money.ts.
         units: Number.parseInt(values.units.trim(), 10),
         mode: values.mode,
       });
-      toast.success(t('crates.issue.toast'));
+      const taken = issued?.deposit_taken;
+      toast.success(
+        taken !== undefined && !isZero(taken)
+          ? t('crates.issue.toastDeposit', { amount: formatUah(taken, lang) })
+          : t('crates.issue.toast'),
+      );
       onClose();
     } catch (error) {
       setFormError(
@@ -158,7 +178,9 @@ export function IssueCratesDialog({
           {onHand !== undefined ? (
             <p className={cn('text-sm', onHand < 0 ? 'text-amber' : 'text-muted-foreground')}>
               {t('crates.issue.onHandHint', { on_hand: n(onHand) })}
-              {inTransit > 0 ? ` ${t('crates.issue.inTransitHint', { in_transit: inTransit })}` : null}
+              {inTransit > 0
+                ? ` ${t('crates.issue.inTransitHint', { in_transit: n(inTransit) })}`
+                : null}
             </p>
           ) : null}
           {after !== undefined && after < 0 ? (
@@ -176,10 +198,18 @@ export function IssueCratesDialog({
             )}
           </Field>
 
-          {/* The consequence of the choice, in words, next to the choice. */}
-          <p className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
-            {mode === 'receipt' ? t('crates.mode.receiptHint') : t('crates.mode.depositHint')}
-          </p>
+          {/* The consequence of the choice, in words, next to the choice — and for a
+              deposit, the money itself. */}
+          <div className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+            <p>
+              {mode === 'receipt' ? t('crates.mode.receiptHint') : t('crates.mode.depositHint')}
+            </p>
+            {depositLine ? (
+              <p className="mt-1 font-mono font-medium whitespace-nowrap text-foreground tabular-nums">
+                {depositLine}
+              </p>
+            ) : null}
+          </div>
 
           {formError ? (
             <p role="alert" className="text-sm text-destructive">

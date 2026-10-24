@@ -75,9 +75,9 @@ describe('ListSupplierBalancesQuery — oldest open date (Postgres, #101)', () =
   const intake = (s: string, date: string, amount: string, voided = false): Promise<string> =>
     event(s, async (m) => {
       const [row] = await m.query(
-        `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id,
+        `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id,
                               created_at, voided_at, voided_by_user_id, void_reason)
-         VALUES ($1, $2, $3, $4, $5, clock_timestamp(),
+         VALUES ($1, $2, $3, $4, '0.00', $5, clock_timestamp(),
                  CASE WHEN $6 THEN now() END, CASE WHEN $6 THEN $5::uuid END,
                  CASE WHEN $6 THEN 'test' END)
          RETURNING id`,

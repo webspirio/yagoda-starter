@@ -32,9 +32,9 @@ describe('debt with intake top-ups (Postgres)', () => {
 
   const intake = async (supplierId: string, amount: string, voided = false): Promise<string> => {
     const [row] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id,
                             voided_at, voided_by_user_id, void_reason)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+       VALUES ($1, $2, $3, $4, '0.00', $5, $6, $7, $8) RETURNING id`,
       [
         `B-IN-${randomUUID().slice(0, 8)}`,
         shiftId,

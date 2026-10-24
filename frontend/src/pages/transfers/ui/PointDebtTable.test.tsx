@@ -76,19 +76,48 @@ describe('PointDebtTable — honesty rule: null target/shortfall render «—»,
       />,
     );
 
-    expect(screen.getByText('5,000.00 ₴')).toBeInTheDocument();
-    expect(screen.getByText('250.00 ₴')).toBeInTheDocument();
+    // Rule 4 — the unit lives in the header; the cells are plain figures.
+    expect(screen.getByRole('columnheader', { name: 'Target, ₴' })).toBeInTheDocument();
+    expect(screen.getByText('5,000.00')).toBeInTheDocument();
+    expect(screen.getByText('250.00')).toBeInTheDocument();
+  });
+
+  // C5 — a label agrees with its sign.
+  it('prints a negative shortfall as «over by …», never as a minus under «Short by»', () => {
+    render(
+      <PointDebtTable
+        rows={[row({ target_cash: '10000.00', cash: '12800.00', shortfall: '-2800.00' })]}
+        unresolvedDisputes={[]}
+        onSend={noop}
+        onResolve={noop}
+      />,
+    );
+    expect(screen.getByText('over by 2,800.00')).toHaveClass('text-leaf');
+    expect(screen.queryByText(/−2,800/)).toBeNull();
+  });
+
+  // C4 — what is already on the road, under the shortfall.
+  it('names the money on the road to the point', () => {
+    render(
+      <PointDebtTable
+        rows={[row({ shortfall: '49500.00' })]}
+        unresolvedDisputes={[]}
+        inTransit={new Map([['p1', '24000.00']])}
+        onSend={noop}
+        onResolve={noop}
+      />,
+    );
+    expect(screen.getByText('on the road 24,000.00 ₴')).toBeInTheDocument();
   });
 });
 
-describe('PointDebtTable — the crates column has no backing tables', () => {
-  it('puts a labelled placeholder in the crates column, not a zero', async () => {
+describe('PointDebtTable — no placeholder crates column (C10)', () => {
+  it('has no «Crates» column and a quiet, outline «Send»', () => {
     render(<PointDebtTable rows={[row()]} unresolvedDisputes={[]} onSend={noop} onResolve={noop} />);
 
-    const cell = (await screen.findAllByRole('note'))[0];
-    expect(cell).toBeInTheDocument();
-    expect(screen.queryByText('0 ящ.')).toBeNull();
-    expect(screen.queryByText('0')).toBeNull();
+    expect(screen.queryByRole('columnheader', { name: /Crates/ })).toBeNull();
+    expect(screen.queryByRole('note')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Send' })).toHaveAttribute('data-variant', 'outline');
   });
 });
 
@@ -414,10 +443,11 @@ describe('PointDebtTable — a point with several open disputes (#76)', () => {
     await user.click(screen.getByRole('button', { name: "Doesn't match (2)" }));
     const [first, second] = within(screen.getByRole('list')).getAllByRole('listitem');
     expect(first).toHaveTextContent('450.00 ₴');
-    expect(within(first).getByText('50.00 ₴')).toHaveClass('text-destructive');
+    // C7 — named: 50 less arrived than was sent.
+    expect(within(first).getByText('Short 50.00 ₴')).toHaveClass('text-destructive');
     expect(first).toHaveTextContent('Crates: sent 20 · counted 18 · difference 2');
     expect(first).toHaveTextContent('Порахували менше');
-    expect(within(second).getByText('0.00 ₴')).not.toHaveClass('text-destructive');
+    expect(within(second).getByText('Matched')).not.toHaveClass('text-destructive');
     expect(second).not.toHaveTextContent('Crates:');
   });
 

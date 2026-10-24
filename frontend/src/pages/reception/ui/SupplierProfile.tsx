@@ -65,7 +65,7 @@ function ProfileBody({ supplier }: { supplier: Supplier }) {
           <span className="min-w-0 truncate text-base font-semibold">
             {supplierName(supplier)}
           </span>
-          <KindBadge kind={supplier.kind} className="shrink-0 text-[10px]" />
+          <KindBadge kind={supplier.kind} className="shrink-0 text-[11px]" />
         </div>
         {supplier.phone ? (
           <a

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Plus } from 'lucide-react';
 import { ListPage } from '@/shared/ui/templates/list-page';
 import type { Column } from '@/shared/ui/data-table';
 import { Button } from '@/shared/ui/button';
@@ -94,11 +95,9 @@ export function UsersPage() {
       header: t('users.col.status'),
       align: 'right',
       sortable: true,
-      cell: (u) => (
-        <Badge variant={u.is_active ? 'default' : 'secondary'}>
-          {u.is_active ? t('users.active') : t('users.inactive')}
-        </Badge>
-      ),
+      // Rule 1 of the 2026-10-24 audit: berry is not «active». An active account is the
+      // normal case and carries no badge; only a deactivated one is marked.
+      cell: (u) => (u.is_active ? null : <Badge variant="outline">{t('users.inactive')}</Badge>),
     },
   ];
 
@@ -108,7 +107,12 @@ export function UsersPage() {
         eyebrow={t('users.eyebrow')}
         title={t('users.title')}
         description={t('users.description')}
-        actions={<Button onClick={openCreate}>{t('users.new')}</Button>}
+        actions={
+          <Button onClick={openCreate}>
+            <Plus aria-hidden="true" />
+            {t('users.new')}
+          </Button>
+        }
         columns={columns}
         rows={rows}
         rowKey={(u) => u.id}

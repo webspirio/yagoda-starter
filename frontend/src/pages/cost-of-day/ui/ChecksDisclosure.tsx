@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle2, XCircle } from 'lucide-react';
-import { formatUah } from '@/shared/lib/money';
+import { formatDecimal, formatUah } from '@/shared/lib/money';
 import type { CostOfDay } from '@/entities/cost-of-day';
 
 /**
@@ -60,10 +60,15 @@ export function ChecksDisclosure({
 
   if (day.checks === null) return null;
 
-  const join = (parts: (string | null)[]) =>
-    parts
-      .filter((p): p is string => p !== null)
-      .map((p) => formatUah(p, locale))
+  // «Кизил 50,49 + Малина 1 914,70» — each operand named by its product
+  // (audit E4), so the sum reads back to the table's rows. The unit sits on
+  // the total after «=», once.
+  const join = (pick: (p: CostOfDay['products'][number]) => string | null) =>
+    day.products
+      .flatMap((p) => {
+        const v = pick(p);
+        return v === null ? [] : [`${p.product_name} ${formatDecimal(v, locale)}`];
+      })
       .join(' + ');
 
   const expenses = formatUah(day.expenses_amount, locale);
@@ -98,7 +103,7 @@ export function ChecksDisclosure({
         <p className={tone(day.checks.shares_ok)}>
           {mark(day.checks.shares_ok)}
           {t('costOfDay.checks.shares', {
-            shares: join(day.products.map((p) => p.basket_share)),
+            shares: join((p) => p.basket_share),
             basket: formatUah(day.basket, locale),
             shortfall: formatUah(day.shortfall_amount, locale),
             expenses,
@@ -107,7 +112,7 @@ export function ChecksDisclosure({
         <p className={tone(day.checks.total_ok)}>
           {mark(day.checks.total_ok)}
           {t(unweighed ? 'costOfDay.checks.totalUnweighed' : 'costOfDay.checks.total', {
-            fulls: join(day.products.map((p) => p.full_cost)),
+            fulls: join((p) => p.full_cost),
             full: day.full_cost === null ? '—' : formatUah(day.full_cost, locale),
             unweighed: formatUah(day.unweighed.accrued, locale),
             accrued: formatUah(day.accrued, locale),

@@ -30,7 +30,6 @@ const props = {
   onPost: vi.fn(),
   posting: false,
   canPost: true,
-  note: null,
 };
 
 beforeEach(() => {

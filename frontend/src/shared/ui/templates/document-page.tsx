@@ -80,7 +80,7 @@ export function DocumentPage({
       {printable !== false ? (
         <div
           className={cn(
-            'printable rounded-xl bg-card p-5 ring-1 ring-foreground/10 print:ring-0',
+            'printable rounded-xl border border-line2 bg-card p-5 print:border-0',
             landscape && 'print-landscape',
           )}
         >

@@ -347,6 +347,7 @@ const CREATED: IntakeDetail = {
   business_date: '2026-09-08',
   supplier_id: 's1',
   amount: '1204.00',
+  balance_after: '1204.00',
   received_by_user_id: 'u1',
   voided_at: null,
   voided_by_user_id: null,
@@ -682,6 +683,70 @@ describe('ReceptionPage — choosing the supplier', () => {
   });
 });
 
+describe('ReceptionPage — a balance not read yet (B2)', () => {
+  beforeEach(() => {
+    previewMock.mockReturnValue(SETTLED);
+    pointCashMock.mockReturnValue({
+      data: { collection_point_id: 'p1', cash: '9000.00' },
+      isPending: false,
+      isError: false,
+    });
+  });
+
+  it('holds «Accept» and Enter back, and shows no total, while the balance loads', async () => {
+    const user = userEvent.setup();
+    balanceMock.mockImplementation((id: string | null) =>
+      id === null
+        ? { data: undefined, isPending: true, isError: false }
+        : { data: undefined, isPending: true, isError: false, isFetching: true },
+    );
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    const card = screen.getByRole('region', { name: 'Settlement' });
+    expect(within(card).getByText('Previous balance').parentElement).toHaveTextContent('…');
+    expect(within(card).getByText('Total to pay out').parentElement).toHaveTextContent('—');
+    // Nothing is suggested against a total that is not known yet.
+    expect(screen.getByLabelText('Paid in cash')).toHaveValue('');
+    expect(screen.getByRole('button', { name: /^Accept/ })).toBeDisabled();
+    await user.type(screen.getByLabelText('Paid in cash'), '{Enter}');
+    expect(createMock).not.toHaveBeenCalled();
+  });
+
+  it('says the balance could not be read, and still holds the receipt back', async () => {
+    const user = userEvent.setup();
+    balanceMock.mockReturnValue({ data: undefined, isPending: false, isError: true });
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    const card = screen.getByRole('region', { name: 'Settlement' });
+    expect(within(card).getByText('Previous balance').parentElement).toHaveTextContent(
+      "couldn't be read",
+    );
+    expect(screen.getByRole('button', { name: /^Accept/ })).toBeDisabled();
+  });
+
+  it('treats a stale balance being refetched as not known yet', async () => {
+    const user = userEvent.setup();
+    balanceMock.mockReturnValue({
+      data: { supplier_id: 's1', debt: '500.00' },
+      isPending: false,
+      isError: false,
+      isFetching: true,
+      isStale: true,
+    });
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    const card = screen.getByRole('region', { name: 'Settlement' });
+    expect(within(card).getByText('Total to pay out').parentElement).toHaveTextContent('—');
+    expect(within(card).queryByText('+ 500.00 ₴')).toBeNull();
+  });
+});
+
 describe('ReceptionPage — a one-line receipt', () => {
   beforeEach(() => {
     previewMock.mockReturnValue(SETTLED);
@@ -830,8 +895,26 @@ describe('ReceptionPage — several lines', () => {
     await fillDraft(user);
     expect(add()).toBeDisabled();
     expect(
-      screen.getByText('Real data never has more than 5 lines per visit — no more are added.'),
+      screen.getByText('No more than 5 lines on one receipt'),
     ).toBeInTheDocument();
+  });
+
+  it('never counts the blank draft as a line in «Accrued today» (B10)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Add line' }));
+
+    // A preview still on its way: the count falls back to the form's lines —
+    // the one committed line, not the empty draft under it.
+    previewMock.mockReturnValue(previewState({ isPending: true }));
+    const gross = screen.getByLabelText('Gross, kg');
+    await user.type(gross, '1');
+    await user.clear(gross);
+
+    expect(screen.getByText('Accrued today')).toBeInTheDocument();
+    expect(screen.queryByText(/· 2 lines/)).toBeNull();
   });
 
   it('takes the form away once the shift is closed elsewhere', async () => {
@@ -1212,12 +1295,13 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
     const trigger = screen.getByRole('button', { name: /Today/ });
     expect(trigger).toHaveTextContent('1 rcpt. · 120.40 kg');
 
+    // B6 — the list lives ONCE, in the card under the form; the strip's cell
+    // is its summary and takes the operator there.
+    expect(document.querySelector('[data-slot="popover-content"]')).toBeNull();
     await user.click(trigger);
-    // Scoped to the popover itself: the strip reads the SAME
-    // `useIntakesQuery({ shiftId })` for its own «відкрито» figure, so an
-    // amount could print there too.
-    const popover = document.querySelector('[data-slot="popover-content"]');
-    const scoped = within(popover as HTMLElement);
+    const card = screen.getByRole('region', { name: "Today's receipts" });
+    expect(card).toHaveFocus();
+    const scoped = within(card);
 
     // No code any more — the rows are found by their amount, same as the
     // supplier-history test above.
@@ -1229,8 +1313,7 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
 });
 
 describe("ReceptionPage — today's receipts open the receipt, which carries the void", () => {
-  it('has no «Void» of its own on a row', async () => {
-    const user = userEvent.setup();
+  it('has no «Void» of its own on a row', () => {
     intakesMock.mockImplementation((filter: { shiftId?: string }) =>
       filter.shiftId
         ? page<Intake>([intake({ id: 'i2', code: 'SHP-IN-2', amount: '200.00' })])
@@ -1238,11 +1321,9 @@ describe("ReceptionPage — today's receipts open the receipt, which carries the
     );
     renderReception();
 
-    // The rows live in the «Сьогодні» popover — open it, or the query below
-    // would be null whatever the rows contain.
-    await user.click(screen.getByRole('button', { name: /Today/ }));
-    const popover = document.querySelector('[data-slot="popover-content"]');
-    expect(within(popover as HTMLElement).getByText('200.00 ₴')).toBeInTheDocument();
+    // The rows live in the card under the form (B6).
+    const card = screen.getByRole('region', { name: "Today's receipts" });
+    expect(within(card).getByText('200.00 ₴')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Void SHP-IN-2' })).toBeNull();
   });
 
@@ -1255,14 +1336,13 @@ describe("ReceptionPage — today's receipts open the receipt, which carries the
     );
     renderReception();
 
-    await user.click(screen.getByRole('button', { name: /Today/ }));
-    const popover = document.querySelector('[data-slot="popover-content"]');
-    await user.click(within(popover as HTMLElement).getByText('200.00 ₴'));
+    const card = screen.getByRole('region', { name: "Today's receipts" });
+    await user.click(within(card).getByText('200.00 ₴'));
 
     expect(await screen.findByText('Receipt for i2')).toBeInTheDocument();
   });
 
-  it('opening a receipt from the popover never submits a ready intake form', async () => {
+  it('opening a receipt from today’s card never submits a ready intake form', async () => {
     const user = userEvent.setup();
     previewMock.mockReturnValue(SETTLED);
     intakesMock.mockImplementation((filter: { shiftId?: string }) =>
@@ -1278,8 +1358,8 @@ describe("ReceptionPage — today's receipts open the receipt, which carries the
     expect(await screen.findByRole('button', { name: 'Accept without payout' })).toBeEnabled();
 
     await user.click(screen.getByRole('button', { name: /Today/ }));
-    const popover = document.querySelector('[data-slot="popover-content"]');
-    await user.click(within(popover as HTMLElement).getByText('200.00 ₴'));
+    const card = screen.getByRole('region', { name: "Today's receipts" });
+    await user.click(within(card).getByText('200.00 ₴'));
 
     expect(await screen.findByText('Receipt for i2')).toBeInTheDocument();
     expect(createMock).not.toHaveBeenCalled();
@@ -1434,6 +1514,27 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
     expect(toastSuccessMock).toHaveBeenCalledWith('Accepted 120.40 kg — 5,460.00 ₴', {
       description: 'Owed by us: 3,881.27 ₴',
     });
+  });
+
+  it('says the supplier owes us — unsigned — when the balance stays below zero (B1)', async () => {
+    const user = userEvent.setup();
+    balanceMock.mockReturnValue({
+      data: { supplier_id: 's1', debt: '-6000.00' },
+      isPending: false,
+      isError: false,
+    });
+    createMock.mockResolvedValueOnce({ ...CREATED, amount: '5460.00', paid_amount: '0.00' });
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Accept without payout' }));
+
+    await waitFor(() =>
+      expect(toastSuccessMock).toHaveBeenCalledWith('Accepted 120.40 kg — 5,460.00 ₴', {
+        description: 'Supplier owes us: 540.00 ₴',
+      }),
+    );
   });
 
   it('reads the settled toast once the created receipt is paid out in full (I6)', async () => {

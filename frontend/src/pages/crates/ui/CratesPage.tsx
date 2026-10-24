@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { PackageCheck, PackagePlus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { PageHeader } from '@/shared/ui/page-header';
+import { DashboardPage } from '@/shared/ui/templates/dashboard-page';
 import { Button } from '@/shared/ui/button';
 import { SelectField } from '@/shared/ui/select-field';
 import { HeaderSlot } from '@/shared/ui/header-slot';
@@ -27,10 +27,11 @@ import { PersonCrateDocs } from './PersonCrateDocs';
  * `GET /crate-standing` — nothing here is re-derived from `/crate-balances`,
  * which is paginated and would undercount past its first page.
  *
- * ONLY THE SHIPMENTS DIALOG IS ABSENT. The mock's «Відправлення за сьогодні»
- * window rests on shipment tracking, and `crate_shipments` stays deferred —
- * there is no document for a shipment, so the note below says plainly that
- * this window is not built yet rather than faking one.
+ * THE SHIPMENTS DIALOG IS ABSENT. The mock's «Відправлення за сьогодні» window
+ * rests on shipment tracking, and `crate_shipments` stays deferred. The screen
+ * no longer says so — a note about a window that does not exist is a developer
+ * note, not help (audit 2026-10-24, rule 7); the note that stayed explains what
+ * «У нас з ягодою» counts.
  *
  * THE ALLOTMENT IS A GUIDE, NOT A GATE. §6.1 — an allotment BELOW what is
  * already out is allowed with a WARNING, never a refusal, and an empty
@@ -69,100 +70,106 @@ export function CratesPage() {
 
   return (
     <>
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-5 px-4 py-6">
-        <PageHeader
-          eyebrow={t('crates.eyebrow')}
-          title={t('crates.title')}
-          description={t('crates.description')}
-          actions={
-            canPick ? (
-              <HeaderSlot slot="scope">
-                <div className="w-full max-w-xs">
-                  <SelectField
-                    aria-label={t('crates.pickPoint')}
-                    value={pointId ?? ''}
-                    onChange={(e) => setPointId(e.target.value)}
-                  >
-                    {/* A deactivated point reached by `?point=` is not in
+      {/* `<main>` pads the page; the template sets the width (audit 2026-10-24, F9). */}
+      <DashboardPage
+        maxWidth={1024}
+        eyebrow={t('crates.eyebrow')}
+        title={t('crates.title')}
+        description={t('crates.description')}
+        actions={
+          canPick ? (
+            <HeaderSlot slot="scope">
+              <SelectField
+                aria-label={t('crates.pickPoint')}
+                value={pointId ?? ''}
+                onChange={(e) => setPointId(e.target.value)}
+                className="w-48"
+              >
+                {/* A deactivated point reached by `?point=` is not in
                         `points` (active only); without its own entry the
                         select would show the first active point instead. */}
-                    {pointId && points && !points.some((p) => p.id === pointId) ? (
-                      <option value={pointId}>{t('common.inactivePoint')}</option>
-                    ) : null}
-                    {(points ?? []).map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </SelectField>
-                </div>
-              </HeaderSlot>
-            ) : undefined
-          }
-        />
-
-        {needsPoint ? (
-          <EmptyState title={t('crates.empty.title')} hint={t('crates.empty.hint')} />
-        ) : balances.isPending || standing.isPending ? (
-          <div className="flex justify-center py-12">
-            <Spinner />
-          </div>
-        ) : balances.isError || standing.isError ? (
-          <p role="alert" className="py-6 text-center text-destructive">
-            {t('common.somethingWentWrong')}
-          </p>
-        ) : (
-          <>
-            {standing.data ? <CrateStandingBar standing={standing.data} /> : null}
-
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                onClick={() => {
-                  setIssueKey((k) => k + 1);
-                  setIssueOpen(true);
-                }}
-              >
-                <PackagePlus className="size-4" />
-                {t('crates.issue.title')}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setReturnKey((k) => k + 1);
-                  setReturnOpen(true);
-                }}
-              >
-                <PackageCheck className="size-4" />
-                {t('crates.return.title')}
-              </Button>
-
-              <label className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
-                <Switch checked={includeZero} onCheckedChange={setIncludeZero} />
-                {t('crates.showZero')}
-              </label>
+                {pointId && points && !points.some((p) => p.id === pointId) ? (
+                  <option value={pointId}>{t('common.inactivePoint')}</option>
+                ) : null}
+                {(points ?? []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </SelectField>
+            </HeaderSlot>
+          ) : undefined
+        }
+      >
+        <div className="flex flex-col gap-5">
+          {needsPoint ? (
+            <EmptyState title={t('crates.empty.title')} hint={t('crates.empty.hint')} />
+          ) : balances.isPending || standing.isPending ? (
+            <div className="flex justify-center py-12">
+              <Spinner />
             </div>
-
-            {rows.length === 0 ? (
-              <EmptyState title={t('crates.inField.empty.title')} hint={t('crates.inField.empty.hint')} />
-            ) : (
-              <InFieldTable
-                rows={rows}
-                total={balances.data?.total ?? rows.length}
-                standing={standing.data}
-                truncated={isTruncated(balances.data)}
-                renderDocs={(supplierId) => <PersonCrateDocs supplierId={supplierId} isOwner={Boolean(isOwner)} />}
-              />
-            )}
-
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {t('crates.note.receiptVsDeposit')}
+          ) : balances.isError || standing.isError ? (
+            <p role="alert" className="py-6 text-center text-destructive">
+              {t('common.somethingWentWrong')}
             </p>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {t('crates.note.shipmentsDeferred')}
-            </p>
-          </>
-        )}
-      </div>
+          ) : (
+            <>
+              {standing.data ? <CrateStandingBar standing={standing.data} /> : null}
+
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  onClick={() => {
+                    setIssueKey((k) => k + 1);
+                    setIssueOpen(true);
+                  }}
+                >
+                  <PackagePlus className="size-4" />
+                  {t('crates.issue.title')}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setReturnKey((k) => k + 1);
+                    setReturnOpen(true);
+                  }}
+                >
+                  <PackageCheck className="size-4" />
+                  {t('crates.return.title')}
+                </Button>
+
+                <label className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
+                  <Switch checked={includeZero} onCheckedChange={setIncludeZero} />
+                  {t('crates.showZero')}
+                </label>
+              </div>
+
+              {rows.length === 0 ? (
+                <EmptyState
+                  title={t('crates.inField.empty.title')}
+                  hint={t('crates.inField.empty.hint')}
+                />
+              ) : (
+                <InFieldTable
+                  rows={rows}
+                  total={balances.data?.total ?? rows.length}
+                  standing={standing.data}
+                  truncated={isTruncated(balances.data)}
+                  renderDocs={(supplierId) => (
+                    <PersonCrateDocs supplierId={supplierId} isOwner={Boolean(isOwner)} />
+                  )}
+                />
+              )}
+
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {t('crates.note.receiptVsDeposit')}
+              </p>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {t('crates.note.withBerry')}
+              </p>
+            </>
+          )}
+        </div>
+      </DashboardPage>
 
       {!needsPoint ? (
         <>

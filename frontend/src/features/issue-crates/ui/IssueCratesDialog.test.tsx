@@ -5,11 +5,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiError } from '@/shared/api';
 import { IssueCratesDialog } from './IssueCratesDialog';
 
-const { issueMock, suppliersMock, standingMock } = vi.hoisted(() => ({
+const { issueMock, suppliersMock, standingMock, tareMock, toastMock } = vi.hoisted(() => ({
   issueMock: vi.fn(),
   suppliersMock: vi.fn(),
   standingMock: vi.fn(),
+  tareMock: vi.fn(),
+  toastMock: vi.fn(),
 }));
+
+vi.mock('@/entities/tare-type', () => ({ useTareTypeOptionsQuery: () => tareMock() }));
+vi.mock('@/shared/ui/toast', () => ({ toast: { success: toastMock, error: vi.fn() } }));
 
 vi.mock('@/entities/crate', () => ({ useCrateStandingQuery: (a: unknown) => standingMock(a) }));
 
@@ -19,8 +24,7 @@ vi.mock('../api/useIssueCrates', () => ({
 
 vi.mock('@/entities/supplier', () => ({
   useSuppliersQuery: () => suppliersMock(),
-  supplierName: (s: { first_name: string; last_name: string }) =>
-    `${s.first_name} ${s.last_name}`,
+  supplierName: (s: { first_name: string; last_name: string }) => `${s.first_name} ${s.last_name}`,
 }));
 
 let queryClient: QueryClient;
@@ -41,6 +45,12 @@ beforeEach(() => {
   });
   issueMock.mockResolvedValue({});
   standingMock.mockReturnValue({ data: { on_hand: 100, in_transit: 0 } });
+  tareMock.mockReturnValue({
+    data: [
+      { id: 't1', name: 'Box', weight_kg: '0.30', is_crate: false, deposit_price: '0.00' },
+      { id: 't2', name: 'Crate', weight_kg: '0.50', is_crate: true, deposit_price: '25.00' },
+    ],
+  });
 });
 
 describe('IssueCratesDialog', () => {
@@ -58,7 +68,9 @@ describe('IssueCratesDialog', () => {
     await user.type(screen.getByLabelText('Crates'), '10');
     expect(await screen.findByText(/after this issue the point will have −3/i)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /^issue$/i }));
-    await waitFor(() => expect(issueMock).toHaveBeenCalledWith({ supplier_id: 's1', units: 10, mode: 'deposit' }));
+    await waitFor(() =>
+      expect(issueMock).toHaveBeenCalledWith({ supplier_id: 's1', units: 10, mode: 'deposit' }),
+    );
   });
 
   it('says nothing about going negative while the issue fits', async () => {
@@ -75,6 +87,49 @@ describe('IssueCratesDialog', () => {
     expect(screen.getByText(/−5 empty crates at the point/)).toBeInTheDocument();
     expect(screen.getByText(/20 in transit/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^issue$/i })).toBeEnabled();
+  });
+
+  // Audit 2026-10-24, F5: the operator sees the money before they take it.
+  it('shows the deposit as units × the crate price = total, only for a deposit', async () => {
+    const user = userEvent.setup();
+    open();
+    await user.type(screen.getByLabelText('Crates'), '6');
+    expect(await screen.findByText('Deposit: 6 × 25.00 ₴ = 150.00 ₴')).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Taken as'), 'receipt');
+    expect(screen.queryByText(/^Deposit: /)).not.toBeInTheDocument();
+  });
+
+  it('shows no deposit line while the count is not a whole number', async () => {
+    const user = userEvent.setup();
+    open();
+    await user.type(screen.getByLabelText('Crates'), '2.5');
+    expect(screen.queryByText(/^Deposit: /)).not.toBeInTheDocument();
+  });
+
+  it("prints the server's deposit_taken in the toast", async () => {
+    issueMock.mockResolvedValue({ deposit_taken: '150.00' });
+    const user = userEvent.setup();
+    open();
+    await user.selectOptions(screen.getByLabelText('Person'), 's1');
+    await user.type(screen.getByLabelText('Crates'), '6');
+    await user.click(screen.getByRole('button', { name: /^issue$/i }));
+    await waitFor(() =>
+      expect(toastMock).toHaveBeenCalledWith(
+        'Crates issued, deposit 150.00 ₴ — in the crates cash',
+      ),
+    );
+  });
+
+  it('says only «issued» when no money was taken', async () => {
+    issueMock.mockResolvedValue({ deposit_taken: '0.00' });
+    const user = userEvent.setup();
+    open();
+    await user.selectOptions(screen.getByLabelText('Person'), 's1');
+    await user.type(screen.getByLabelText('Crates'), '6');
+    await user.selectOptions(screen.getByLabelText('Taken as'), 'receipt');
+    await user.click(screen.getByRole('button', { name: /^issue$/i }));
+    await waitFor(() => expect(toastMock).toHaveBeenCalledWith('Crates issued'));
   });
 
   it('reads the OWNER-picked point', () => {

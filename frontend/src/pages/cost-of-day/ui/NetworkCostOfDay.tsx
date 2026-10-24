@@ -64,10 +64,13 @@ export function NetworkCostOfDay({ day, locale }: { day: NetworkDay; locale: str
         <p>
           {spent.length === 0
             ? t('costOfDay.network.expenses.none')
-            : t('costOfDay.network.expenses.list', {
-                list: list(spent),
-                total: formatUah(day.expenses_amount, locale),
-              })}
+            : spent.length === 1
+              ? // One entry is its own total — «разом» would repeat it.
+                t('costOfDay.network.expenses.listOne', { list: list(spent) })
+              : t('costOfDay.network.expenses.list', {
+                  list: list(spent),
+                  total: formatUah(day.expenses_amount, locale),
+                })}
         </p>
         {unspread.length > 0 ? (
           <p className="text-xs">

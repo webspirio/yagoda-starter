@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { formatUah, formatKg, formatDecimal } from './format';
+import { formatUah, formatKg, formatDecimal, formatCount, toDecimalField } from './format';
+import { maskDecimalInput, parseDecimal } from './input';
 
 describe('money/weight formatting (strings in, strings out)', () => {
   it('groups thousands with a narrow no-break space and uses a decimal comma in uk', () => {
@@ -31,5 +32,46 @@ describe('formatDecimal — caches the separators per locale', () => {
     expect(spy.mock.calls.map((call) => call[0])).toEqual(['fr-FR', 'de-DE']);
 
     spy.mockRestore();
+  });
+});
+
+// A crate count, a receipt count: whole numbers, grouped like money, no decimals.
+describe('formatCount', () => {
+  it('groups thousands and keeps no decimals', () => {
+    expect(formatCount(1250, 'uk')).toBe('1\u202f250');
+    expect(formatCount(7, 'uk')).toBe('7');
+    expect(formatCount(12500, 'en')).toBe('12,500');
+  });
+  it('prints a negative with the typographic minus', () => {
+    expect(formatCount(-14, 'uk')).toBe('−14');
+  });
+  it('refuses a fractional count — that is a caller bug', () => {
+    expect(() => formatCount(1.5)).toThrow();
+  });
+});
+
+describe('toDecimalField — a server value as a prefilled field shows it', () => {
+  it('swaps the canonical dot for the uk decimal comma', () => {
+    expect(toDecimalField('500.00', 'uk')).toBe('500,00');
+    expect(toDecimalField('1234.5', 'uk')).toBe('1234,5');
+    expect(toDecimalField('500.00')).toBe('500,00'); // uk is the default
+  });
+  it('leaves en (dot decimal) unchanged', () => {
+    expect(toDecimalField('1234.50', 'en')).toBe('1234.50');
+  });
+  it('never groups thousands — the field mask must accept what it is given', () => {
+    expect(toDecimalField('12345678.90', 'uk')).toBe('12345678,90');
+    expect(maskDecimalInput(toDecimalField('12345678.90', 'uk'))).toBe('12345678.90');
+  });
+  it('keeps a whole number and an ASCII minus as they are', () => {
+    expect(toDecimalField('0', 'uk')).toBe('0');
+    expect(toDecimalField('-5.50', 'uk')).toBe('-5,50');
+  });
+  it('passes an empty or non-canonical value through untouched', () => {
+    expect(toDecimalField('', 'uk')).toBe('');
+    expect(toDecimalField('abc', 'uk')).toBe('abc');
+  });
+  it('round-trips through parseDecimal to the canonical form', () => {
+    expect(parseDecimal(toDecimalField('10944.00', 'uk'))).toBe('10944.00');
   });
 });

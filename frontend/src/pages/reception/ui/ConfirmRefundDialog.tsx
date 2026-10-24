@@ -18,8 +18,9 @@ import { useReturnPreviewQuery } from '@/features/return-crates';
  * deposit (2026-09-25). The refund beside «З них наших ящиків» was easy to
  * miss, and that field PRE-FILLS, so a return could be written without the
  * operator ever typing in it. This dialog names every sum the person is owed
- * and the drawer each comes out of, and the confirm button carries the
- * deposit itself.
+ * and the drawer each comes out of; the confirm button carries the deposit
+ * itself when it is the only sum, and says «Видав обидві суми» when berry cash
+ * goes out too (B5, audit 2026-10-24).
  *
  * Mounted only while a submit is waiting on it. Mounting refreshes the
  * server's FIFO split (`staleTime: 0` on `useReturnPreviewQuery`), and the
@@ -153,11 +154,15 @@ export function ConfirmRefundDialog({
             {t('reception.refundConfirm.back')}
           </Button>
           <Button type="button" size="cta" disabled={fresh === null} onClick={confirmOnce}>
-            {fresh !== null
-              ? t('reception.refundConfirm.confirm', {
-                  amount: formatUah(fresh.deposit_refund, locale),
-                })
-              : t('reception.refundConfirm.pending')}
+            {/* Two sums handed over are confirmed as two (B5); the deposit
+                alone rides on the button as its figure. */}
+            {fresh === null
+              ? t('reception.refundConfirm.pending')
+              : paid !== null
+                ? t('reception.refundConfirm.confirmBoth')
+                : t('reception.refundConfirm.confirm', {
+                    amount: formatUah(fresh.deposit_refund, locale),
+                  })}
           </Button>
         </DialogFooter>
       </DialogContent>

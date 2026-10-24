@@ -5,16 +5,23 @@ import { expectNoAxeViolations } from '../../../test-axe';
 import { CratesPage } from './CratesPage';
 import type { CrateBalanceRow, CrateStanding } from '@/entities/crate';
 
-const { standingMock, balancesMock, meMock, scopeMock, pointsMock, issueDialogMock, returnDialogMock } =
-  vi.hoisted(() => ({
-    standingMock: vi.fn(),
-    balancesMock: vi.fn(),
-    meMock: vi.fn(),
-    scopeMock: vi.fn(),
-    pointsMock: vi.fn(),
-    issueDialogMock: vi.fn(),
-    returnDialogMock: vi.fn(),
-  }));
+const {
+  standingMock,
+  balancesMock,
+  meMock,
+  scopeMock,
+  pointsMock,
+  issueDialogMock,
+  returnDialogMock,
+} = vi.hoisted(() => ({
+  standingMock: vi.fn(),
+  balancesMock: vi.fn(),
+  meMock: vi.fn(),
+  scopeMock: vi.fn(),
+  pointsMock: vi.fn(),
+  issueDialogMock: vi.fn(),
+  returnDialogMock: vi.fn(),
+}));
 
 vi.mock('@/entities/crate', () => ({
   useCrateBalancesQuery: (args: unknown) => balancesMock(args),
@@ -62,11 +69,23 @@ const OWNER = { id: 'u1', role: 'network_owner', collection_point_id: null };
 const OPERATOR = { id: 'u2', role: 'point_operator', collection_point_id: 'p1' };
 
 const STANDING: CrateStanding = {
-  collection_point_id: 'p1', allotment: 800, received: 808, on_hand: 341, in_transit: 0, in_field: 195,
-  deposit_units: 115, deposit_held: '13800.00', with_berry: 264, total: 800, shortfall: 0, holders: 2,
+  collection_point_id: 'p1',
+  allotment: 800,
+  received: 808,
+  on_hand: 341,
+  in_transit: 0,
+  in_field: 195,
+  deposit_units: 115,
+  deposit_held: '13800.00',
+  with_berry: 264,
+  total: 800,
+  shortfall: 0,
+  holders: 2,
 };
 
-const row = (over: Partial<CrateBalanceRow> & Pick<CrateBalanceRow, 'supplier_id'>): CrateBalanceRow => ({
+const row = (
+  over: Partial<CrateBalanceRow> & Pick<CrateBalanceRow, 'supplier_id'>,
+): CrateBalanceRow => ({
   first_name: 'Василь',
   last_name: 'Яремчук',
   is_active: true,
@@ -102,7 +121,11 @@ beforeEach(() => {
 describe('CratesPage', () => {
   it('passes the server standing to the bar and the page total to the table', () => {
     standingMock.mockReturnValue({ data: STANDING, isPending: false, isError: false });
-    balancesMock.mockReturnValue({ data: { data: [row({ supplier_id: 's1' })], total: 11, page: 1, limit: 100 }, isPending: false, isError: false });
+    balancesMock.mockReturnValue({
+      data: { data: [row({ supplier_id: 's1' })], total: 11, page: 1, limit: 100 },
+      isPending: false,
+      isError: false,
+    });
     render(<CratesPage />);
     expect(screen.getByTestId('bar')).toHaveTextContent('195');
     expect(screen.getByTestId('table')).toHaveAttribute('data-total', '11');
@@ -130,9 +153,11 @@ describe('CratesPage', () => {
     expect(screen.queryByTestId('table')).not.toBeInTheDocument();
   });
 
-  it('says plainly that the shipments window is deferred', () => {
+  // Audit 2026-10-24, rule 7: no developer notes — the note explains a figure instead.
+  it('explains «with berries» and says nothing about a window that is not built', () => {
     render(<CratesPage />);
-    expect(screen.getByText(/shipments today.*window is not built yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/the moment the shift closes they leave/i)).toBeInTheDocument();
+    expect(screen.queryByText(/not built yet/i)).not.toBeInTheDocument();
   });
 
   it('opens the issue dialog without a point id for an operator', async () => {
@@ -159,15 +184,11 @@ describe('CratesPage', () => {
   it('flips includeZero when the "show everyone" switch is toggled, off by default', async () => {
     const user = userEvent.setup();
     render(<CratesPage />);
-    expect(balancesMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({ includeZero: false }),
-    );
+    expect(balancesMock).toHaveBeenLastCalledWith(expect.objectContaining({ includeZero: false }));
 
     await user.click(screen.getByRole('switch', { name: /show everyone who took crates/i }));
 
-    expect(balancesMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({ includeZero: true }),
-    );
+    expect(balancesMock).toHaveBeenLastCalledWith(expect.objectContaining({ includeZero: true }));
   });
 
   it('is accessible', async () => {
@@ -204,7 +225,12 @@ describe('CratesPage — the owner', () => {
   });
 
   it('waits on the point list instead of asking for a point it is about to resolve', () => {
-    scopeMock.mockReturnValue({ pointId: null, canPick: true, setPointId: vi.fn(), isLoading: true });
+    scopeMock.mockReturnValue({
+      pointId: null,
+      canPick: true,
+      setPointId: vi.fn(),
+      isLoading: true,
+    });
     balancesMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
     standingMock.mockReturnValue({ data: undefined, isPending: true, isError: false });
     render(<CratesPage />);
@@ -219,9 +245,7 @@ describe('CratesPage — the owner', () => {
 
     await user.click(screen.getByRole('button', { name: /issue crates/i }));
 
-    expect(issueDialogMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({ pointId: 'p1' }),
-    );
+    expect(issueDialogMock).toHaveBeenLastCalledWith(expect.objectContaining({ pointId: 'p1' }));
   });
 });
 

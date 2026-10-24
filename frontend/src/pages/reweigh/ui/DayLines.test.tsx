@@ -60,10 +60,18 @@ beforeEach(() => {
 });
 
 describe('DayLines', () => {
-  it('lists a line with its point, time and net weight', () => {
+  it('lists a line with its point, time and net weight — the unit in the header', () => {
     render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
     const row = screen.getByRole('row', { name: /Шипинки/ });
-    expect(within(row).getByText('108.50 kg')).toBeInTheDocument();
+    expect(within(row).getByText('108.50')).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Base, kg' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Point' })).toBeInTheDocument();
+  });
+
+  it('carries no badge on a live line — only a voided one is marked (audit E11)', () => {
+    render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
+    const row = screen.getByRole('row', { name: /Шипинки/ });
+    expect(within(row).queryByText(/posted/i)).not.toBeInTheDocument();
   });
 
   it('shows the stored line as its net formula, under the figure and as the row title — W4', () => {

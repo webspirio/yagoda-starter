@@ -33,6 +33,16 @@ describe('CrateStandingBar', () => {
     expect(screen.getByText('100')).toBeInTheDocument();
   });
 
+  // Audit 2026-10-24, F6: crates on the road are not empties yet — the bar says so.
+  it('names crates still on the road, and says nothing when none are', () => {
+    const { rerender } = render(<CrateStandingBar standing={{ ...base, in_transit: 40 }} />);
+    expect(
+      screen.getByText('On the road: 40 — the transfer is not accepted yet'),
+    ).toBeInTheDocument();
+    rerender(<CrateStandingBar standing={base} />);
+    expect(screen.queryByText(/On the road/)).not.toBeInTheDocument();
+  });
+
   it('says the allotment is complete at shortfall 0', () => {
     render(<CrateStandingBar standing={{ ...base, allotment: 400, shortfall: 0 }} />);
     expect(screen.getByText('Allotment complete')).toBeInTheDocument();

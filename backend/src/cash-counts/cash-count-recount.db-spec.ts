@@ -147,8 +147,8 @@ describe('POST /cash-counts — midday recount (HTTP)', () => {
     // does NOT move cash (movementsSql never reads `intakes`). Inserted
     // directly: the intake write path is not what this file tests.
     await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '1000.00', $4)`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '1000.00', '0.00', $4)`,
       [`RC-IN-${randomUUID()}`, shiftId, supplierId, operator.id],
     );
 

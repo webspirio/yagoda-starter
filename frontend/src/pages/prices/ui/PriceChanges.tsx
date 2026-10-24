@@ -6,7 +6,7 @@ import { SectionCard } from '@/shared/ui/section-card';
 import { Spinner } from '@/shared/ui/spinner';
 import { Chip } from '@/shared/ui/chip';
 import { DateBound } from '@/shared/ui/date-bound';
-import { formatDecimal } from '@/shared/lib/money';
+import { formatDecimal, formatUah } from '@/shared/lib/money';
 import { formatLongDate, todayIso } from '@/shared/lib/date';
 import { useUrlPatch } from '@/shared/lib/url-state';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
@@ -102,7 +102,7 @@ export function PriceChanges() {
       </span>
       <span className="font-mono text-xs tabular-nums">
         {c.previous_base_price !== null ? `${money(c.previous_base_price)} → ` : null}
-        <b>{money(c.base_price)} ₴</b>
+        <b>{formatUah(c.base_price, i18n.language)}</b>
       </span>
       {c.reason ? (
         <span className="min-w-0 truncate text-xs italic text-muted-foreground">«{c.reason}»</span>

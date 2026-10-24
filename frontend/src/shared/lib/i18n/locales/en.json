@@ -73,13 +73,13 @@
     "truncated": "Showing the first {{shown}} of {{total}} points — sorting covers only these.",
     "eyebrow": "Directory",
     "title": "Collection points",
-    "description": "The points where berries are received, with their daily cash and crate targets.",
+    "description": "The points where berries are received, with their cash and crate targets.",
     "new": "New point",
     "col": {
       "number": "No.",
       "name": "Name",
       "kind": "Kind",
-      "targetCash": "Cash target",
+      "targetCash": "Cash target, ₴",
       "code": "Code",
       "targetCrates": "Crate target",
       "status": "Status"
@@ -193,9 +193,9 @@
     "inactive": "Inactive",
     "col": {
       "name": "Name",
-      "weight": "Total weight",
+      "weight": "Total weight, kg",
       "mainProduct": "Main product",
-      "accrued": "Accrued",
+      "accrued": "Accrued, ₴",
       "kind": "Kind",
       "action": "Action"
     },
@@ -252,7 +252,8 @@
     "noPhone": "no phone",
     "ourPoint": "Our point",
     "otherPoints": "Other points",
-    "addNew": "Add a new supplier"
+    "addNew": "Add a new supplier",
+    "balance": "balance {{uah}}"
   },
   "catalog": {
     "eyebrow": "Directory",
@@ -353,7 +354,7 @@
   "prices": {
     "eyebrow": "Pricing",
     "title": "Day prices",
-    "description": "Grades by points. «Common day price» sets every reception point at once — the warehouse keeps its own.",
+    "description": "Grades by points, prices in ₴ per kg. «Set for all» sets every reception point at once — the warehouse keeps its own.",
     "empty": {
       "title": "Nothing to price yet",
       "hint": "Add a product grade in the catalogue, and it will appear here with a column per point."
@@ -372,6 +373,7 @@
     },
     "toast": {
       "set": "Price set",
+      "unchanged": "Same price — nothing recorded",
       "setAll_one": "Price set at {{count}} point",
       "setAll_other": "Price set at {{count}} points"
     },
@@ -388,16 +390,17 @@
       "title": "{{grade}} · history",
       "col": {
         "date": "Date",
-        "base": "Base price",
-        "markup": "Markup",
-        "discount": "Discount",
+        "base": "Base price, ₴/kg",
+        "markup": "Markup, ₴/kg",
+        "discount": "Discount, ₴/kg",
         "reason": "Reason"
       },
       "empty": "The price has not changed yet."
     },
     "sheet": {
-      "common": "Common day price",
+      "common": "Day price, ₴/kg",
       "mixed": "mixed",
+      "notEverywhere": "— not on every point",
       "setAll": "Set for all",
       "ownPrice": "· own price",
       "editCell": "{{grade}} at {{point}}",
@@ -464,7 +467,7 @@
       "accrued": "Accrued",
       "accruedHint": "value of the berry taken in",
       "cashOut": "Cash out",
-      "cashOutHint": "cash for the day, balances included, and voided payouts until their cash is back",
+      "cashOutHint": "all cash paid out — for this day's berry and for old balances; voided ones until the cash is back",
       "debtCreated": "Balances created",
       "debtCreatedHint": "carries over to supplier balances",
       "debtPaidDown": "Paid beyond accrued",
@@ -475,16 +478,19 @@
     "ledger": {
       "title": "Cash reconciliation",
       "accrued": "Accrued for this day's berry",
-      "paidAtReception": "Paid in cash on the spot",
-      "paidAtReceptionHint": "with a receipt",
-      "paidWithoutBerry": "Paid without berry",
       "debtCreated": "Left on balance for us",
       "debtPaidDown": "Paid out beyond accrued",
+      "debtPaidDownHint": "old balances paid down",
+      "voided": "Voided payouts, cash not in the drawer",
       "cashOut": "Total cash out",
-      "voidedReturned": "of which {{voided}} on voided payouts returned later, on the day of the return",
-      "voidedNotReturned": "of which {{voided}} on voided payouts, {{notReturned}} of it still waiting to come back to the drawer",
-      "voidedNoneReturned": "of which {{voided}} on voided payouts still waiting to come back to the drawer",
-      "note": "This screen has no per-date breakdown of payouts yet (#175), so the day shows how much the balance grew. The owner's top-ups carry no date and are not included, nor is cash returned today for an earlier day's voided payout.",
+      "ofWhich": "of which:",
+      "partAtReception": "on the spot with a receipt",
+      "partWithoutBerry": "without berry",
+      "partVoided": "on voided payouts",
+      "voidedReturned": "returned later — the cash came in on the day of the return",
+      "voidedNotReturned": "{{notReturned}} of it still waiting to come back to the drawer",
+      "voidedNoneReturned": "still waiting to come back to the drawer",
+      "note": "The owner's top-ups are not included — they carry no date. Nor is cash returned on this day for another day's voided payout: that shows in «Where this number comes from».",
       "truncated": "Showing only the first documents — totals are partial"
     },
     "feed": {
@@ -536,10 +542,10 @@
     "operatorDescription": "Today at your point: shift, receipts and quick actions.",
     "tiles": {
       "pointsOpen": "Points open",
-      "receipts": "Receipts today",
-      "accrued": "Accrued",
+      "receipts": "Receipts",
+      "accrued": "Receipts total",
       "paid": "Paid",
-      "balances": "Network balances",
+      "balances": "Total owed",
       "balancesHint": "first 100",
       "truncatedHint": "first 100 per point"
     },
@@ -553,7 +559,8 @@
         "none": "Shift not opened yet"
       },
       "pointCash": "Point cash",
-      "reception": "Intake"
+      "reception": "Intake",
+      "idle": "No shift opened yet: {{names}}"
     },
     "staleShifts": {
       "title": "Unclosed shifts",
@@ -611,7 +618,7 @@
       "payout": "Payout {{code}} will be voided",
       "reopens": "Receipts {{codes}} will reopen",
       "reopensUnknown": "The list of receipts that will reopen didn't load — void anyway",
-      "debt": "Receipt voided, debt drops by {{amount}}",
+      "debt": "Receipt voided, the balance drops by {{amount}}",
       "payoutCash": "Client returned {{amount}} — it is in the drawer",
       "required": "Tick every item"
     },
@@ -659,10 +666,14 @@
     }
   },
   "countResult": {
-    "expected": "Expected",
+    "expected": "Should be",
     "counted": "Counted",
-    "discrepancy": "Discrepancy",
     "done": "Done"
+  },
+  "discrepancy": {
+    "shortage": "Short {{amount}}",
+    "surplus": "Over {{amount}}",
+    "matched": "Matched"
   },
   "pointCash": {
     "eyebrow": "{{point}} · {{date}}, {{weekday}}",
@@ -679,38 +690,44 @@
     "stats": {
       "target": "Target",
       "targetUnset": "no target assigned to this point yet",
+      "targetHint": "how much cash the point should hold",
       "cash": "Berry cash",
       "cashHint": "cash available to pay for berries",
       "neverCounted": "Never counted yet: the first count when the shift opens sets the opening balance.",
       "shortfall": "Short of target",
+      "over": "Over target",
       "shortfallUnset": "no target to compare against",
       "shortfallOwed": "the base has not transferred it yet",
+      "shortfallOnTheRoad": "{{uah}} of it already on the road",
       "shortfallOver": "there is more in the drawer than the target",
       "shortfallSettled": "the target is covered"
+    },
+    "unexplained": {
+      "count_one": "Unresolved discrepancies: {{count}}",
+      "count_other": "Unresolved discrepancies: {{count}}",
+      "countAtLeast_one": "Unresolved discrepancies: at least {{count}}",
+      "countAtLeast_other": "Unresolved discrepancies: at least {{count}}",
+      "open": "Explain in the recount history"
     },
     "ledger": {
       "title": "Where this number comes from",
       "opening": "Opening count",
       "openingOn": "Opening count on {{date}}",
-      "openingHint": "target {{target}}",
-      "accruedToday": "Accrued today",
+      "accruedToday": "Accrued for the day",
       "accruedShift": "Accrued this shift",
       "accruedTodayHint": "does not move cash",
       "accruedTodayTruncated": "Showing recent receipts only — older ones may be missing from this total.",
-      "paidToday": "Paid out today",
+      "paidToday": "Paid out for the day",
       "paidShift": "Paid out this shift",
-      "paidPast": "Paid for past days",
-      "paidPastHint": "not part of the figure below",
-      "paidPastTruncated": "Showing recent payouts only — older ones may be missing from this total.",
       "returnedToday": "Returned to the drawer",
-      "cashIn": "Received by transfer today",
+      "cashIn": "Received by transfer for the day",
       "cashInShift": "Received by transfer this shift",
-      "lateChange": "Correction to the closing count",
-      "lateChangeHint": "recorded after the close",
-      "expected": "Expected",
+      "lateChange": "Changed after the close",
+      "expected": "Should be",
+      "counted": "Counted",
+      "difference": "Difference",
       "total": "Berry cash",
       "negative": "Berry cash has gone negative: the target does not cover this day. This is not a data-entry mistake — it means more was paid out than the point had in berry cash.",
-      "twoRowsNote": "Payouts show as two rows on purpose: a day can pay out more than it earned, because old balances get settled too — one \"paid out\" figure would not explain that.",
       "closedOn": "Counted at close on {{date}}",
       "totalAtClose": "Berry cash — counted at close"
     },
@@ -719,7 +736,8 @@
       "caption_one": "deposits for {{count}} crate",
       "caption_other": "deposits for {{count}} crates",
       "captionZero": "no crate deposits held",
-      "hint": "{{caption}} · signed-receipt crates not counted"
+      "hint": "{{caption}} · signed-receipt crates not counted",
+      "hintPast": "{{caption}} · as of today — the crates book has no date"
     },
     "incoming": {
       "loadFailed": "Could not load the transfers on their way. Reload the page."
@@ -729,9 +747,9 @@
       "empty": "No cash counts recorded for this point yet.",
       "columns": {
         "when": "When",
-        "counted": "Counted",
-        "expected": "Expected",
-        "discrepancy": "Discrepancy",
+        "counted": "Counted, ₴",
+        "expected": "Should be, ₴",
+        "discrepancy": "Difference",
         "explanation": "Explanation",
         "countedBy": "Counted by"
       },
@@ -740,7 +758,8 @@
         "midday": "Midday",
         "closing": "Closing"
       },
-      "matched": "Matched",
+      "truncated_one": "Showing the latest {{count}} count — older ones did not fit",
+      "truncated_other": "Showing the latest {{count}} counts — older ones did not fit",
       "open": "Unexplained",
       "noExplanationNeeded": "needs no explanation",
       "settled": "Settled by the owner",
@@ -760,16 +779,11 @@
       },
       "since": "since {{from}}",
       "sinceUntil": "{{from}} to {{to}}",
-      "opening": "Counted this morning",
-      "closing": "Counted at close",
-      "discrepancy": "Discrepancy",
-      "closedBy": "closed by {{name}}",
+      "closedBy": "Closed by: {{name}}",
       "explanation": "“{{text}}”",
       "settled": "Settled by the owner",
       "countAt": "Count at {{time}}",
-      "matched": "✓ matched",
-      "mismatched": "⚠ did not match",
-      "recountsEmpty": "The drawer has not been recounted today.",
+      "recountsEmpty": "The drawer was not recounted on this day.",
       "actions": {
         "recount": "Recount the drawer",
         "close": "Close shift",
@@ -788,8 +802,8 @@
     "result": {
       "opened": "Shift opened",
       "closedSettled": "Shift closed. The day matched.",
-      "openedDiscrepancy": "Shift opened. {{amount}} off the previous close — the owner will see it in their list.",
-      "closedDiscrepancy": "Shift closed. Discrepancy {{amount}} — the owner will see it on their own list."
+      "openedDiscrepancy": "Shift opened. Against the previous close — {{discrepancy}}; the owner will see it on their own list.",
+      "closedDiscrepancy": "Shift closed. {{discrepancy}} — the owner will see it on their own list."
     },
     "target": {
       "set": "Assign a target",
@@ -830,12 +844,17 @@
     "allButton": "All — {{uah}}",
     "submit": "Pay out {{uah}}",
     "submitPlain": "Pay out",
+    "cashHint": "There is {{cash}} of berry cash at the till — nothing more to pay out right now. The rest stays on the balance.",
+    "cashEmpty": "Berry cash at the till is {{cash}} — there is nothing to pay out right now. The balance of {{debt}} stays owed; an owner's transfer refills the till.",
+    "cashUnknown": "Couldn't read the point's cash — if it holds less, the payout will be refused.",
+    "noShift": "No shift is open at this point — cash is paid out only from an open shift. The point operator opens it in Point cash.",
     "toast": {
       "paid": "Paid out {{uah}}"
     },
     "errors": {
       "amountZero": "The amount must be above zero",
       "exceedsDebt": "Cannot pay more than the balance — balance {{debt}}",
+      "exceedsCashLimit": "Only {{cash}} of berry cash at the till — cannot pay out more",
       "exceedsDebtServer": "The amount is more than the balance owed. Lower it.",
       "exceedsCash": "There isn't enough berry cash at the till for this amount. Lower it.",
       "noOpenShift": "No open shift — open one in Point cash",
@@ -863,9 +882,11 @@
   "receipt": {
     "noteLoadFailed": "The network's note didn't load — the receipt will print without it.",
     "title": "Receipt {{code}}",
-    "titleLines_one": "Receipt {{code}} · {{count}} line",
-    "titleLines_other": "Receipt {{code}} · {{count}} lines",
-    "description": "Printable receipt — void the document from here.",
+    "subtitle_one": "{{count}} line",
+    "subtitle_other": "{{count}} lines",
+    "subtitleVoidable_one": "{{count}} line · you can void the document here",
+    "subtitleVoidable_other": "{{count}} lines · you can void the document here",
+    "voidedNotInBalance": "Voided — not counted in the balance",
     "supplier": "Supplier",
     "gross": "Gross",
     "pallet": "Pallet",
@@ -899,7 +920,8 @@
     "operationPayoutDebt": "Debt payout",
     "balanceAfterPayout": "Balance after payout",
     "payoutTitle": "Payout receipt {{code}}",
-    "payoutDescription": "Printable payout receipt — you can void the document here."
+    "payoutDescription": "Printable payout receipt.",
+    "payoutDescriptionVoidable": "Printable payout receipt — you can void the document here."
   },
   "reception": {
     "eyebrow": "{{point}} · {{date}}",
@@ -970,7 +992,7 @@
     "lines": {
       "add": "Add line",
       "hint": "Several grades from one supplier add up into one total and one receipt.",
-      "capHint": "Real data never has more than 5 lines per visit — no more are added.",
+      "capHint": "No more than 5 lines on one receipt",
       "remove": "Remove line",
       "draftHint": "Finish this line or remove it",
       "title": "Receipt lines",
@@ -978,12 +1000,12 @@
       "tareUnits_other": "{{count}} tare units",
       "col": {
         "grade": "Grade",
-        "gross": "Gross",
-        "pallet": "Pallet",
-        "tare": "Tare",
-        "net": "Net",
-        "price": "Price",
-        "amount": "Amount"
+        "gross": "Gross, kg",
+        "pallet": "Pallet, kg",
+        "tare": "Tare, kg",
+        "net": "Net, kg",
+        "price": "Price, ₴/kg",
+        "amount": "Amount, ₴"
       }
     },
     "returned": {
@@ -1004,6 +1026,7 @@
       "receiptPart_one": "{{count}} crate on a receipt — no money",
       "receiptPart_other": "{{count}} crates on a receipt — no money",
       "confirm": "Handed over {{amount}}",
+      "confirmBoth": "Handed over both sums",
       "pending": "Accept",
       "back": "Back",
       "loading": "Working out the deposit…",
@@ -1026,9 +1049,11 @@
       "cashNote": "Only {{uah}} is in the berry drawer — nothing more to pay out right now. The difference is added to the supplier's balance; a transfer from the owner restocks it.",
       "cashUnavailable": "The berry cash drawer could not be read — the server will check the amount when the receipt is recorded",
       "settled": "Settled in full",
-      "newDebt": "New debt from this delivery",
+      "newDebt": "Debt from this delivery",
       "paysOld": "Paid off the earlier balance",
-      "balanceAfter": "Owed by us after this"
+      "balanceAfter": "Owed by us after this",
+      "supplierOwes": "Supplier owes us",
+      "debtFailed": "couldn't be read"
     },
     "submit": "Accept",
     "submitPay": "Accept · pay out {{uah}}",
@@ -1036,8 +1061,10 @@
     "state": {
       "shiftOpen": "Shift open since {{time}}",
       "cashTitle": "Berry cash",
-      "paidOut": "paid out {{uah}}",
+      "paidOut": "− paid out {{uah}}",
       "openingCash": "this morning {{uah}}",
+      "cashIn": "+ cash in {{uah}}",
+      "returned": "+ returned {{uah}}",
       "cashBar": "{{cash}} in the drawer, {{paid}} paid out",
       "crates": "Crates",
       "cratesValue": "{{total}} of {{target}}",
@@ -1051,17 +1078,18 @@
       "title": "Today's receipts",
       "trigger": "Today",
       "summary": "{{count}} rcpt. · {{kg}}",
-      "open": "open {{uah}}",
+      "open": "unpaid {{uah}}",
       "empty": "Nothing received yet. The first receipt will appear here.",
       "voided": "voided",
       "positions_one": "{{count}} position",
       "positions_other": "{{count}} positions",
-      "remainder": "remainder {{uah}}"
+      "remainder": "unpaid {{uah}}"
     },
     "toast": {
       "opened": "Shift opened",
       "accepted": "Accepted {{kg}} — {{uah}}",
       "remainder": "Owed by us: {{uah}}",
+      "supplierOwes": "Supplier owes us: {{uah}}",
       "settled": "Settled in full",
       "linesCleared": "Lines cleared — they belonged to the previous supplier"
     },
@@ -1085,8 +1113,6 @@
     }
   },
   "debts": {
-    "eyebrow_one": "{{count}} supplier",
-    "eyebrow_other": "{{count}} suppliers",
     "title": "Balances owed",
     "description": "Every balance remembers exactly which drop-off created it. Cash here goes to whoever came without berries — if there are berries, the balance is simply added to the «Total» in the intake window.",
     "allPoints": "All points",
@@ -1101,11 +1127,11 @@
       "supplier": "Supplier",
       "point": "Point",
       "age": "Age",
-      "balance": "Balance",
+      "balance": "Balance, ₴",
       "action": "Action"
     },
     "inactive": "inactive",
-    "overpaid": "overpaid {{uah}}",
+    "overpaid": "overpaid {{amount}}",
     "days_one": "{{count}} day",
     "days_other": "{{count}} days",
     "ageSince": "oldest balance since {{date}}",
@@ -1140,13 +1166,15 @@
       "weights": "{{gross}} gross − {{tare}} tare · {{price}} ₴/kg",
       "weightsWithPallet": "{{gross}} gross − {{pallet}} pallet − {{tare}} tare · {{price}} ₴/kg"
     },
-    "breakdown": "receipts {{intakes}} + top-ups {{topUps}} − paid out {{payouts}}",
-    "breakdownNoTopUps": "receipts {{intakes}} − paid out {{payouts}}",
+    "breakdown": "receipts {{intakes}} + top-ups {{topUps}} − paid out {{payouts}} = {{debt}}",
+    "breakdownNoTopUps": "receipts {{intakes}} − paid out {{payouts}} = {{debt}}",
     "open": {
       "title": "Open balances — what exactly is owed",
       "topUp": "Top-up on {{code}}",
       "unallocated": "Overpayment — not allocated",
       "openReceipt": "Open receipt {{code}}",
+      "ofAmount": "of {{uah}}",
+      "showAll": "Show all ({{n}})",
       "oldest_one": "oldest from {{date}} — {{count}} day",
       "oldest_other": "oldest from {{date}} — {{count}} days"
     },
@@ -1156,9 +1184,10 @@
       "intake": "Receipt",
       "payout": "Payout",
       "void": "Void",
-      "truncated": "Showing the first 100 receipts and payouts",
-      "topUp": "Balance",
-      "addTopUp": "Add a balance",
+      "since": "History shown from {{date}}",
+      "olderInJournal": "older documents are in the «Receipt journal»",
+      "topUp": "Top-up",
+      "addTopUp": "Add a top-up",
       "againstReceipt": "against {{code}}",
       "parentVoided": "the receipt was voided — counts for nothing",
       "openLeft": "{{uah}} still open",
@@ -1177,21 +1206,24 @@
     "pickSupplier": "Select a supplier",
     "allSuppliers": "All suppliers",
     "showVoided": "show voided",
+    "inactiveSupplier": "{{name}} (inactive)",
     "kind": {
       "intakes": "Receipts",
       "payouts": "Payouts"
     },
     "tiles": {
       "accrued": "Berries received",
+      "accruedHint": "per receipts, without top-ups",
       "paid": "Cash paid out"
     },
     "col": {
       "date": "Date",
       "time": "Time",
       "code": "Receipt",
+      "document": "Document",
       "point": "Point",
       "supplier": "Supplier",
-      "amount": "Amount",
+      "amount": "Amount, ₴",
       "status": "Status",
       "action": "Action"
     },
@@ -1248,6 +1280,9 @@
     "resolve": {
       "title": "Resolve the dispute",
       "note": "The point wrote: “{{note}}”",
+      "sentCash": "Sent",
+      "reportedCash": "The point counted",
+      "difference": "Difference",
       "resolvedCash": "Resolved cash",
       "resolvedCrates": "Crates to book",
       "submit": "Resolve",
@@ -1261,8 +1296,8 @@
       "accept": "Accept",
       "dispute": "Doesn't match",
       "toastAccepted": "Transfer accepted",
-      "toastAcceptedDetail_one": "{{uah}} and {{count}} crate joined the cash and the target.",
-      "toastAcceptedDetail_other": "{{uah}} and {{count}} crates joined the cash and the target.",
+      "toastAcceptedDetail_one": "{{uah}} and {{count}} crate joined the cash; the shortfall to target went down.",
+      "toastAcceptedDetail_other": "{{uah}} and {{count}} crates joined the cash; the shortfall to target went down.",
       "disputed": {
         "header": "Flagged \"doesn't match\" — transfer from {{date}}",
         "sent_one": "Sent {{uah}} and {{count}} crate",
@@ -1270,7 +1305,7 @@
         "reported_one": "you counted {{uah}} and {{count}} crate",
         "reported_other": "you counted {{uah}} and {{count}} crates",
         "note": "\"{{note}}\"",
-        "footer": "The cash hasn't moved by a single kopiyka. The owner will resolve the transfer — the point doesn't touch this figure."
+        "footer": "{{uah}} was credited to the drawer — what you counted. The owner will set the final amount."
       }
     }
   },
@@ -1278,23 +1313,21 @@
     "eyebrow": "For the owner",
     "title": "Transfers",
     "description": "How much the base still owes each point toward its target, and what is currently on the road. A point with no assigned target does not enter the network total.",
-    "truncatedHint": "Showing recent transfers only — an older dispute may not appear below or be resolvable from this table.",
+    "truncatedHint": "The history shows recent transfers only. Every open dispute is in the table above.",
     "tiles": {
       "totalOwed": "Owed to points",
-      "totalOwedHint": "Showing the first {{count}} points — the total is partial"
+      "totalOwedHint": "Showing the first {{count}} points — the total is partial",
+      "onTheRoad": "{{uah}} of it already on the road"
     },
     "col": {
       "point": "Point",
-      "target": "Target",
-      "cash": "In the drawer",
-      "shortfall": "Short by",
-      "crates": "Crates",
+      "target": "Target, ₴",
+      "cash": "In the drawer, ₴",
+      "shortfall": "Short by, ₴",
       "status": "Status"
     },
-    "crates": {
-      "label": "Crates",
-      "note": "not tracked yet"
-    },
+    "overTarget": "over by {{amount}}",
+    "onTheRoad": "on the road {{uah}}",
     "status": {
       "sent": "In transit",
       "accepted": "Accepted",
@@ -1333,16 +1366,16 @@
     }
   },
   "topUp": {
-    "title": "Add a balance",
+    "title": "Add a top-up",
     "description": "Receipt {{code}} · {{supplier}}. The debt goes up by this amount; no cash moves until a payout.",
     "amount": "Amount, UAH",
     "reason": "Why (required)",
     "submit": "Add",
     "toast": {
-      "created": "Balance added"
+      "created": "Top-up added"
     },
     "errors": {
-      "failed": "Couldn't add the balance. Reload the page and try again.",
+      "failed": "Couldn't add the top-up. Reload the page and try again.",
       "amountPositive": "The amount must be above zero",
       "reasonRequired": "Say why — this is what explains the debt later",
       "reasonTooLong": "At most 500 characters",
@@ -1365,6 +1398,7 @@
       "inField": "Out with people",
       "withBerry": "With us, with berries",
       "received": "Received by transfer: {{received}}",
+      "inTransit": "On the road: {{in_transit}} — the transfer is not accepted yet",
       "total": "Total for the point",
       "shortfall": "Short of the allotment:",
       "shortfallNone": "—",
@@ -1390,6 +1424,8 @@
       "description": "Crates go home with a person. Both modes put the same crates on the same balance — the difference is only in the money.",
       "submit": "Issue",
       "toast": "Crates issued",
+      "toastDeposit": "Crates issued, deposit {{amount}} — in the crates cash",
+      "depositLine": "Deposit: {{units}} × {{price}} = {{total}}",
       "onHandHint": "{{on_hand}} empty crates at the point.",
       "inTransitHint": "{{in_transit}} in transit — accept the transfer first.",
       "goesNegativeHint": "After this issue the point will have {{after}} — it owes people crates; note who in the notebook."
@@ -1415,7 +1451,7 @@
       "col.person": "Person",
       "col.units": "Crates",
       "col.how": "Taken as",
-      "col.deposit": "Deposit",
+      "col.deposit": "Deposit, ₴",
       "total": "TOTAL",
       "inactive": "deactivated",
       "empty.title": "Nobody is holding crates",
@@ -1427,7 +1463,7 @@
     },
     "note": {
       "receiptVsDeposit": "Crates taken on a receipt have no cash cover at all — their deposit column reads «—», not zero. That is why «crates out» and «deposits held» are two different numbers.",
-      "shipmentsDeferred": "The «Shipments today» window is not built yet. «With us, with berries» counts the crate tare on receipts of the point's currently open shift, and leaves the point's count the moment that shift closes."
+      "withBerry": "«With us, with berries» — crates the berries came in on the open shift's receipts. The moment the shift closes they leave the point's count."
     },
     "docs": {
       "title": "This person's crate documents",
@@ -1466,7 +1502,7 @@
     "title": "Reweighing",
     "eyebrow": "For the owner · work at the scale",
     "description": "A second weighing at the base — the system counts the shortfall.",
-    "fromPoint": "from the point",
+    "fromPoint": "Point",
     "berryOn": "berries for",
     "step1": "1 · Weight",
     "step2": "2 · Tare",
@@ -1502,40 +1538,41 @@
       "title": "Positions entered",
       "hint": "not saved",
       "empty": "No positions yet.",
-      "total": "Our total weight",
+      "total": "Total at the base",
       "remove": "Remove position"
     },
     "check": {
       "title": "Reconciliation with the point",
       "byProduct": "shortfall by product",
       "product": "Product",
-      "point": "Point",
-      "ours": "Ours",
-      "diff": "Difference",
-      "money": "In money",
-      "notReweighed": "not reweighed ⚠",
+      "point": "Point, kg",
+      "ours": "Base, kg",
+      "diff": "Difference, kg",
+      "money": "Shortfall, ₴",
+      "notReweighed": "not reweighed",
       "nothingAccepted": "Nothing was accepted at {{point}} that day — there is nothing to compare.",
       "shortfallTotal": "Total shortfall",
       "shiftOpen": "The shift is still open — the shortfall is counted once it closes.",
-      "notWeighed": "⚠ Not reweighed: {{count}} — no shortfall is counted for them.",
-      "drafted": "Not recorded yet: +{{kg}} — “Ours” does not include them.",
+      "notWeighed": "Not reweighed: {{count}} — no shortfall is counted for them.",
+      "drafted": "Not recorded yet: +{{kg}} — “Base” does not include them.",
       "shortfallKg": "−{{kg}}",
       "surplusKg": "+{{kg}}",
       "moneyFormula": "{{kg}} × {{rate}} = {{amount}}",
       "totalValue": "{{kg}} · {{amount}}",
+      "rate": "{{product}}: average purchase price — {{accrued}} ÷ {{kg}} = {{rate}} ₴/kg",
+      "rateTopUps": "{{product}}: average purchase price incl. top-ups — {{accrued}} ÷ {{kg}} = {{rate}} ₴/kg",
       "cratesType": "{{name}} {{point}} → {{base}}",
       "cratesJoin": " · "
     },
     "day": {
       "title": "Reweighings recorded for {{date}}",
       "allPoints": "across every point",
-      "point": "From point",
+      "point": "Point",
       "time": "Time",
       "what": "Product",
-      "ours": "Our weight",
+      "ours": "Base, kg",
       "status": "Status",
       "actionHeader": "Action",
-      "posted": "posted",
       "voided": "voided",
       "void": "Void",
       "voidLine": "Void the {{time}} line from {{point}}",
@@ -1549,7 +1586,7 @@
       }
     },
     "post": "Post reweighing · {{kg}}",
-    "noShift": "The shift for {{date}} at {{point}} was never opened — there is nothing to reweigh.",
+    "noShift": "«{{point}}» did not work that day — there is nothing to reweigh.",
     "posted": "Reweighing posted · {{kg}}",
     "postFailed": "The position “{{grade}}” wasn't posted.",
     "errors": {
@@ -1587,11 +1624,13 @@
       "title": "Day expenses",
       "empty": "No expenses have been entered for this day yet.",
       "labelField": "Expense label",
-      "amountField": "₴",
+      "amountField": "Expense amount, ₴",
       "edit": "Edit «{{label}}»",
       "save": "Save",
       "cancel": "Cancel",
       "remove": "Remove «{{label}}»",
+      "removeConfirm": "Remove «{{label}}»?",
+      "removeYes": "Remove",
       "awaiting": "Awaiting re-weighing",
       "awaitingAmount": "{{amount}} not spread",
       "awaitingNote": "Until the load is weighed at the base there is no shortfall yet — the day's expenses have landed nowhere.",
@@ -1626,17 +1665,18 @@
       "point": "Point",
       "base": "Base",
       "notArrived": "Not arrived",
-      "accrued": "Accrued",
+      "accrued": "Accrued, ₴",
       "priceWas": "Purchase price, ₴/kg",
       "ownShortfall": "Own, ₴",
       "dayShortfall": "Day, ₴/kg",
       "expensesPerKg": "₴/kg",
-      "cost": "Cost price",
+      "cost": "Cost price, ₴/kg",
       "total": "Total",
       "topUps": "incl. top-ups {{amount}}",
       "unweighed": "Not reweighed, left out of the total: {{kg}} · {{amount}}",
       "howToRead": "How to read a row: <sky>purchase price</sky> + <amber>day shortfall per kg</amber> + <plum>day expenses per kg</plum> = <leaf>cost price</leaf>. The shortfall and expenses are spread evenly over every kilogram that reached the base: <amber>{{shortfall}} ÷ {{kg}} = {{shortfallPerKg}}</amber>, <plum>{{expenses}} ÷ {{kg}} = {{expensesPerKg}}</plum>.",
       "dayFormula": "Average cost of a kilogram for the day: (accrued {{accrued}} + expenses {{expenses}}) ÷ {{kg}} = <leaf>{{avg}} ₴/kg</leaf>",
+      "dayFormulaWeighed": "Average cost of a kilogram for the day: (accrued on what was reweighed {{accrued}} + expenses {{expenses}}) ÷ {{kg}} = <leaf>{{avg}} ₴/kg</leaf>",
       "accruedHelpLabel": "What «accrued» means",
       "accruedHelp": "«Accrued» is the receipts together with their top-ups, not cash out of the drawer: debts exist, so the cash that left the drawer that day is a different number and does not affect the cost of day."
     },
@@ -1657,6 +1697,11 @@
       "noIntake": "No point received berries this day.",
       "showPoints": "Show points: {{product}}",
       "hidePoints": "Hide points: {{product}}",
+      "partial_one": "reweighed at {{n}} of {{count}} point",
+      "partial_other": "reweighed at {{n}} of {{count}} points",
+      "partialWithout": "without {{kg}}",
+      "counted_one": "Counted {{kg}} from {{count}} point of {{total}}.",
+      "counted_other": "Counted {{kg}} from {{count}} points of {{total}}.",
       "rule": "The network average is total ÷ weight, never an average of the points' prices. Under each product, each point's cost as on its own page.",
       "status": {
         "open": "Shift still open: {{names}}",
@@ -1665,13 +1710,13 @@
       },
       "expenses": {
         "list": "Day expenses: {{list}} · total {{total}}",
+        "listOne": "Day expenses: {{list}}",
         "none": "No day expenses entered at any point.",
         "unspread": "Not spread yet — nothing reweighed at the point: {{list}}",
         "where": "Expenses are entered on the point's page."
       },
       "table": {
-        "shortfallShare": "Day's share, ₴",
-        "expensesShare": "Share, ₴",
+        "share": "Share, ₴",
         "fullCost": "Full cost, ₴",
         "cost": "Cost, ₴/kg"
       },

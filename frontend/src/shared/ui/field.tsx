@@ -20,7 +20,7 @@ export const fieldBaseClass = cn(
   fieldTextClass,
   'w-full rounded-xl bg-card border border-input px-3.5',
   'transition-colors placeholder:text-muted2',
-  'focus:border-brand disabled:cursor-not-allowed disabled:opacity-50',
+  'focus:border-ring disabled:cursor-not-allowed disabled:opacity-50',
   // The mock's invalid state: a destructive hairline plus a soft destructive
   // ring, driven by the `aria-invalid` that `Field` already hands the control.
   'aria-invalid:border-destructive aria-invalid:ring-[3px] aria-invalid:ring-destructive/20',

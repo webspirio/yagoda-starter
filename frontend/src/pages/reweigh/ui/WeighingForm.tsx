@@ -215,7 +215,7 @@ export function WeighingForm({
     setTareCountInput(String(Math.max(0, tareCount + delta)));
 
   return (
-    <div className="rounded-xl bg-card ring-1 ring-foreground/10">
+    <div className="rounded-xl border border-line2 bg-card">
       <div className="border-b border-border/70 p-4">
         <Eyebrow className="mb-2">{t('reweigh.step1')}</Eyebrow>
         <div className="flex flex-wrap items-start gap-3">
@@ -227,7 +227,7 @@ export function WeighingForm({
                   value={gross}
                   onChange={(e) => setGross(e.target.value)}
                   {...grossField.inputProps}
-                  placeholder="0.00"
+                  placeholder={formatDecimal('0.00', locale)}
                   className="h-14 pr-12 font-mono text-2xl font-semibold"
                 />
                 <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 font-mono text-sm text-muted-foreground">
@@ -244,7 +244,7 @@ export function WeighingForm({
                   value={pallet}
                   onChange={(e) => setPallet(e.target.value)}
                   {...palletField.inputProps}
-                  placeholder="0.0"
+                  placeholder={formatDecimal('0.00', locale)}
                   className="h-14 pr-9 font-mono text-lg font-semibold"
                 />
                 <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 font-mono text-xs text-muted-foreground">
@@ -345,7 +345,7 @@ export function WeighingForm({
           <Eyebrow className="mb-1">{t('reweigh.netEyebrow')}</Eyebrow>
           <div
             data-testid="net-kg"
-            className="font-mono text-[34px] leading-none font-semibold tracking-tight text-primary"
+            className="font-mono text-[34px] leading-none font-semibold tracking-tight text-brand"
           >
             {formatKg(netForDisplay, locale)}
           </div>

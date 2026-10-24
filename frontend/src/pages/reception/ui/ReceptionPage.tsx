@@ -44,11 +44,14 @@ import { SupplierSection } from './SupplierSection';
 import { LineEditor } from './LineEditor';
 import { TodayReceipts } from './TodayReceipts';
 import { LinesTable, type CommittedLine } from './LinesTable';
-import { TotalsSection } from './TotalsSection';
+import { TotalsSection, type DebtStatus } from './TotalsSection';
 import { ReturnedCratesField } from './ReturnedCratesField';
 import { ConfirmRefundDialog } from './ConfirmRefundDialog';
 import { PointStrip, type StripShift } from './PointStrip';
 import { ShiftClosedState, ShiftStatus } from './ShiftState';
+
+/** The today's-receipts card, which the strip's «Сьогодні» scrolls to. */
+const TODAY_RECEIPTS_ID = 'today-receipts';
 
 /** §3 — a UI cap that matches the paper book (4 committed + the draft). */
 const MAX_LINES = 5;
@@ -171,7 +174,19 @@ export function ReceptionPage() {
         ? { status: 'open', shift: shift.data }
         : { status: 'none' };
   const balance = useSupplierBalanceQuery(values.supplier_id || null);
-  const debt = balance.data?.debt ?? null;
+  // B2 (audit 2026-10-24): «Разом» is accrual PLUS this balance, so until the
+  // balance is read — or while a stale one is being re-read, e.g. right after
+  // a write invalidated it — there is no total, no suggestion and no submit.
+  // A failed read is said, never taken for «no balance».
+  const debtStatus: DebtStatus =
+    values.supplier_id === ''
+      ? 'none'
+      : balance.isError
+        ? 'error'
+        : balance.isPending || (balance.isFetching && balance.isStale)
+          ? 'pending'
+          : 'ready';
+  const debt = debtStatus === 'ready' ? (balance.data?.debt ?? null) : null;
   // The receipt as it will be sent: an untouched trailing draft is not a line
   // (`withoutBlankDraft`), so it neither darkens the preview nor blocks submit.
   const outgoing = withoutBlankDraft(values);
@@ -270,7 +285,7 @@ export function ReceptionPage() {
   // this is derived fresh every render rather than pushed into RHF by an
   // effect (no `setState` during render, no stale suggestion one tick behind
   // a fresh preview).
-  const suggested = suggestedPaid(accrued, debt, cash);
+  const suggested = debtStatus === 'ready' ? suggestedPaid(accrued, debt, cash) : '';
   const paidShown = paidTouched ? values.paid_amount : suggested;
   // R1 (client, 23.10): a payout above the cap — the suggestion IS the cap —
   // is refused here, not clamped: «Прийняти» is disabled and Enter does not
@@ -283,6 +298,7 @@ export function ReceptionPage() {
   const canSubmit =
     shiftOpen &&
     values.supplier_id !== '' &&
+    debtStatus === 'ready' &&
     settled !== null &&
     !hasServerError &&
     !overCap &&
@@ -312,6 +328,7 @@ export function ReceptionPage() {
         toCreateBody({ ...formValues, paid_amount: paidShown }, bodyPointId),
       );
       const remainderOf = sub(add(created.amount, carriedIn), created.paid_amount);
+      const remainderSign = cmp(remainderOf, '0');
       toastSuccess(
         t('reception.toast.accepted', {
           // The server ships the sum already (`net_kg` on the document
@@ -322,10 +339,15 @@ export function ReceptionPage() {
           uah: formatUah(created.amount, locale),
         }),
         {
+          // Below zero it is the supplier who owes — said so, unsigned (B1).
           description:
-            cmp(remainderOf, '0') !== 0
+            remainderSign === 1
               ? t('reception.toast.remainder', { uah: formatUah(remainderOf, locale) })
-              : t('reception.toast.settled'),
+              : remainderSign === -1
+                ? t('reception.toast.supplierOwes', {
+                    uah: formatUah(sub('0', remainderOf), locale),
+                  })
+                : t('reception.toast.settled'),
         },
       );
       openReceipt(created.id);
@@ -388,6 +410,15 @@ export function ReceptionPage() {
     pendingSubmit !== null
       ? toCreateBody({ ...pendingSubmit, paid_amount: paidShown }, bodyPointId)
       : null;
+
+  // Moves the operator to today's receipts card — scrolled into view and
+  // focused, so the keyboard lands there too.
+  const showTodayReceipts = () => {
+    const card = document.getElementById(TODAY_RECEIPTS_ID);
+    if (!card) return;
+    card.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    card.focus({ preventScroll: true });
+  };
 
   const handleOpenShift = () => {
     setOpenDialogInstance((n) => n + 1);
@@ -463,7 +494,9 @@ export function ReceptionPage() {
           pointId={pointId}
           shift={stripShift}
           isOwner={isOwner}
-          onOpenReceipt={openReceipt}
+          // B6 — the strip summarises today's receipts and leads to their one
+          // list, the card under the form; with no open shift there is none.
+          onShowToday={stripShift.status === 'open' ? showTodayReceipts : undefined}
         />
 
         {/* An open shift that is NOT today's (#114). A SIBLING of the intake
@@ -546,7 +579,9 @@ export function ReceptionPage() {
               {/* Unclipped: the supplier picker's list is absolutely positioned
                 inside this card and must open OVER the card's edge, not be cut
                 by it. Nothing here touches the corners that clipping protects. */}
-              <Card className="flex flex-col overflow-visible">
+              {/* `min-w-0`: a grid item would otherwise widen to the lines
+                table's own minimum and push a phone screen sideways. */}
+              <Card className="flex min-w-0 flex-col overflow-visible">
                 <SupplierSection
                   pointId={pointId}
                   ownerMode={isOwner}
@@ -617,11 +652,13 @@ export function ReceptionPage() {
                   onRemove={(index) => lines.remove(index)}
                 />
               </Card>
-              <Card className="flex flex-col">
+              <Card className="flex min-w-0 flex-col">
                 <TotalsSection
                   accrued={accrued}
-                  lineCount={settled?.items.length ?? lines.fields.length}
+                  // The receipt as it will go out — never the blank draft (B10).
+                  lineCount={settled?.items.length ?? outgoing.items.length}
                   debt={debt}
+                  debtStatus={debtStatus}
                   cash={cash}
                   cashUnavailable={pointCash.isError}
                   paid={paidShown}
@@ -654,10 +691,16 @@ export function ReceptionPage() {
               </Card>
             </form>
             {/* Outside the form: a row is a button that opens a receipt, never a
-              part of the receipt being written. Same list as the strip's
-              «Сьогодні» popover, laid out across the page (client, 24.10). */}
+              part of the receipt being written. The ONE list of today's
+              receipts (B6) — the strip's «Сьогодні» cell leads here. */}
             <Card className="mt-4">
-              <section aria-labelledby="today-receipts-title" className="px-4 pt-3 pb-2">
+              <section
+                id={TODAY_RECEIPTS_ID}
+                aria-labelledby="today-receipts-title"
+                // Focus target for the strip's «Сьогодні», not a Tab stop.
+                tabIndex={-1}
+                className="scroll-mt-4 rounded-xl px-4 pt-3 pb-2 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              >
                 <Eyebrow className="mb-1">
                   <span id="today-receipts-title">{t('reception.today.title')}</span>
                 </Eyebrow>

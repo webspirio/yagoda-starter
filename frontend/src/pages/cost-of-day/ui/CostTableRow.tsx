@@ -134,7 +134,7 @@ export function CostTableRow({
           <ShortfallValue value={p.complete ? p.shortfall_kg : null} minus locale={locale} />
         </TableCell>
         <TableCell className={`${NUM} ${SKY}`}>
-          {formatUah(p.accrued, locale)}
+          {dec(p.accrued)}
           <TopUpsNote value={p.top_ups} locale={locale} />
         </TableCell>
         <TableCell className={`${NUM} ${SKY} text-[var(--sky)]`}>{dec(p.price_was)}</TableCell>
@@ -199,7 +199,7 @@ export function CostTableRow({
               <TableCell className={NUM}>{dash(g.reweigh_net_kg, dec)}</TableCell>
               <TableCell data-group="shortfall-kg" />
               <TableCell className={`${NUM} ${SKY}`}>
-                {formatUah(g.accrued, locale)}
+                {dec(g.accrued)}
                 <TopUpsNote value={g.top_ups} locale={locale} />
               </TableCell>
               <TableCell className={`${NUM} ${SKY}`}>{dec(g.price_was)}</TableCell>

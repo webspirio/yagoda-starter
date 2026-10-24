@@ -23,7 +23,7 @@ const ZERO = '0.00';
  * shortfall). The one sum here is the unposted drafts' preview line, which is
  * explicitly NOT part of the звірка.
  *
- * Colour is one concept: amber is недостача — «−1,40 кг» and «1,40 × 189,42 =
+ * Colour is one concept: amber is недостача — «−1,40» and «1,40 × 189,42 =
  * 265,19 ₴», the formula a calculator re-checks (W3). A surplus is data, muted,
  * with no money claim (§8.2 правка: «надлишок неможливий»).
  *
@@ -64,9 +64,13 @@ export function Reconciliation({
   const hasRows = acceptedAnything && products.length > 0;
   const totalShort =
     missingTotalKg !== null && missingTotalAmount !== null && cmp(missingTotalKg, ZERO) > 0;
+  // E5 — each priced shortfall's rate, written as the division it is.
+  const rated = products.filter(
+    (p) => p.rate !== null && p.missing_kg !== null && cmp(p.missing_kg, ZERO) > 0,
+  );
 
   return (
-    <div className="rounded-xl bg-card ring-1 ring-foreground/10">
+    <div className="rounded-xl border border-line2 bg-card">
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border/70 px-4 py-3">
         <Eyebrow>{t('reweigh.check.title')}</Eyebrow>
         <span className="text-xs text-muted-foreground">{t('reweigh.check.byProduct')}</span>
@@ -115,16 +119,30 @@ export function Reconciliation({
               totalShort ? 'text-amber' : 'text-muted-foreground',
             )}
           >
+            {/* Unsigned: the label already says «Недостача» (rule 5 of the
+                2026-10-24 audit — a label agrees with its sign). */}
             {missingTotalKg === null || missingTotalAmount === null
               ? '—'
               : t('reweigh.check.totalValue', {
-                  kg: totalShort
-                    ? t('reweigh.check.shortfallKg', { kg: formatKg(missingTotalKg, locale) })
-                    : formatKg(missingTotalKg, locale),
+                  kg: formatKg(missingTotalKg, locale),
                   amount: formatUah(missingTotalAmount, locale),
                 })}
           </span>
         </div>
+        {rated.map((p) => (
+          <p
+            key={p.product_id}
+            data-testid="rate-line"
+            className="mt-2 font-mono text-xs leading-relaxed text-muted-foreground"
+          >
+            {t(p.top_ups === ZERO ? 'reweigh.check.rate' : 'reweigh.check.rateTopUps', {
+              product: p.product_name,
+              accrued: formatDecimal(p.accrued, locale),
+              kg: formatDecimal(p.intake_net_kg, locale),
+              rate: formatDecimal(p.rate as string, locale),
+            })}
+          </p>
+        ))}
         {missingTotalKg === null && !shiftClosed ? (
           <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{t('reweigh.check.shiftOpen')}</p>
         ) : null}
@@ -187,13 +205,13 @@ function ReconciliationRow({
         <CratesNote t={t} crates={product.crates} />
       </TableCell>
       <TableCell className="text-right font-mono tabular-nums whitespace-nowrap">
-        {formatKg(product.intake_net_kg, locale)}
+        {formatDecimal(product.intake_net_kg, locale)}
       </TableCell>
       <TableCell className="text-right font-mono tabular-nums whitespace-nowrap">
         {product.state === 'not_reweighed' ? (
           <span className="text-muted-foreground">{t('reweigh.check.notReweighed')}</span>
         ) : (
-          formatKg(product.reweigh_net_kg, locale)
+          formatDecimal(product.reweigh_net_kg, locale)
         )}
       </TableCell>
       <DiffCell value={product.missing_kg} locale={locale} t={t} />
@@ -212,11 +230,11 @@ function GradeRow({ grade, locale, t }: { grade: ReconciliationGrade; locale: st
         <CratesNote t={t} crates={grade.crates} />
       </TableCell>
       <TableCell className="py-1.5 text-right font-mono tabular-nums whitespace-nowrap">
-        {formatKg(grade.intake_net_kg, locale)}
+        {formatDecimal(grade.intake_net_kg, locale)}
       </TableCell>
       <TableCell className="py-1.5 text-right font-mono tabular-nums whitespace-nowrap">
         {/* '0.00' is the server's «nothing weighed for this grade» — a dash, never a zero. */}
-        {cmp(grade.reweigh_net_kg, ZERO) === 0 ? '—' : formatKg(grade.reweigh_net_kg, locale)}
+        {cmp(grade.reweigh_net_kg, ZERO) === 0 ? '—' : formatDecimal(grade.reweigh_net_kg, locale)}
       </TableCell>
       <TableCell className="py-1.5" />
       <TableCell className="py-1.5" />
@@ -225,7 +243,7 @@ function GradeRow({ grade, locale, t }: { grade: ReconciliationGrade; locale: st
 }
 
 /**
- * `missing_kg` is SIGNED: positive is a недостача, printed «−1,40 кг» in
+ * `missing_kg` is SIGNED: positive is a недостача, printed «−1,40» in
  * amber (§8.2's «НЕДОСТАЧА −10 кг»); negative is a surplus, printed «+x кг»
  * muted. `null` (open shift, or a state that never prices) renders `—` — the
  * one thing it is never allowed to render is `0`.
@@ -243,16 +261,16 @@ function DiffCell({ value, locale, t }: { value: string | null; locale: string; 
       )}
     >
       {sign > 0
-        ? t('reweigh.check.shortfallKg', { kg: formatKg(value, locale) })
+        ? t('reweigh.check.shortfallKg', { kg: formatDecimal(value, locale) })
         : sign < 0
           ? // Negating a sign for display — the figure itself is the server's.
-            t('reweigh.check.surplusKg', { kg: formatKg(sub(ZERO, value), locale) })
-          : formatKg(value, locale)}
+            t('reweigh.check.surplusKg', { kg: formatDecimal(sub(ZERO, value), locale) })
+          : formatDecimal(value, locale)}
     </TableCell>
   );
 }
 
-/** «1,40 × 189,42 = 265,19 ₴» for a shortfall; nothing for a surplus or an
+/** «1,40 × 189,42 = 265,19» for a shortfall (₴ in the header); nothing for a surplus or an
  *  exact match — a surplus makes no money claim (§8.2 правка). */
 function MoneyCell({ product, locale, t }: { product: ReconciliationProduct; locale: string; t: TFunction }) {
   const { missing_kg: kg, missing_amount: amount, rate } = product;
@@ -263,11 +281,11 @@ function MoneyCell({ product, locale, t }: { product: ReconciliationProduct; loc
   return (
     <TableCell className="text-right font-mono tabular-nums whitespace-nowrap text-amber">
       {rate === null
-        ? formatUah(amount, locale)
+        ? formatDecimal(amount, locale)
         : t('reweigh.check.moneyFormula', {
             kg: formatDecimal(kg, locale),
             rate: formatDecimal(rate, locale),
-            amount: formatUah(amount, locale),
+            amount: formatDecimal(amount, locale),
           })}
     </TableCell>
   );

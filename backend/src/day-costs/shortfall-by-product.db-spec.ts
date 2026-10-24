@@ -81,8 +81,8 @@ describe('shortfall by product (DB)', () => {
     // Point: 324,30 кг of сорт 1 (62 634,00) + 272,50 кг of сорт 2 (50 413,00) = 596,80 кг,
     // 113 047,00 ₴ — 189,42 ₴/кг on average.
     const [intake] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '113047.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '113047.00', '0.00', $4) RETURNING id`,
       [`${short}-IN-1`, shift.id, supplier.id, ownerId],
     );
     await ds.query(

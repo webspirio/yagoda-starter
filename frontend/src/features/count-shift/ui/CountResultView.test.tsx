@@ -17,9 +17,9 @@ describe('CountResultView — the recount shape (expected + counted + pill + not
     );
 
     expect(screen.getByRole('heading', { name: 'Cash recount' })).toBeInTheDocument();
-    expect(screen.getByText('Expected')).toBeInTheDocument();
+    expect(screen.getByText('Should be')).toBeInTheDocument();
     expect(screen.getAllByText('1,000.00 ₴')).toHaveLength(2);
-    expect(screen.queryByText('Discrepancy')).toBeNull();
+    expect(screen.queryByText(/^(Matched|Short|Over)/)).toBeNull();
   });
 
   it('shows a leaf pill for a matching discrepancy, and no note by default', async () => {
@@ -34,7 +34,7 @@ describe('CountResultView — the recount shape (expected + counted + pill + not
       />,
     );
 
-    expect(screen.getByText('Discrepancy').closest('span')).toHaveClass('text-leaf');
+    expect(screen.getByText('Matched').closest('[data-slot="badge"]')).toHaveClass('text-leaf');
     expect(screen.queryByText(/cannot be changed/i)).toBeNull();
     await expectNoAxeViolations(container);
   });
@@ -52,7 +52,10 @@ describe('CountResultView — the recount shape (expected + counted + pill + not
       />,
     );
 
-    expect(screen.getByText('Discrepancy').closest('span')).toHaveClass('text-destructive');
+    // Named by its direction and magnitude, never a bare signed figure (C7).
+    expect(screen.getByText('Short 50.00 ₴').closest('[data-slot="badge"]')).toHaveClass(
+      'text-destructive',
+    );
     expect(screen.getByText('This figure cannot be changed in the app.')).toBeInTheDocument();
   });
 });
@@ -65,9 +68,9 @@ describe('CountResultView — the open/close shape (counted only, optional pill,
 
     expect(screen.getByRole('heading', { name: 'Shift opened' })).toBeInTheDocument();
     expect(screen.getByText('Counted')).toBeInTheDocument();
-    expect(screen.queryByText('Expected')).toBeNull();
+    expect(screen.queryByText('Should be')).toBeNull();
     expect(screen.getByText('2,500.00 ₴')).toBeInTheDocument();
-    expect(screen.queryByText('Discrepancy')).toBeNull();
+    expect(screen.queryByText(/^(Matched|Short|Over)/)).toBeNull();
   });
 
   it('shows a leaf pill for a settled close, with the sentence in the title alone', () => {
@@ -84,7 +87,7 @@ describe('CountResultView — the open/close shape (counted only, optional pill,
     expect(
       screen.getByRole('heading', { name: 'Shift closed. The day matched.' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Discrepancy').closest('span')).toHaveClass('text-leaf');
+    expect(screen.getByText('Matched').closest('[data-slot="badge"]')).toHaveClass('text-leaf');
     // The close result folds its explanation into the title — no separate note line.
     expect(screen.queryByText(/cannot be changed/i)).toBeNull();
   });
@@ -93,14 +96,32 @@ describe('CountResultView — the open/close shape (counted only, optional pill,
     render(
       <CountResultView
         open
-        title="Shift closed. Discrepancy −50.00 ₴ — the owner will see it on their own list."
+        title="Shift closed. Short 50.00 ₴ — the owner will see it on their own list."
         counted="2950.00"
         discrepancy="-50.00"
         onClose={vi.fn()}
       />,
     );
 
-    expect(screen.getByText('Discrepancy').closest('span')).toHaveClass('text-destructive');
+    expect(screen.getByText('Short 50.00 ₴').closest('[data-slot="badge"]')).toHaveClass(
+      'text-destructive',
+    );
+  });
+
+  it('names a surplus in amber, not as a shortage', () => {
+    render(
+      <CountResultView
+        open
+        title="Shift closed."
+        counted="3050.00"
+        discrepancy="50.00"
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Over 50.00 ₴').closest('[data-slot="badge"]')).toHaveClass(
+      'text-[var(--amber)]',
+    );
   });
 });
 

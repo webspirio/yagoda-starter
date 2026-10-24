@@ -143,8 +143,8 @@ describe('supplier balance breakdown (HTTP)', () => {
 
     // Live receipt #1 — 100.00 кг, 2026-09-15.
     const [intakeEarly] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '3000.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '3000.00', '0.00', $4) RETURNING id`,
       [`BD-IN-${run}-1`, shiftEarly.id, supplierId, userId],
     );
     await ds.query(
@@ -157,8 +157,8 @@ describe('supplier balance breakdown (HTTP)', () => {
     // Live receipt #2 — 150.50 кг, 2026-09-20 — the newer of the two, and the
     // one carrying the live top-up below.
     const [intakeLate] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '7000.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '7000.00', '0.00', $4) RETURNING id`,
       [`BD-IN-${run}-2`, shiftLate.id, supplierId, userId],
     );
     await ds.query(
@@ -179,9 +179,9 @@ describe('supplier balance breakdown (HTTP)', () => {
     // amount and its top-up must vanish from every total, and NEITHER counts
     // toward `intakes_count`, `kg_total` or `last_intake_date`.
     const [intakeVoided] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id,
                             voided_at, voided_by_user_id, void_reason)
-       VALUES ($1, $2, $3, '2000.00', $4, now(), $4, 'тестове анулювання') RETURNING id`,
+       VALUES ($1, $2, $3, '2000.00', '0.00', $4, now(), $4, 'тестове анулювання') RETURNING id`,
       [`BD-IN-${run}-3`, shiftEarly.id, supplierId, userId],
     );
     await ds.query(

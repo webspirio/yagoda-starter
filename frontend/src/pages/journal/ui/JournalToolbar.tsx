@@ -35,6 +35,7 @@ export function JournalToolbar({
   to: string;
   onFromChange: (value: string) => void;
   onToChange: (value: string) => void;
+  /** Every supplier at the scope, inactive ones too — those are labelled. */
   suppliers: Supplier[];
   supplierId: string;
   onSupplierChange: (value: string) => void;
@@ -75,7 +76,9 @@ export function JournalToolbar({
           <option value="">{t('journal.allSuppliers')}</option>
           {suppliers.map((s) => (
             <option key={s.id} value={s.id}>
-              {supplierName(s)}
+              {s.is_active
+                ? supplierName(s)
+                : t('journal.inactiveSupplier', { name: supplierName(s) })}
             </option>
           ))}
         </SelectField>

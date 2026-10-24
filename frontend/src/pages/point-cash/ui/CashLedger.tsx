@@ -3,22 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { SectionCard } from '@/shared/ui/section-card';
 import { LedgerRow as LedgerRowView } from '@/shared/ui/ledger-row';
 import { Spinner } from '@/shared/ui/spinner';
-import { sub, cmp, isNegative, isZero, formatUah } from '@/shared/lib/money';
+import { sub, isNegative, isZero, formatUah } from '@/shared/lib/money';
 import { formatShortDate } from '@/shared/lib/date';
 import type { PointCashBreakdown } from '@/entities/point-cash';
-import {
-  buildLedger,
-  shiftDateOf,
-  type LedgerIntake,
-  type LedgerPayout,
-  type LedgerRowKey,
-} from '../lib/buildLedger';
-
-/** The caveat a capped row shows, named for what is actually missing from it. */
-const TRUNCATION_KEY: Record<LedgerRowKey, string> = {
-  accruedToday: 'pointCash.ledger.accruedTodayTruncated',
-  paidPast: 'pointCash.ledger.paidPastTruncated',
-};
+import { DiscrepancyText } from '@/entities/cash-count';
+import { buildLedger, shiftDateOf, type LedgerIntake } from '../lib/buildLedger';
 
 /**
  * «Звідки взялося це число».
@@ -27,8 +16,12 @@ const TRUNCATION_KEY: Record<LedgerRowKey, string> = {
  * same statement as `cash`, so the rows add up by construction: on an open day
  * to `cash` itself, on a closed day to «Мало бути», which the closing count
  * then corrects by the difference. Nothing here re-derives a term of the
- * formula. The two rows ABOVE the divider are informational — berries accrued
- * and payouts of earlier days move no cash today — and are never summed.
+ * formula. The one row ABOVE the divider is informational — berries accrued
+ * move no cash — and is never summed. (A «paid on earlier days» row used to
+ * sit beside it: a season-long running total, gone — audit 2026-10-24, C1.)
+ *
+ * No row says «сьогодні»: the page reads past dates as readily as today, so
+ * the terms say «за день» (C6).
  */
 export function CashLedger({
   date,
@@ -36,10 +29,7 @@ export function CashLedger({
   breakdown,
   failed = false,
   intakes,
-  payouts,
   intakesTruncated = false,
-  payoutsTruncated = false,
-  target = null,
 }: {
   date: string;
   cash: string | undefined;
@@ -47,11 +37,7 @@ export function CashLedger({
   /** The detail read failed — the card says so; the rest of the page does not depend on it. */
   failed?: boolean;
   intakes: LedgerIntake[];
-  payouts: LedgerPayout[];
   intakesTruncated?: boolean;
-  payoutsTruncated?: boolean;
-  /** Captions the opening row: «наділ {{target}}». */
-  target?: string | null;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage;
@@ -61,14 +47,7 @@ export function CashLedger({
   // A shift left open since an earlier day (#114): every term covers the whole
   // shift, so no row may say «today».
   const spansDays = breakdown?.kind === 'open' && shiftDate !== date;
-  const info = buildLedger({
-    date,
-    shiftDate,
-    intakes,
-    payouts,
-    intakesTruncated,
-    payoutsTruncated,
-  });
+  const info = buildLedger({ date, shiftDate, intakes, intakesTruncated });
 
   const body = (): ReactNode => {
     if (failed) {
@@ -95,9 +74,6 @@ export function CashLedger({
                   ? t('pointCash.ledger.openingOn', { date: day(shiftDate) })
                   : t('pointCash.ledger.opening')
               }
-              hint={
-                target ? t('pointCash.ledger.openingHint', { target: money(target) }) : undefined
-              }
               value={money(b.opening ?? '0.00')}
             />
             <LedgerRowView
@@ -123,7 +99,6 @@ export function CashLedger({
             {c.late_change && !isZero(c.late_change) ? (
               <LedgerRowView
                 label={t('pointCash.ledger.lateChange')}
-                hint={t('pointCash.ledger.lateChangeHint')}
                 value={money(sub('0', c.late_change))}
               />
             ) : null}
@@ -132,11 +107,12 @@ export function CashLedger({
               label={t('pointCash.ledger.expected')}
               value={money(c.expected ?? '0.00')}
             />
-            <LedgerRowView label={t('pointCash.panel.closing')} value={money(c.counted)} />
+            <LedgerRowView label={t('pointCash.ledger.counted')} value={money(c.counted)} />
+            {/* «Недостача 90,00 ₴» / «Надлишок 50,00 ₴» / «Зійшлося» — the
+                shared reading (C7), never a bare signed figure. */}
             <LedgerRowView
-              label={t('pointCash.panel.discrepancy')}
-              value={signed(money(c.difference ?? '0.00'), c.difference)}
-              tone={differenceTone(c.difference)}
+              label={t('pointCash.ledger.difference')}
+              value={<DiscrepancyText difference={c.difference ?? '0.00'} />}
             />
           </>
         ) : null}
@@ -162,11 +138,13 @@ export function CashLedger({
           )}
           value={money(cash)}
           strong
-          tone={isNegative(cash) ? 'bad' : 'default'}
+          // C9 — one tone rule for cash, the same as the tile above: below
+          // zero is amber (a state to fund, not an error), otherwise ink.
+          tone={isNegative(cash) ? 'amber' : 'default'}
         />
         {/* R6 — negative berry cash is not a data-entry error; said in words. */}
         {isNegative(cash) ? (
-          <p className="pt-1 text-xs text-destructive">{t('pointCash.ledger.negative')}</p>
+          <p className="pt-1 text-xs text-[var(--amber)]">{t('pointCash.ledger.negative')}</p>
         ) : null}
       </>
     );
@@ -184,32 +162,19 @@ export function CashLedger({
                   : `pointCash.ledger.${row.key}`,
               )}
               hint={t(`pointCash.ledger.${row.key}Hint`)}
-              value={money(row.key === 'paidPast' ? sub('0', row.value) : row.value)}
+              value={money(row.value)}
               className="opacity-70"
             />
             {row.truncated ? (
-              <p className="pb-1 text-xs text-muted-foreground">{t(TRUNCATION_KEY[row.key])}</p>
+              <p className="pb-1 text-xs text-muted-foreground">
+                {t('pointCash.ledger.accruedTodayTruncated')}
+              </p>
             ) : null}
           </Fragment>
         ))}
         <div className="my-2 border-b border-dashed border-border" />
         {body()}
-        <p className="pt-3 text-xs leading-relaxed text-muted-foreground">
-          {t('pointCash.ledger.twoRowsNote')}
-        </p>
       </div>
     </SectionCard>
   );
-}
-
-/** A surplus carries its «+», so it never reads as a shortage by colour alone. */
-function signed(formatted: string, difference: string | null): string {
-  return difference !== null && cmp(difference, '0') > 0 ? `+${formatted}` : formatted;
-}
-
-/** A shortage reads bad, a surplus amber, an exact match plain. */
-function differenceTone(difference: string | null): 'bad' | 'amber' | 'default' {
-  if (difference === null) return 'default';
-  const c = cmp(difference, '0');
-  return c < 0 ? 'bad' : c > 0 ? 'amber' : 'default';
 }

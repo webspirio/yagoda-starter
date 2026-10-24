@@ -29,6 +29,11 @@ beforeEach(() => {
 });
 
 describe('TopUpDialog', () => {
+  it('calls itself a top-up — «доплата» in the glossary, never a «balance» (B8)', () => {
+    open();
+    expect(screen.getByRole('heading', { name: 'Add a top-up' })).toBeInTheDocument();
+  });
+
   it('names the receipt and the supplier the debt is being raised against', () => {
     open();
     expect(screen.getByText(/KV-0001/)).toBeInTheDocument();

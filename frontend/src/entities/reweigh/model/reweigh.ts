@@ -53,6 +53,11 @@ export interface ReconciliationProduct {
   /** ₴/кг the shortfall is priced at — accrued incl. доплати ÷ the point's kg,
    *  so `missing_kg × rate = missing_amount` re-checks by hand. */
   rate: string | null;
+  /** `rate`'s numerator — нараховано INCLUDING доплати — so the screen prints
+   *  the rate as «accrued ÷ intake_net_kg = rate». */
+  accrued: string;
+  /** The доплати inside `accrued`; '0.00' when none. */
+  top_ups: string;
   crates: ReconciliationCrates;
 }
 

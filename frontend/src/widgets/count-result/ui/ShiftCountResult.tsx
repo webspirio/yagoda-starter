@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/button';
-import { formatUah, isZero } from '@/shared/lib/money';
-import { useCashCountsQuery, type CashCount } from '@/entities/cash-count';
+import { isZero } from '@/shared/lib/money';
+import { useCashCountsQuery, formatDiscrepancy, type CashCount } from '@/entities/cash-count';
 import { CountResultView } from '@/features/count-shift';
 import { OperatorNoteForm } from '@/features/set-operator-note';
 
@@ -56,15 +56,16 @@ export function ShiftCountResult({
     setNoteTarget(row);
   }
   if (result !== null && row !== null) {
-    const amount = formatUah(row.discrepancy, i18n.language);
+    // «Недостача 90,00 ₴» / «Надлишок 50,00 ₴» — the shared reading (C7).
+    const discrepancy = formatDiscrepancy(t, row.discrepancy, i18n.language);
     const title =
       result.mode === 'open'
         ? isZero(row.discrepancy)
           ? t('pointCash.result.opened')
-          : t('pointCash.result.openedDiscrepancy', { amount })
+          : t('pointCash.result.openedDiscrepancy', { discrepancy })
         : isZero(row.discrepancy)
           ? t('pointCash.result.closedSettled')
-          : t('pointCash.result.closedDiscrepancy', { amount });
+          : t('pointCash.result.closedDiscrepancy', { discrepancy });
     if (view === null || view.title !== title || view.counted !== row.counted_amount || view.discrepancy !== row.discrepancy) {
       setView({ title, counted: row.counted_amount, discrepancy: row.discrepancy });
     }

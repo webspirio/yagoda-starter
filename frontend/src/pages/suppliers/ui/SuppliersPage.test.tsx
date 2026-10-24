@@ -139,10 +139,10 @@ describe('SuppliersPage', () => {
     const { container } = renderSuppliers();
     expect(screen.getByRole('heading', { level: 1, name: 'Suppliers' })).toBeInTheDocument();
     const ivanRow = screen.getByText('Koval Ivan').closest('tr') as HTMLElement;
-    expect(within(ivanRow).getByText('3,603.99 kg')).toBeInTheDocument();
+    expect(within(ivanRow).getByText('3,603.99')).toBeInTheDocument();
     expect(within(ivanRow).getByText('Raspberry')).toBeInTheDocument();
     expect(within(ivanRow).getByText('Farmer')).toBeInTheDocument();
-    expect(within(ivanRow).getByText('466,180.00 ₴')).toBeInTheDocument();
+    expect(within(ivanRow).getByText('466,180.00')).toBeInTheDocument();
     const petroRow = screen.getByText('Melnyk Petro').closest('tr') as HTMLElement;
     expect(within(petroRow).getByText('—')).toBeInTheDocument();
     expect(screen.queryByText('+380671234567')).toBeNull();
@@ -160,7 +160,7 @@ describe('SuppliersPage', () => {
       order: 'desc',
       status: 'active',
     });
-    expect(screen.getByRole('columnheader', { name: 'Total weight' })).toHaveAttribute(
+    expect(screen.getByRole('columnheader', { name: 'Total weight, kg' })).toHaveAttribute(
       'aria-sort',
       'descending',
     );
@@ -169,7 +169,7 @@ describe('SuppliersPage', () => {
   it('a click on Accrued puts the sort in the URL and asks the server for it', async () => {
     queryMock.mockReturnValue(loaded([ivan]));
     const { router } = renderSuppliers();
-    await userEvent.click(screen.getByRole('button', { name: 'Accrued' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Accrued, ₴' }));
     expect(router.state.location.search).toBe('?sort=amount&order=desc');
     expect(queryMock).toHaveBeenLastCalledWith({
       search: '',
@@ -188,9 +188,9 @@ describe('SuppliersPage', () => {
         : loaded([ivan]),
     );
     renderSuppliers();
-    const header = screen.getByRole('button', { name: 'Accrued' });
+    const header = screen.getByRole('button', { name: 'Accrued, ₴' });
     await userEvent.click(header);
-    expect(screen.getByRole('button', { name: 'Accrued' })).toBe(header);
+    expect(screen.getByRole('button', { name: 'Accrued, ₴' })).toBe(header);
     expect(header).toBeInTheDocument();
     expect(screen.getByText('Koval Ivan')).toBeInTheDocument();
   });

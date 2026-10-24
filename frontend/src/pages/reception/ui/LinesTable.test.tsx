@@ -72,6 +72,36 @@ describe('LinesTable — reads like the mock', () => {
     expect(within(line2).queryByText('−2.00')).not.toBeInTheDocument();
   });
 
+  it('puts the units in the headers and leaves the cells plain (B10)', () => {
+    render(<LinesTable rows={ROWS} disabled={false} onRemove={vi.fn()} />);
+    const headers = screen.getAllByRole('columnheader').map((th) => th.textContent);
+    expect(headers).toEqual([
+      'Grade',
+      'Gross, kg',
+      'Tare, kg',
+      'Net, kg',
+      'Price, ₴/kg',
+      'Amount, ₴',
+      'Remove line',
+    ]);
+    expect(screen.queryByText(/kg$/, { selector: 'td' })).toBeNull();
+  });
+
+  it('hides «Pallet» while no line has one, and shows it as soon as one does (B10)', () => {
+    const { rerender } = render(<LinesTable rows={ROWS} disabled={false} onRemove={vi.fn()} />);
+    expect(screen.queryByRole('columnheader', { name: /Pallet/ })).toBeNull();
+
+    const withPallet: CommittedLine[] = [
+      ROWS[0]!,
+      { ...ROWS[1]!, item: { ...ROWS[1]!.item!, pallet_kg: '12.00', net_kg: '17.30' } },
+    ];
+    rerender(<LinesTable rows={withPallet} disabled={false} onRemove={vi.fn()} />);
+    expect(screen.getByRole('columnheader', { name: 'Pallet, kg' })).toBeInTheDocument();
+    const rows = within(screen.getByRole('table')).getAllByRole('row');
+    expect(within(rows[1]!).getByText('0.00')).toBeInTheDocument();
+    expect(within(rows[2]!).getByText('12.00')).toBeInTheDocument();
+  });
+
   // The table keeps its room for eight rows even when empty (client, 24.10),
   // so it shows its header and no line rows.
   it('keeps the header and no line rows without committed rows', () => {

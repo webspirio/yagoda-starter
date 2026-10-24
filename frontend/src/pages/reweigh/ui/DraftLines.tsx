@@ -26,15 +26,12 @@ export function DraftLines({
   onPost,
   posting,
   canPost,
-  note,
 }: {
   drafts: Draft[];
   onRemove: (key: string) => void;
   onPost: () => void;
   posting: boolean;
   canPost: boolean;
-  /** A sentence under the button — today only «зміну не відкривали». */
-  note: string | null;
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
@@ -50,7 +47,7 @@ export function DraftLines({
   const total = drafts.length ? sum(drafts.map((d) => d.net_kg)) : '0.00';
 
   return (
-    <div className="rounded-xl bg-card ring-1 ring-foreground/10">
+    <div className="rounded-xl border border-line2 bg-card">
       <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border/70 px-4 py-3">
         <Eyebrow>{t('reweigh.drafts.title')}</Eyebrow>
         <span className="text-xs text-muted-foreground">{t('reweigh.drafts.hint')}</span>
@@ -107,21 +104,11 @@ export function DraftLines({
           {t('reweigh.drafts.empty')}
         </p>
       )}
-      {drafts.length || note ? (
+      {drafts.length ? (
         <div className="border-t border-border/70 p-4">
-          {drafts.length ? (
-            <Button
-              size="lg"
-              className="w-full"
-              onClick={onPost}
-              disabled={!canPost || posting}
-            >
-              {t('reweigh.post', { kg: formatKg(total, locale) })}
-            </Button>
-          ) : null}
-          {note ? (
-            <p className="mt-2 text-xs leading-relaxed text-muted-foreground first:mt-0">{note}</p>
-          ) : null}
+          <Button size="lg" className="w-full" onClick={onPost} disabled={!canPost || posting}>
+            {t('reweigh.post', { kg: formatKg(total, locale) })}
+          </Button>
         </div>
       ) : null}
     </div>

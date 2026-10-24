@@ -40,8 +40,8 @@ describe('payouts.intake_id schema (Postgres)', () => {
       [pointId, userId],
     );
     [{ id: intakeId }] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '1000.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '1000.00', '0.00', $4) RETURNING id`,
       [`P-IN-${run}`, shiftId, supplierId, userId],
     );
   });

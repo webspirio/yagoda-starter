@@ -1,7 +1,9 @@
 import { Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/button';
-import { add, formatDecimal } from '@/shared/lib/money';
+import { TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
+import { cn } from '@/shared/lib/cn';
+import { add, formatDecimal, isZero } from '@/shared/lib/money';
 import type { IntakePreviewItem } from '../model/intakeForm';
 
 export interface CommittedLine {
@@ -45,52 +47,70 @@ export function LinesTable({
   const { t, i18n } = useTranslation();
   const locale = i18n.resolvedLanguage ?? 'uk';
 
+  // A pallet comes off one line in a hundred — while no committed line has
+  // one, its column is only noise (B10). A pending row may still have one.
+  const showPallet = rows.some((row) => row.item === null || !isZero(row.item.pallet_kg));
+  // The kit's table look (`shared/ui/table`) at the card's density: the unit
+  // lives in the header, the cells are plain figures (audit 2026-10-24, rule 4).
+  const head = 'h-auto px-2 pb-1 text-right';
+  const cell = 'px-2 py-0 text-right';
+
   return (
-    // 250 px = 18 px header + 8 × (26 px row + 1 px divider) + the 16 px `pb-4`.
-    <div className="relative min-h-[250px] flex-1 px-4 pb-4">
-      <div className="absolute inset-x-4 top-0 bottom-4 overflow-auto">
-        <table className="w-full min-w-[560px] text-xs">
+    // 250 px = 18 px header + 8 × (26 px row + 1 px divider) + the 16 px `pb-4`
+    // — held open from `lg`, where the two cards stand side by side. On a
+    // phone the page scrolls anyway, so the table is only as tall as its rows.
+    <div className="relative flex-1 px-4 pb-4 lg:min-h-[250px]">
+      <div className="overflow-auto lg:absolute lg:inset-x-4 lg:top-0 lg:bottom-4">
+        {/* A bare `<table>`, not `Table`: its own overflow wrapper would become
+            the scroll container and unstick the header below. */}
+        <table className="w-full min-w-[520px] text-xs">
           <caption className="sr-only">{t('reception.lines.title')}</caption>
-          <thead>
-            <tr className="sticky top-0 z-10 bg-card text-[10px] leading-4 font-medium tracking-[0.12em] whitespace-nowrap text-muted-foreground uppercase">
-              <th scope="col" className="px-2 pb-0.5 text-left">
+          <TableHeader className="sticky top-0 z-10 bg-card">
+            <TableRow className="hover:bg-transparent">
+              <TableHead scope="col" className={cn(head, 'text-left')}>
                 {t('reception.lines.col.grade')}
-              </th>
-              <th scope="col" className="px-2 pb-0.5 text-right">
+              </TableHead>
+              <TableHead scope="col" className={head}>
                 {t('reception.lines.col.gross')}
-              </th>
-              <th scope="col" className="px-2 pb-0.5 text-right">
-                {t('reception.lines.col.pallet')}
-              </th>
-              <th scope="col" className="px-2 pb-0.5 text-right">
+              </TableHead>
+              {showPallet ? (
+                <TableHead scope="col" className={head}>
+                  {t('reception.lines.col.pallet')}
+                </TableHead>
+              ) : null}
+              <TableHead scope="col" className={head}>
                 {t('reception.lines.col.tare')}
-              </th>
-              <th scope="col" className="px-2 pb-0.5 text-right">
+              </TableHead>
+              <TableHead scope="col" className={head}>
                 {t('reception.lines.col.net')}
-              </th>
-              <th scope="col" className="px-2 pb-0.5 text-right">
+              </TableHead>
+              <TableHead scope="col" className={head}>
                 {t('reception.lines.col.price')}
-              </th>
-              <th scope="col" className="px-2 pb-0.5 text-right">
+              </TableHead>
+              <TableHead scope="col" className={head}>
                 {t('reception.lines.col.amount')}
-              </th>
-              <th scope="col" className="w-8 pb-0.5">
+              </TableHead>
+              <TableHead scope="col" className="h-auto w-8 px-0 pb-1">
                 <span className="sr-only">{t('reception.lines.remove')}</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {rows.map((row, index) => (
-              <tr key={row.key} className="h-[26px] font-mono leading-tight">
-                <td className="px-2 py-0 font-sans">{row.gradeLabel}</td>
-                <td className="px-2 py-0 text-right">
+              <TableRow key={row.key} className="h-[26px] font-mono leading-tight tabular-nums">
+                <TableCell className="px-2 py-0 font-sans whitespace-normal">
+                  {row.gradeLabel}
+                </TableCell>
+                <TableCell className={cell}>
                   {row.item ? formatDecimal(row.item.gross_kg, locale) : <Pending />}
-                </td>
-                <td className="px-2 py-0 text-right text-muted-foreground">
-                  {row.item ? formatDecimal(row.item.pallet_kg, locale) : <Pending />}
-                </td>
-                <td
-                  className="px-2 py-0 text-right text-muted-foreground"
+                </TableCell>
+                {showPallet ? (
+                  <TableCell className={cn(cell, 'text-muted-foreground')}>
+                    {row.item ? formatDecimal(row.item.pallet_kg, locale) : <Pending />}
+                  </TableCell>
+                ) : null}
+                <TableCell
+                  className={cn(cell, 'text-muted-foreground')}
                   title={
                     row.item
                       ? t('reception.lines.tareUnits', {
@@ -100,21 +120,21 @@ export function LinesTable({
                   }
                 >
                   {row.item ? formatDecimal(row.item.tare_weight_kg, locale) : <Pending />}
-                </td>
-                <td className="px-2 py-0 text-right font-semibold">
+                </TableCell>
+                <TableCell className={cn(cell, 'font-semibold')}>
                   {row.item ? formatDecimal(row.item.net_kg, locale) : <Pending />}
-                </td>
-                <td className="px-2 py-0 text-right">
+                </TableCell>
+                <TableCell className={cell}>
                   {row.item ? (
                     formatDecimal(add(row.item.price, row.item.bonus), locale)
                   ) : (
                     <Pending />
                   )}
-                </td>
-                <td className="px-2 py-0 text-right font-semibold">
+                </TableCell>
+                <TableCell className={cn(cell, 'font-semibold')}>
                   {row.item ? formatDecimal(row.item.amount, locale) : <Pending />}
-                </td>
-                <td className="py-0 text-right">
+                </TableCell>
+                <TableCell className="px-0 py-0 text-right">
                   <Button
                     type="button"
                     variant="ghost"
@@ -125,10 +145,10 @@ export function LinesTable({
                   >
                     <Trash2 className="size-3.5" />
                   </Button>
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
+          </TableBody>
         </table>
       </div>
     </div>

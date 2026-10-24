@@ -151,7 +151,13 @@ export function IncomingTransfers({ pointId, canAct }: { pointId: string; canAct
               ) : null}
             </div>
           </div>
-          <p className="text-xs text-muted-foreground">{t('transfer.incoming.disputed.footer')}</p>
+          {/* §7.9 (09.09.2026): the point's OWN count is credited until the
+              owner resolves — «the drawer did not move» was false (C3). */}
+          <p className="text-xs text-muted-foreground">
+            {t('transfer.incoming.disputed.footer', {
+              uah: formatUah(transfer.reported_cash ?? '0.00', locale),
+            })}
+          </p>
         </div>
       ))}
 

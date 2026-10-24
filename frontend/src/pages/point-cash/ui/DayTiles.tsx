@@ -48,7 +48,7 @@ export function DayTiles({
           label={t('day.tiles.cashOut')}
           value={formatUah(summary.cashOut, locale)}
           hint={t('day.tiles.cashOutHint')}
-          tone="berry"
+          // C9 — plain cash is neutral ink, not berry.
         />
         {/* The corrected «Інваріант дня» shows the GROWTH of the debt, which
             goes below zero when old balances were paid down OR when a receipt

@@ -84,8 +84,8 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
     );
 
     const [intake] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '300.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '300.00', '0.00', $4) RETURNING id`,
       [`${short}-IN-1`, shift.id, supplier.id, ownerId],
     );
     // Grade A — accepted and later reweighed.
@@ -163,8 +163,8 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
     );
 
     const [intake] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '200.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '200.00', '0.00', $4) RETURNING id`,
       [`${short}-IT-1`, shift.id, supplier.id, ownerId],
     );
     await ds.query(
@@ -265,8 +265,8 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
     );
 
     const [intake] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '300.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '300.00', '0.00', $4) RETURNING id`,
       [`${short}-GR-1`, shift.id, supplier.id, ownerId],
     );
     await ds.query(
@@ -325,8 +325,8 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
     );
 
     const [intake] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '200.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '200.00', '0.00', $4) RETURNING id`,
       [`${short}-IV-1`, shift.id, supplier.id, ownerId],
     );
     await ds.query(
@@ -426,8 +426,8 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
 
     // One live receipt, for `kept`.
     const [live] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '200.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '200.00', '0.00', $4) RETURNING id`,
       [`${short}-AC-1`, shift.id, supplier.id, ownerId],
     );
     await ds.query(
@@ -439,9 +439,9 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
 
     // One VOIDED receipt, and it is the only place `orphaned` was ever accepted.
     const [voided] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id,
            voided_at, voided_by_user_id, void_reason)
-       VALUES ($1, $2, $3, '100.00', $4, now(), $4, 'помилково') RETURNING id`,
+       VALUES ($1, $2, $3, '100.00', '0.00', $4, now(), $4, 'помилково') RETURNING id`,
       [`${short}-AC-2`, shift.id, supplier.id, ownerId],
     );
     await ds.query(
@@ -542,14 +542,14 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
     const cornel = await product(`Кизил ${tag}`, ['1 сорт']);
 
     const [first] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '41977.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '41977.00', '0.00', $4) RETURNING id`,
       [`${short}-HA-1`, shiftId, supplierId, ownerId],
     );
     await intakeLine(first.id, 1, rasp.gradeIds[0], '333.70', '41977.00');
     const [second] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '56667.20', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '56667.20', '0.00', $4) RETURNING id`,
       [`${short}-HA-2`, shiftId, supplierId, ownerId],
     );
     await intakeLine(second.id, 1, rasp.gradeIds[1], '263.10', '56067.20');
@@ -581,6 +581,8 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
     expect(raspRow?.missing_kg).toBe('1.40');
     expect(raspRow?.rate).toBe('189.42');
     expect(raspRow?.missing_amount).toBe('265.19');
+    expect(raspRow?.accrued).toBe('113044.20');
+    expect(raspRow?.top_ups).toBe('15000.00');
     expect(cornelRow?.missing_kg).toBe('-2.00');
 
     // Shortfalls only: Кизил's surplus does not net against Малина.
@@ -622,8 +624,8 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
       ]);
 
     const [live] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id)
-       VALUES ($1, $2, $3, '600.00', $4) RETURNING id`,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id)
+       VALUES ($1, $2, $3, '600.00', '0.00', $4) RETURNING id`,
       [`${short}-CR-1`, shiftId, supplierId, ownerId],
     );
     const i1 = await intakeLine(live.id, 1, rasp.gradeIds[0], '333.70', '333.70');
@@ -633,9 +635,9 @@ describe('ReweighReconciliationService.forShift (DB)', () => {
     await units('intake_item_tare_types', i2, lub.id, 4);
 
     const [dead] = await ds.query(
-      `INSERT INTO intakes (code, shift_id, supplier_id, amount, received_by_user_id,
+      `INSERT INTO intakes (code, shift_id, supplier_id, amount, balance_after, received_by_user_id,
            voided_at, voided_by_user_id, void_reason)
-       VALUES ($1, $2, $3, '10.00', $4, now(), $4, 'помилково') RETURNING id`,
+       VALUES ($1, $2, $3, '10.00', '0.00', $4, now(), $4, 'помилково') RETURNING id`,
       [`${short}-CR-2`, shiftId, supplierId, ownerId],
     );
     const iDead = await intakeLine(dead.id, 1, rasp.gradeIds[0], '10.00', '10.00');

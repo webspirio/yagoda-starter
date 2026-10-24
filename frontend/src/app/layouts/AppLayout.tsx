@@ -1,31 +1,9 @@
-import { Suspense, useState } from 'react';
+import { Suspense, useState, type ReactElement } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router';
 import { useTranslation } from 'react-i18next';
-import {
-  ArrowLeftRight,
-  Banknote,
-  BarChart3,
-  Boxes,
-  Calculator,
-  Cherry,
-  CircleDollarSign,
-  History,
-  type LucideIcon,
-  MapPin,
-  Menu,
-  Package,
-  PanelLeftClose,
-  PanelLeftOpen,
-  Scale,
-  Settings,
-  UserCog,
-  Users,
-  Wallet,
-  Weight,
-  X,
-} from 'lucide-react';
+import { Cherry, Menu, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import { cn } from '@/shared/lib/cn';
-import { useSession, useMeQuery, type UserRole } from '@/entities/user';
+import { initialsOf, useSession, useMeQuery } from '@/entities/user';
 import { logout } from '@/features/auth';
 import { useAppTheme } from '@/shared/lib/theme';
 import { persister } from '@/shared/api';
@@ -33,69 +11,39 @@ import { Button } from '@/shared/ui/button';
 import { Toaster } from '@/shared/ui/sonner';
 import { ThemeToggle } from '@/shared/ui/theme-toggle';
 import { HeaderSlotTarget, HeaderSlotsProvider } from '@/shared/ui/header-slot';
+import { useHeaderSlotClaimed } from '@/shared/ui/header-slot-context';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/tooltip';
 import { RouteFallback } from './RouteFallback';
-import { ShellScope } from './ShellScope';
+import { NAV_GROUPS, routeTitleKey } from './nav';
+import { ScopeLabel, ShellScope } from './ShellScope';
 import { useSidebarCollapsed } from './sidebar-collapsed';
 
 /** Routes that render bare, without the app chrome. */
 const CHROMELESS = ['/login'];
 
-interface NavItem {
-  labelKey: string;
-  icon: LucideIcon;
-  /** Live route; absent = screen not built yet (rendered disabled). */
-  to?: string;
-  /** Gates the item to a role, within an already-visible group. */
-  role?: UserRole;
-}
-interface NavGroup {
-  labelKey: string;
-  /** Gates the whole group to a role. */
-  role?: UserRole;
-  items: NavItem[];
-}
-
-// Mirrors the mock's grouped navigation. An item without a `to` is a screen not
-// wired yet — shown but disabled («Скоро»). None is left today: «Середня ціна по
-// мережі» and «Аркуш керівника» became «Усі точки» on «Собівартість дня» (23.10).
-const NAV_GROUPS: NavGroup[] = [
-  {
-    labelKey: 'nav.group.onPoint',
-    items: [
-      { labelKey: 'nav.dashboard', icon: BarChart3, to: '/' },
-      { labelKey: 'nav.reception', icon: Scale, to: '/reception' },
-      { labelKey: 'nav.crates', icon: Boxes, to: '/crates' },
-      { labelKey: 'nav.pointCash', icon: Banknote, to: '/point-cash' },
-      // Owner only (#221): the operator reads a grade's price at reception.
-      { labelKey: 'nav.prices', icon: CircleDollarSign, to: '/prices', role: 'network_owner' },
-    ],
-  },
-  {
-    labelKey: 'nav.group.peopleMoney',
-    items: [
-      { labelKey: 'nav.suppliers', icon: Users, to: '/suppliers' },
-      { labelKey: 'nav.debts', icon: Wallet, to: '/debts' },
-      { labelKey: 'nav.journal', icon: History, to: '/journal', role: 'network_owner' },
-    ],
-  },
-  {
-    labelKey: 'nav.group.management',
-    role: 'network_owner',
-    items: [
-      { labelKey: 'nav.cost', icon: Calculator, to: '/cost-of-day' },
-      { labelKey: 'nav.reweigh', icon: Weight, to: '/reweigh' },
-      { labelKey: 'nav.transfers', icon: ArrowLeftRight, to: '/transfers', role: 'network_owner' },
-      { labelKey: 'nav.points', icon: MapPin, to: '/points' },
-      { labelKey: 'nav.users', icon: UserCog, to: '/users' },
-      { labelKey: 'nav.refs', icon: Package, to: '/catalog' },
-      { labelKey: 'nav.settings', icon: Settings, to: '/settings' },
-    ],
-  },
-];
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).slice(0, 2);
-  return parts.map((p) => p[0]?.toUpperCase() ?? '').join('') || '?';
+/**
+ * A folded sidebar item's name, shown beside it on hover and keyboard focus — the label
+ * itself stays in the DOM as `md:sr-only`, so the link keeps its accessible name. Only
+ * from `md` up: below it the sidebar is the full-width slide-over with its labels.
+ */
+function RailHint({
+  label,
+  show,
+  children,
+}: {
+  label: string;
+  show: boolean;
+  children: ReactElement;
+}) {
+  if (!show) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side="right" className="hidden md:block">
+        {label}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 /**
@@ -131,6 +79,7 @@ function AppShell() {
   const { data: me } = useMeQuery();
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, toggleCollapsed] = useSidebarCollapsed();
+  const titleClaimed = useHeaderSlotClaimed('title');
 
   useAppTheme();
 
@@ -149,11 +98,13 @@ function AppShell() {
     ...g,
     items: g.items.filter((i) => !i.role || i.role === role),
   }));
-  const scope = role === 'network_owner' ? t('shell.allPoints') : t('shell.yourPoint');
+  const isOwner = role === 'network_owner';
+  const operatorPointId = role === 'point_operator' ? (me?.collection_point_id ?? null) : null;
+  const scope = <ScopeLabel isOwner={isOwner} pointId={operatorPointId} />;
+  const titleKey = routeTitleKey(location.pathname);
 
   // Folded: hidden on screen from `md` up, still read by a screen reader.
   const label = cn('truncate', collapsed && 'md:sr-only');
-  const hint = (key: string) => (collapsed ? t(key) : undefined);
 
   const signOut = () => {
     const outgoingToken = token;
@@ -172,6 +123,8 @@ function AppShell() {
       <nav
         className={cn(
           'fixed inset-y-0 left-0 z-30 flex w-64 shrink-0 flex-col bg-sidebar text-sidebar-foreground transition-transform',
+          // The page's focus ring is dark ink; on the dark sidebar it would vanish.
+          '[--ring:var(--sidebar-ring)]',
           'md:sticky md:top-0 md:h-dvh md:translate-x-0',
           menuOpen ? 'translate-x-0' : '-translate-x-full',
           collapsed && 'md:w-16',
@@ -184,7 +137,7 @@ function AppShell() {
             collapsed && 'md:justify-center md:px-0',
           )}
         >
-          <Cherry size={22} className="shrink-0 text-primary" />
+          <Cherry size={22} className="shrink-0 text-brand" />
           <div className={cn('min-w-0', collapsed && 'md:hidden')}>
             <div className="font-display text-lg font-semibold leading-tight">
               {t('shell.brand')}
@@ -200,7 +153,8 @@ function AppShell() {
             <div key={group.labelKey} className="mb-5">
               <div
                 className={cn(
-                  'px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-sidebar-foreground/45',
+                  // /60, not /45: 4.65:1 on the sidebar instead of 3.16 (audit 2026-10-24, F11).
+                  'px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-sidebar-foreground/60',
                   collapsed && 'md:sr-only',
                 )}
               >
@@ -229,24 +183,25 @@ function AppShell() {
                   }
                   return (
                     <li key={item.labelKey}>
-                      <NavLink
-                        to={item.to}
-                        end={item.to === '/'}
-                        onClick={() => setMenuOpen(false)}
-                        title={hint(item.labelKey)}
-                        className={({ isActive }) =>
-                          cn(
-                            'flex items-center gap-2.5 rounded-md border-l-2 px-3 py-2 text-sm transition-colors',
-                            collapsed && 'md:justify-center md:px-0',
-                            isActive
-                              ? 'border-primary bg-sidebar-accent font-medium text-sidebar-accent-foreground'
-                              : 'border-transparent text-sidebar-foreground/85 hover:bg-sidebar-accent/60',
-                          )
-                        }
-                      >
-                        <Icon size={16} className="shrink-0" />
-                        <span className={label}>{t(item.labelKey)}</span>
-                      </NavLink>
+                      <RailHint label={t(item.labelKey)} show={collapsed}>
+                        <NavLink
+                          to={item.to}
+                          end={item.to === '/'}
+                          onClick={() => setMenuOpen(false)}
+                          className={({ isActive }) =>
+                            cn(
+                              'flex items-center gap-2.5 rounded-md border-l-2 px-3 py-2 text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring',
+                              collapsed && 'md:justify-center md:px-0',
+                              isActive
+                                ? 'border-primary bg-sidebar-accent font-medium text-sidebar-accent-foreground'
+                                : 'border-transparent text-sidebar-foreground/85 hover:bg-sidebar-accent/60',
+                            )
+                          }
+                        >
+                          <Icon size={16} className="shrink-0" />
+                          <span className={label}>{t(item.labelKey)}</span>
+                        </NavLink>
+                      </RailHint>
                     </li>
                   );
                 })}
@@ -255,46 +210,48 @@ function AppShell() {
           ))}
         </div>
 
-        <button
-          type="button"
-          onClick={toggleCollapsed}
-          aria-expanded={!collapsed}
-          title={hint('nav.expandSidebar')}
-          className={cn(
-            'hidden items-center gap-2.5 border-t border-sidebar-border px-5 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground md:flex',
-            collapsed && 'md:justify-center md:px-0',
-          )}
-        >
-          {collapsed ? (
-            <PanelLeftOpen size={16} className="shrink-0" />
-          ) : (
-            <PanelLeftClose size={16} className="shrink-0" />
-          )}
-          <span className={label}>
-            {t(collapsed ? 'nav.expandSidebar' : 'nav.collapseSidebar')}
-          </span>
-        </button>
-
-        {me ? (
-          <NavLink
-            to="/profile"
-            onClick={() => setMenuOpen(false)}
-            title={collapsed ? me.display_name : undefined}
+        <RailHint label={t('nav.expandSidebar')} show={collapsed}>
+          <button
+            type="button"
+            onClick={toggleCollapsed}
+            aria-expanded={!collapsed}
             className={cn(
-              'flex items-center gap-3 border-t border-sidebar-border px-4 py-3 hover:bg-sidebar-accent/50',
+              'hidden items-center gap-2.5 border-t border-sidebar-border px-5 py-2.5 text-sm text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground md:flex',
               collapsed && 'md:justify-center md:px-0',
             )}
           >
-            <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-semibold text-sidebar-accent-foreground">
-              {initials(me.display_name)}
+            {collapsed ? (
+              <PanelLeftOpen size={16} className="shrink-0" />
+            ) : (
+              <PanelLeftClose size={16} className="shrink-0" />
+            )}
+            <span className={label}>
+              {t(collapsed ? 'nav.expandSidebar' : 'nav.collapseSidebar')}
             </span>
-            <span className={cn('min-w-0', collapsed && 'md:sr-only')}>
-              <span className="block truncate text-sm font-medium">{me.display_name}</span>
-              <span className="block truncate text-[11px] text-sidebar-foreground/55">
-                {t(`profile.roles.${me.role}`)}
+          </button>
+        </RailHint>
+
+        {me ? (
+          <RailHint label={me.display_name} show={collapsed}>
+            <NavLink
+              to="/profile"
+              onClick={() => setMenuOpen(false)}
+              className={cn(
+                'flex items-center gap-3 border-t border-sidebar-border px-4 py-3 hover:bg-sidebar-accent/50',
+                collapsed && 'md:justify-center md:px-0',
+              )}
+            >
+              <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-semibold text-sidebar-accent-foreground">
+                {initialsOf(me.display_name)}
               </span>
-            </span>
-          </NavLink>
+              <span className={cn('min-w-0', collapsed && 'md:sr-only')}>
+                <span className="block truncate text-sm font-medium">{me.display_name}</span>
+                <span className="block truncate text-[11px] text-sidebar-foreground/60">
+                  {t(`profile.roles.${me.role}`)}
+                </span>
+              </span>
+            </NavLink>
+          </RailHint>
         ) : null}
       </nav>
 
@@ -320,11 +277,26 @@ function AppShell() {
             {menuOpen ? <X size={18} /> : <Menu size={18} />}
           </Button>
 
+          {/* The phone names the screen it is on (audit 2026-10-24, F4): the sidebar
+              that would say so is folded away below `md`. A screen with its own title
+              line shows that one from `sm` up instead. */}
+          {titleKey ? (
+            <span
+              className={cn(
+                'max-w-[35vw] shrink-0 truncate font-display text-sm font-medium md:hidden',
+                titleClaimed && 'sm:hidden',
+              )}
+            >
+              {t(titleKey)}
+            </span>
+          ) : null}
+
           {/* The screen's own scope and title line, when it put them here (client,
-              24.10); otherwise `ShellScope`'s default. A select in the bar is the
-              bar's height, whatever size its screen asked for. */}
-          <div className="flex min-w-0 shrink-0 items-center gap-2 [&_select]:h-8 [&_select]:max-w-[40vw] [&_select]:text-sm">
-            <ShellScope isOwner={role === 'network_owner'} />
+              24.10); otherwise `ShellScope`'s default — the operator's point chip, and
+              nothing for the owner. A select in the bar is the bar's height, whatever
+              size its screen asked for. */}
+          <div className="flex min-w-0 shrink items-center gap-2 [&_[data-slot=select-field]]:max-w-[40vw] [&_select]:h-8 [&_select]:max-w-[40vw] [&_select]:text-sm">
+            <ShellScope pointId={operatorPointId} />
             <HeaderSlotTarget slot="scope" className="flex items-center gap-2 empty:hidden" />
           </div>
           <HeaderSlotTarget

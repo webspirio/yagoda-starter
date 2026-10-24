@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Plus } from 'lucide-react';
 import { ListPage } from '@/shared/ui/templates/list-page';
 import type { Column } from '@/shared/ui/data-table';
 import { Button } from '@/shared/ui/button';
@@ -8,12 +9,13 @@ import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { decimalKey, useClientSort } from '@/shared/ui/data-table-sort';
 import { isTruncated } from '@/shared/api';
+import { formatCount, formatDecimal } from '@/shared/lib/money';
 import { useCollectionPointsQuery } from '../api/collectionPoints';
 import { PointFormDialog } from './PointFormDialog';
 import type { CollectionPoint } from '../model/collectionPoint';
 
 export function PointsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { data, isPending, isError } = useCollectionPointsQuery();
 
   const [editing, setEditing] = useState<CollectionPoint | null>(null);
@@ -82,7 +84,8 @@ export function PointsPage() {
       align: 'right',
       className: 'font-mono tabular-nums',
       hideBelow: 'sm',
-      cell: (p) => p.target_cash ?? '—',
+      // The unit is in the header («Наділ каси, ₴»); the cell is a plain figure.
+      cell: (p) => (p.target_cash === null ? '—' : formatDecimal(p.target_cash, i18n.language)),
       sortable: true,
     },
     {
@@ -91,7 +94,7 @@ export function PointsPage() {
       align: 'right',
       className: 'font-mono tabular-nums',
       hideBelow: 'sm',
-      cell: (p) => (p.target_crates == null ? '—' : p.target_crates),
+      cell: (p) => (p.target_crates == null ? '—' : formatCount(p.target_crates, i18n.language)),
       sortable: true,
     },
     {
@@ -99,11 +102,9 @@ export function PointsPage() {
       header: t('points.col.status'),
       align: 'right',
       sortable: true,
-      cell: (p) => (
-        <Badge variant={p.is_active ? 'default' : 'secondary'}>
-          {p.is_active ? t('points.active') : t('points.inactive')}
-        </Badge>
-      ),
+      // Rule 1 of the 2026-10-24 audit: berry is not «active». An active point is the
+      // normal case and carries no badge; only a deactivated one is marked.
+      cell: (p) => (p.is_active ? null : <Badge variant="outline">{t('points.inactive')}</Badge>),
     },
   ];
 
@@ -113,7 +114,12 @@ export function PointsPage() {
         eyebrow={t('points.eyebrow')}
         title={t('points.title')}
         description={t('points.description')}
-        actions={<Button onClick={openCreate}>{t('points.new')}</Button>}
+        actions={
+          <Button onClick={openCreate}>
+            <Plus aria-hidden="true" />
+            {t('points.new')}
+          </Button>
+        }
         columns={columns}
         rows={rows}
         rowKey={(p) => p.id}

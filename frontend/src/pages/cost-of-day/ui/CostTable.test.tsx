@@ -34,7 +34,6 @@ const cornel: CostOfDayProduct = {
   full_cost: '647.09',
   price_was: '38.00',
   price_cost: '41.21',
-  price_by_our_weight: '38.00',
   complete: true,
   grades: [
     {
@@ -64,7 +63,6 @@ const raspberry: CostOfDayProduct = {
   full_cost: '114693.71',
   price_was: '189.42',
   price_cost: '192.63',
-  price_by_our_weight: '189.86',
   complete: true,
   grades: [
     {
@@ -133,7 +131,7 @@ describe('CostTable', () => {
       '596,80',
       '595,40',
       '−1,40',
-      '113 044,20 ₴у т.ч. доплати 15 000,00',
+      '113 044,20у т.ч. доплати 15 000,00',
       '189,42',
       '−265,19',
       '0,43',
@@ -146,6 +144,9 @@ describe('CostTable', () => {
     renderTable();
 
     expect(screen.getByRole('columnheader', { name: 'Ціна закупки, ₴/кг' })).toBeInTheDocument();
+    // Units live in the header, the cells are plain (audit 2026-10-24 E9).
+    expect(screen.getByRole('columnheader', { name: /^Нараховано, ₴/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: 'Собівартість, ₴/кг' })).toBeInTheDocument();
     expect(screen.queryByText(/Δ/)).not.toBeInTheDocument();
     // No rule codes on a client-facing screen.
     expect(document.body.textContent).not.toContain('§');
@@ -155,7 +156,7 @@ describe('CostTable', () => {
     renderTable();
 
     const accrued = cellsOf(screen.getByRole('row', { name: /Кизил/ }))[4];
-    expect(accrued.textContent).toBe('596,60 ₴');
+    expect(accrued.textContent).toBe('596,60');
   });
 
   it('prints a weighed zero as a muted 0,00', () => {
@@ -177,7 +178,7 @@ describe('CostTable', () => {
       '612,50',
       '611,10',
       '−1,40',
-      '113 640,80 ₴',
+      '113 640,80',
       '',
       '−265,19',
       '',
@@ -221,7 +222,7 @@ describe('CostTable', () => {
       '333,70',
       '227,40',
       '',
-      '71 067,20 ₴у т.ч. доплати 15 000,00',
+      '71 067,20у т.ч. доплати 15 000,00',
       '212,97',
       '',
       '',
@@ -266,7 +267,6 @@ describe('CostTable', () => {
       full_cost: null,
       price_was: '150.00',
       price_cost: null,
-      price_by_our_weight: null,
       complete: false,
       grades: [],
     };
@@ -283,7 +283,7 @@ describe('CostTable', () => {
       '60,00',
       '—',
       '—',
-      '9 000,00 ₴',
+      '9 000,00',
       '150,00',
       '—',
       '—',
@@ -298,6 +298,10 @@ describe('CostTable', () => {
     expect(
       screen.getByText('Не перезважено, не входить у підсумок: 60,00 кг · 9 000,00 ₴'),
     ).toBeInTheDocument();
+
+    // The day formula names its operand: only what was reweighed (audit E3).
+    const formula = container.querySelector('[data-day-formula]') as HTMLElement;
+    expect(formula).toHaveTextContent('(нараховано по перезваженому 113 640,80 + витрати 1 700,00)');
 
     // Its chain stops at what the point knows: the purchase price.
     await user.click(screen.getByRole('button', { name: 'Показати сорти: Ожина' }));
@@ -318,7 +322,6 @@ describe('CostTable', () => {
       basket_share: null,
       full_cost: null,
       price_cost: null,
-      price_by_our_weight: null,
       complete: false,
     };
     const { container } = renderTable({
@@ -352,6 +355,26 @@ describe('CostTable', () => {
     expect(box).toHaveTextContent(/Поки партію не зважили на базі/);
     expect(box.className).toContain('bg-muted');
     expect(box.outerHTML).not.toContain('--amber');
+  });
+
+  it('does not announce «0,00 ₴ не розподілено» when there are no expenses — audit E11', () => {
+    renderTable({
+      ...day,
+      reweighed_kg: '0.00',
+      shortfall_amount: '0.00',
+      expenses_amount: '0.00',
+      basket: '0.00',
+      per_kg: null,
+      shortfall_per_kg: null,
+      expenses_per_kg: null,
+      weighed: null,
+      full_cost: null,
+      price_cost_avg: null,
+      checks: null,
+      products: [{ ...raspberry, reweigh_net_kg: null, complete: false, price_cost: null }],
+    });
+    const box = screen.getByText('Очікує переважування').closest('[data-awaiting]') as HTMLElement;
+    expect(box).not.toHaveTextContent('не розподілено');
   });
 
   it('prints each half of на кілограм as its own division — review C1', () => {
