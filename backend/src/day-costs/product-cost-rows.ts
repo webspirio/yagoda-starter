@@ -63,7 +63,7 @@ export interface ProductCostGrade {
  * (network average) both need: нараховано (top-ups included), недостача
  * (clamped) and the weighed kilograms, aggregated from grade to product
  * level. Extracted out of `CostOfDayService` (which used to compute this
- * inline) so the network-average endpoint reuses it rather than recomputing
+ * inline) so §8.6 reuses it rather than recomputing
  * the same top-up allocation and shortfall clamp a second time — see the
  * task-10 brief's reuse note.
  */

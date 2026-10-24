@@ -17,25 +17,43 @@ afterAll(async () => {
   await i18n.changeLanguage('en');
 });
 
-const { workingPointMock, pointsMock, shiftMock, dayMock, expensesMock, setDateMock } = vi.hoisted(
-  () => ({
-    workingPointMock: vi.fn(),
-    pointsMock: vi.fn(),
-    shiftMock: vi.fn(),
-    dayMock: vi.fn(),
-    expensesMock: vi.fn(),
-    setDateMock: vi.fn(),
-  }),
-);
+const {
+  workingPointMock,
+  pointsMock,
+  shiftMock,
+  dayMock,
+  expensesMock,
+  networkMock,
+  pointParamMock,
+  setPointParamMock,
+  setDateMock,
+} = vi.hoisted(() => ({
+  workingPointMock: vi.fn(),
+  pointsMock: vi.fn(),
+  shiftMock: vi.fn(),
+  dayMock: vi.fn(),
+  expensesMock: vi.fn(),
+  networkMock: vi.fn(),
+  pointParamMock: vi.fn(),
+  setPointParamMock: vi.fn(),
+  setDateMock: vi.fn(),
+}));
 
 // `useUrlParam` reads react-router's search params, so without this stub the
 // page cannot mount outside a Router at all. `null` means «no ?date=», which
 // the page clamps to today — the date stepper is not what these tests drive.
-vi.mock('@/shared/lib/url-state', () => ({ useUrlParam: () => [null, setDateMock] }));
+// `?point=` is the raw param «Усі точки» lives in.
+vi.mock('@/shared/lib/url-state', () => ({
+  useUrlParam: (name: string) =>
+    name === 'point' ? [pointParamMock(), setPointParamMock] : [null, setDateMock],
+}));
 vi.mock('@/features/point-scope', () => ({ useWorkingPoint: () => workingPointMock() }));
 vi.mock('@/entities/collection-point', () => ({ usePointOptionsQuery: () => pointsMock() }));
 vi.mock('@/entities/shift', () => ({ useShiftOnDateQuery: () => shiftMock() }));
-vi.mock('@/entities/cost-of-day', () => ({ useCostOfDayQuery: () => dayMock() }));
+vi.mock('@/entities/cost-of-day', () => ({
+  useCostOfDayQuery: () => dayMock(),
+  useNetworkCostOfDayQuery: (date: string | null) => networkMock(date),
+}));
 vi.mock('@/entities/day-expense', () => ({
   useDayExpensesQuery: () => expensesMock(),
   useCreateDayExpenseMutation: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -96,8 +114,52 @@ const ok = <T,>(data: T) => ({ data, isPending: false, isError: false });
 const pending = { data: undefined, isPending: true, isError: false };
 const failed = { data: undefined, isPending: false, isError: true };
 
+const network = {
+  date: '2026-10-22',
+  points: [
+    {
+      point_id: 'p1',
+      point_name: 'Шипинки',
+      shift_id: 's1',
+      provisional: false,
+      expenses_amount: '3800.00',
+      weighed: true,
+    },
+    {
+      point_id: 'p2',
+      point_name: 'Гайове',
+      shift_id: 's2',
+      provisional: true,
+      expenses_amount: '1050.00',
+      weighed: true,
+    },
+  ],
+  provisional: true,
+  accrued: '160550.00',
+  expenses_amount: '4850.00',
+  expenses_weighed: '4850.00',
+  reweighed_kg: '1000.00',
+  shortfall_amount: '1600.00',
+  top_ups_total: '0.00',
+  weighed: {
+    intake_kg: '1010.00',
+    shortfall_kg: '10.00',
+    accrued: '160550.00',
+    shortfall: '1600.00',
+    shortfall_share: '1600.00',
+    expenses_share: '4850.00',
+    full_cost: '165400.00',
+  },
+  price_cost_avg: '165.40',
+  unweighed: { intake_kg: '0.00', accrued: '0.00' },
+  checks: { points_ok: true, total_ok: true },
+  products: [],
+};
+
 beforeEach(() => {
   workingPointMock.mockReturnValue({ pointId: 'p1', canPick: true, setPointId: vi.fn() });
+  pointParamMock.mockReturnValue(null);
+  networkMock.mockReturnValue({ data: undefined, isPending: false, isError: false });
   pointsMock.mockReturnValue(ok([{ id: 'p1', name: 'Шипинки', kind: 'reception' }]));
   shiftMock.mockReturnValue(ok({ id: 's1', status: 'open' }));
   dayMock.mockReturnValue(ok(day));
@@ -262,5 +324,88 @@ describe('CostOfDayPage', () => {
     expect(screen.getByText('Витрати дня')).toBeInTheDocument();
     expect(container.querySelector('[data-awaiting]')).not.toBeNull();
     expect(container.querySelector('details#cost-checks')).toBeNull();
+  });
+
+  describe('«Усі точки»', () => {
+    it('is the picker’s first option, and picking it writes ?point=all without remembering it', async () => {
+      const setPointId = vi.fn();
+      workingPointMock.mockReturnValue({ pointId: 'p1', canPick: true, setPointId });
+      const user = userEvent.setup();
+      render(<CostOfDayPage />);
+
+      const picker = screen.getByRole('combobox', { name: 'Пункт' });
+      expect(screen.getAllByRole('option')[0]).toHaveTextContent('Усі точки');
+
+      await user.selectOptions(picker, 'Усі точки');
+      expect(setPointParamMock).toHaveBeenCalledWith('all');
+      expect(setPointId).not.toHaveBeenCalled();
+    });
+
+    it('goes back to one point through the ordinary remembered pick', async () => {
+      const setPointId = vi.fn();
+      workingPointMock.mockReturnValue({ pointId: 'p1', canPick: true, setPointId });
+      pointParamMock.mockReturnValue('all');
+      networkMock.mockReturnValue(ok(network));
+      const user = userEvent.setup();
+      render(<CostOfDayPage />);
+
+      await user.selectOptions(screen.getByRole('combobox', { name: 'Пункт' }), 'Шипинки');
+      expect(setPointId).toHaveBeenCalledWith('p1');
+    });
+
+    it('reads the network for the page’s date, and nothing per point', () => {
+      pointParamMock.mockReturnValue('all');
+      networkMock.mockReturnValue(ok(network));
+      render(<CostOfDayPage />);
+
+      expect(networkMock).toHaveBeenLastCalledWith(expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
+      expect(screen.getByRole('combobox', { name: 'Пункт' })).toHaveValue('all');
+    });
+
+    it('has no expense entry — only each point’s expenses, read back', () => {
+      pointParamMock.mockReturnValue('all');
+      networkMock.mockReturnValue(ok(network));
+      const { container } = render(<CostOfDayPage />);
+
+      expect(screen.queryByPlaceholderText('Підпис витрати')).not.toBeInTheDocument();
+      expect(container.querySelector('[data-network-expenses]')).toHaveTextContent(
+        /Шипинки 3\s800,00.*Гайове 1\s050,00.*разом 4\s850,00/,
+      );
+      expect(screen.getByText('Зміна ще відкрита: Гайове')).toBeInTheDocument();
+    });
+
+    it('prints as «Усі точки»', () => {
+      pointParamMock.mockReturnValue('all');
+      networkMock.mockReturnValue(ok(network));
+      const { container } = render(<CostOfDayPage />);
+
+      expect(container.querySelector('.print-only')).toHaveTextContent(/Усі точки/);
+    });
+
+    it('says no point opened a shift that day', () => {
+      pointParamMock.mockReturnValue('all');
+      networkMock.mockReturnValue(ok({ ...network, points: [] }));
+      render(<CostOfDayPage />);
+
+      expect(screen.getByText(/жодна точка не відкривала зміну/)).toBeInTheDocument();
+    });
+
+    it('reports a failed network read as a failure', () => {
+      pointParamMock.mockReturnValue('all');
+      networkMock.mockReturnValue(failed);
+      render(<CostOfDayPage />);
+
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+
+    it('is not an operator’s: no picker, and ?point=all is ignored', () => {
+      workingPointMock.mockReturnValue({ pointId: 'p1', canPick: false, setPointId: vi.fn() });
+      pointParamMock.mockReturnValue('all');
+      render(<CostOfDayPage />);
+
+      expect(screen.queryByRole('combobox', { name: 'Пункт' })).not.toBeInTheDocument();
+      expect(networkMock).toHaveBeenLastCalledWith(null);
+      expect(screen.getByText('Витрати дня')).toBeInTheDocument();
+    });
   });
 });

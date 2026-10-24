@@ -1,7 +1,9 @@
 import { randomUUID } from 'crypto';
 import { DataSource } from 'typeorm';
 import { openTestDataSource } from '../testing/db-harness';
-import { NetworkAverageService } from './network-average.service';
+import { NetworkCostOfDayService } from './network-cost-of-day.service';
+import { CostOfDayService } from './cost-of-day.service';
+import { Shift } from '../shifts/shift.entity';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 import { UserRole } from '../users/user-role.enum';
 
@@ -24,27 +26,27 @@ const businessDateFor = (tag: string, monthPrefix: string): string =>
   `${monthPrefix}${(1 + (Math.abs(hashOf(tag)) % 27)).toString().padStart(2, '0')}`;
 
 /**
- * §8.6's acceptance test, seeded for real: the client's own worked table —
- * Шипинки 790 кг / 126 400,00 ₴, Гайове 210 кг / 32 550,00 ₴, one shared
- * raspberry product/grade (the real catalog is global across points, so both
- * points' receipts must reference the SAME `product_grades` row for the
- * network-average query to have anything to sum) — read back through the
- * ACTUAL `network-average` SQL (`shifts` ⋈ `collection_points`, then
- * `productCostRows`'s `intake_items`/`reweigh_items`/`intake_top_ups`
- * joins), not the `DataSource.query` mock the unit spec uses. That mock
- * proves the arithmetic on top of the rows; it cannot prove the query
- * itself parses, joins correctly, or returns what the code expects — this
- * spec is what proves that, the same way `cost-of-day.db-spec.ts` does for
- * §8.4.
+ * «Усі точки» seeded for real: §8.6's own table — Шипинки 800 кг accrued at
+ * 160,00 with 790 кг arrived, Гайове 210 кг at 155,00 — plus each point's day
+ * expenses, one shared raspberry grade (the catalog is global, so both points'
+ * receipts must reference the SAME `product_grades` row for there to be
+ * anything to sum), read back through the ACTUAL roster SQL and every
+ * `CostOfDayService.forShift` query underneath it. The unit spec proves the
+ * summing; this one proves the queries parse, join and come back as the code
+ * expects.
  */
-describe('NetworkAverageService.forDate (DB)', () => {
+describe('NetworkCostOfDayService.forDate (DB)', () => {
   let ds: DataSource;
-  let service: NetworkAverageService;
+  let service: NetworkCostOfDayService;
   let ownerId: string;
+
+  const shiftsStub = {
+    findOneRaw: async (id: string) => ds.manager.getRepository(Shift).findOne({ where: { id } }),
+  };
 
   beforeAll(async () => {
     ds = await openTestDataSource();
-    service = new NetworkAverageService(ds);
+    service = new NetworkCostOfDayService(ds, new CostOfDayService(ds, shiftsStub as never));
 
     const [owner] = await ds.query(
       `INSERT INTO users (first_name, last_name, role) VALUES ('Керівник', 'Тест', 'network_owner')
@@ -140,9 +142,8 @@ describe('NetworkAverageService.forDate (DB)', () => {
   /** One point's shift with a single receipt against `gradeId`. `reweighKg`
    *  defaults to `netKg` — reweighed in full, so сума = accrued exactly and
    *  there is no shortfall. Pass a SMALLER `reweighKg` to seed a real
-   *  недостача, which is what makes §8.6's «нараховано − недостача»
-   *  observable rather than assumed; pass `reweigh: false` to leave the
-   *  intake unweighed. */
+   *  недостача; pass `reweigh: false` to leave the intake unweighed;
+   *  `expenses` is the point's one day-expense line, none when omitted. */
   const seedPoint = async (
     tag: string,
     businessDate: string,
@@ -152,6 +153,7 @@ describe('NetworkAverageService.forDate (DB)', () => {
     amount: string,
     reweigh: boolean,
     reweighKg: string = netKg,
+    expenses?: string,
   ): Promise<{ pointId: string; shiftId: string }> => {
     // A fresh UUID per call, not derived from `tag` — two points seeded off
     // the same `tag` would otherwise share their first 8 characters and
@@ -199,66 +201,78 @@ describe('NetworkAverageService.forDate (DB)', () => {
       );
     }
 
+    if (expenses !== undefined) {
+      await ds.query(
+        `INSERT INTO day_expenses (shift_id, label, amount, created_by_user_id)
+         VALUES ($1, 'Витрати дня', $2, $3)`,
+        [shift.id, expenses, ownerId],
+      );
+    }
+
     return { pointId: point.id, shiftId: shift.id };
   };
 
-  it('§8.6 end to end: sums then divides, matches the client’s worked table', async () => {
+  /** Шипинки: 128 000,00 − 1 600,00 + 1 600,00 + 3 800,00 = 131 800,00 over
+   *  790 кг, its own page 166,84. Гайове: 32 550,00 + 1 050,00 = 33 600,00 over
+   *  210 кг, its own page 160,00. */
+  const seedTwoPoints = async (tag: string, businessDate: string, gradeId: string) => {
+    await seedPoint(
+      `${tag}-shp`,
+      businessDate,
+      `Шипинки ${tag}`,
+      gradeId,
+      '800.00',
+      '128000.00',
+      true,
+      '790.00',
+      '3800.00',
+    );
+    await seedPoint(
+      `${tag}-hai`,
+      businessDate,
+      `Гайове ${tag}`,
+      gradeId,
+      '210.00',
+      '32550.00',
+      true,
+      '210.00',
+      '1050.00',
+    );
+  };
+
+  it('§8.6 end to end: Σ повна вартість ÷ Σ база кг, never the mean of the points', async () => {
     const tag = randomUUID();
     const businessDate = businessDateFor(tag, '2020-01-');
     const { gradeId } = await seedProduct(`Малина ${tag}`);
-
-    await seedPoint(
-      `${tag}-shp`,
-      businessDate,
-      `Шипинки ${tag}`,
-      gradeId,
-      // 800 кг accrued at 160,00, 790 кг arrived — §8.2's own worked numbers.
-      // Its cell's 126 400,00 is therefore 128 000,00 − 1 600,00, computed;
-      // seeding 126 400,00 against a full reweigh (as this fixture used to)
-      // left `sub` unproven — `add`, or no term at all, stayed green.
-      '800.00',
-      '128000.00',
-      true,
-      '790.00',
-    );
-    await seedPoint(`${tag}-hai`, businessDate, `Гайове ${tag}`, gradeId, '210.00', '32550.00', true);
+    await seedTwoPoints(tag, businessDate, gradeId);
 
     const out = await service.forDate(actor(), businessDate);
-    const raspberry = out.products.find((p) => p.product_name === `Малина ${tag}`);
+    const raspberry = out.products.find((p) => p.product_name === `Малина ${tag}`)!;
     expect(raspberry).toBeDefined();
-    expect(raspberry!.total_kg).toBe('1000.00');
-    expect(raspberry!.total_amount).toBe('158950.00');
-    expect(raspberry!.average_price).toBe('158.95');
-    expect(raspberry!.average_price).not.toBe('157.50'); // (160,00 + 155,00) ÷ 2 — the trap
+    expect(raspberry.reweigh_net_kg).toBe('1000.00');
+    expect(raspberry.accrued).toBe('160550.00');
+    expect(raspberry.shortfall).toBe('1600.00');
+    expect(raspberry.shortfall_share).toBe('1600.00');
+    expect(raspberry.expenses_share).toBe('4850.00');
+    expect(raspberry.full_cost).toBe('165400.00');
+    expect(raspberry.price_cost).toBe('165.40');
+    expect(raspberry.price_cost).not.toBe('163.42'); // (166,84 + 160,00) ÷ 2 — the trap
 
-    const shypynky = raspberry!.points.find((p) => p.point_name === `Шипинки ${tag}`);
-    expect(shypynky?.weight_kg).toBe('790.00');
-    expect(shypynky?.amount).toBe('126400.00');
-    const haiove = raspberry!.points.find((p) => p.point_name === `Гайове ${tag}`);
-    expect(haiove?.weight_kg).toBe('210.00');
-    expect(haiove?.amount).toBe('32550.00');
+    const shp = raspberry.points.find((p) => p.point_name === `Шипинки ${tag}`)!;
+    expect(shp.price_cost).toBe('166.84');
+    const hai = raspberry.points.find((p) => p.point_name === `Гайове ${tag}`)!;
+    expect(hai.price_cost).toBe('160.00');
+
+    const mine = out.points.filter((p) => p.point_name.endsWith(tag));
+    expect(mine.map((p) => p.expenses_amount).sort()).toEqual(['1050.00', '3800.00']);
+    expect(out.checks).toEqual({ points_ok: true, total_ok: true });
   });
 
-  it('excludes a point that accepted raspberry but has weighed nothing — real DB, real null', async () => {
+  it('leaves a point that weighed nothing out of the row — real DB, real null', async () => {
     const tag = randomUUID();
     const businessDate = businessDateFor(tag, '2020-02-');
     const { gradeId } = await seedProduct(`Малина ${tag}`);
-
-    await seedPoint(
-      `${tag}-shp`,
-      businessDate,
-      `Шипинки ${tag}`,
-      gradeId,
-      // 800 кг accrued at 160,00, 790 кг arrived — §8.2's own worked numbers.
-      // Its cell's 126 400,00 is therefore 128 000,00 − 1 600,00, computed;
-      // seeding 126 400,00 against a full reweigh (as this fixture used to)
-      // left `sub` unproven — `add`, or no term at all, stayed green.
-      '800.00',
-      '128000.00',
-      true,
-      '790.00',
-    );
-    await seedPoint(`${tag}-hai`, businessDate, `Гайове ${tag}`, gradeId, '210.00', '32550.00', true);
+    await seedTwoPoints(tag, businessDate, gradeId);
     await seedPoint(
       `${tag}-un`,
       businessDate,
@@ -267,69 +281,52 @@ describe('NetworkAverageService.forDate (DB)', () => {
       '100.00',
       '15000.00',
       false, // accepted, never weighed
+      '100.00',
+      '500.00',
     );
 
     const out = await service.forDate(actor(), businessDate);
-    const raspberry = out.products.find((p) => p.product_name === `Малина ${tag}`);
-    expect(raspberry).toBeDefined();
+    const raspberry = out.products.find((p) => p.product_name === `Малина ${tag}`)!;
 
-    // The третій point's cell is present (it DID accept the product) but
-    // null — real Postgres, real absent reweigh row, not a mocked '0.00'.
-    const cell = raspberry!.points.find((p) => p.point_name === `Не зважений ${tag}`);
-    expect(cell).toBeDefined();
-    expect(cell?.weight_kg).toBeNull();
-    expect(cell?.amount).toBeNull();
+    const cell = raspberry.points.find((p) => p.point_name === `Не зважений ${tag}`)!;
+    expect(cell.complete).toBe(false);
+    expect(cell.reweigh_net_kg).toBeNull();
+    expect(cell.full_cost).toBeNull();
 
-    // The sums are UNCHANGED by the unweighed point's presence — it entered
-    // neither sum.
-    expect(raspberry!.total_kg).toBe('1000.00');
-    expect(raspberry!.total_amount).toBe('158950.00');
-    expect(raspberry!.average_price).toBe('158.95');
+    // The row is unchanged by its presence; it is reported beside it.
+    expect(raspberry.reweigh_net_kg).toBe('1000.00');
+    expect(raspberry.price_cost).toBe('165.40');
+    expect(raspberry.unweighed).toEqual({ intake_kg: '100.00', accrued: '15000.00' });
+
+    // Its 500,00 of expenses wait for a reweigh: counted, not spread.
+    const un = out.points.find((p) => p.point_name === `Не зважений ${tag}`)!;
+    expect(un.weighed).toBe(false);
+    expect(out.checks?.total_ok).toBe(true);
   });
 
   /**
-   * §3.15 + §8.6 — the partial weighing is the trap this spec exists to
-   * close. Before the fix, the third point contributed `95 кг / 17 500,00`
-   * (сорт 2's hundred unweighed kilograms booked as a 500,00 shortfall and
-   * its weight silently dropped), which dragged the network figure off
-   * 158,95. «Порожня клітинка … це не нуль» — and half a product is not the
-   * «both intake and reweigh» case this sum filters for.
+   * §3.15 — a point that weighed ONE grade of a product and not the other
+   * contributes nothing to the network row: its weighed grade's kilograms and
+   * its unweighed grade's «missing» kilograms would both skew the figure.
    */
-  it('excludes a point that weighed ONE grade of a product but not the other — §3.15', async () => {
+  it('leaves a partially weighed point out of the row — §3.15', async () => {
     const tag = randomUUID();
     const businessDate = businessDateFor(tag, '2020-03-');
     const { productId, gradeId } = await seedProduct(`Малина ${tag}`);
     const gradeTwo = await seedSecondGrade(productId);
-
-    await seedPoint(
-      `${tag}-shp`,
-      businessDate,
-      `Шипинки ${tag}`,
-      gradeId,
-      // 800 кг accrued at 160,00, 790 кг arrived — §8.2's own worked numbers.
-      // Its cell's 126 400,00 is therefore 128 000,00 − 1 600,00, computed;
-      // seeding 126 400,00 against a full reweigh (as this fixture used to)
-      // left `sub` unproven — `add`, or no term at all, stayed green.
-      '800.00',
-      '128000.00',
-      true,
-      '790.00',
-    );
-    await seedPoint(`${tag}-hai`, businessDate, `Гайове ${tag}`, gradeId, '210.00', '32550.00', true);
+    await seedTwoPoints(tag, businessDate, gradeId);
     await seedPartiallyWeighedPoint(businessDate, `Половина ${tag}`, gradeId, gradeTwo);
 
     const out = await service.forDate(actor(), businessDate);
-    const raspberry = out.products.find((p) => p.product_name === `Малина ${tag}`);
-    expect(raspberry).toBeDefined();
+    const raspberry = out.products.find((p) => p.product_name === `Малина ${tag}`)!;
 
-    const cell = raspberry!.points.find((p) => p.point_name === `Половина ${tag}`);
-    expect(cell).toBeDefined();
-    expect(cell?.weight_kg).toBeNull();
-    expect(cell?.amount).toBeNull();
+    const cell = raspberry.points.find((p) => p.point_name === `Половина ${tag}`)!;
+    expect(cell.complete).toBe(false);
+    expect(cell.reweigh_net_kg).toBeNull();
 
-    // Untouched by the partially weighed point — no 95 кг, no 17 500,00.
-    expect(raspberry!.total_kg).toBe('1000.00');
-    expect(raspberry!.total_amount).toBe('158950.00');
-    expect(raspberry!.average_price).toBe('158.95');
+    expect(raspberry.reweigh_net_kg).toBe('1000.00');
+    expect(raspberry.full_cost).toBe('165400.00');
+    expect(raspberry.price_cost).toBe('165.40');
+    expect(raspberry.unweighed).toEqual({ intake_kg: '200.00', accrued: '18000.00' });
   });
 });
