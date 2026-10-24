@@ -1,5 +1,11 @@
 # Yagoda CRM — Crates On-Hand Invariant Spec
 
+> **SUPERSEDED 2026-10-23.** On the client call of 23.10.2026 the client decided «дозволити
+> ящики в мінус»: empties at a point may go below zero, and who is owed crates is kept in the
+> operator's notebook. `CrateStockGuard` and `CRATES_ON_HAND_INSUFFICIENT` were removed; see
+> `26-rules-by-example.md` §6.9, «Правка 23.10.2026». This document is kept as the record of
+> the earlier decision and its reasoning, not as a description of the code.
+
 **Date:** 2026-09-30
 **Source:** the manual test report `docs/manual-testing/2026-09-30-crates-negative-on-hand.md`
 (seven reproduced ways to drive «Пустих на точці» below zero, via API and via the browser),

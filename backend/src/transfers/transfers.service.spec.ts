@@ -16,8 +16,6 @@ const owner: AuthenticatedUser = {
   collection_point_id: null,
 };
 
-const stock = { assertOnHand: jest.fn().mockResolvedValue(undefined) };
-beforeEach(() => stock.assertOnHand.mockClear());
 
 const operatorA: AuthenticatedUser = {
   sub: 'u-op-a',
@@ -49,7 +47,6 @@ describe('TransfersService.create', () => {
       { transaction: jest.fn() } as never,
       { appTimezone: 'Europe/Kyiv' },
       shifts as never,
-      stock as never,
     );
     return { service, repo, points, audit };
   };
@@ -182,7 +179,6 @@ describe('TransfersService.accept / dispute', () => {
       dataSource as never,
       { appTimezone: 'Europe/Kyiv' },
       shifts as never,
-      stock as never,
     );
     return { service, audit, saved, manager, shifts };
   };
@@ -225,7 +221,6 @@ describe('TransfersService.accept / dispute', () => {
       { transaction: jest.fn((cb: (m: unknown) => unknown) => cb(manager)) } as never,
       { appTimezone: 'Europe/Kyiv' },
       shifts as never,
-      stock as never,
     );
 
     await service.accept(operatorA, 't-1');
@@ -401,7 +396,6 @@ describe('TransfersService.resolve / void', () => {
       dataSource as never,
       { appTimezone: 'Europe/Kyiv' },
       shifts as never,
-      stock as never,
     );
     return { service, audit, saved };
   };
@@ -454,30 +448,6 @@ describe('TransfersService.resolve / void', () => {
       void_reason: 'дубль',
     });
     expect(saved[0].voided_at).toBeInstanceOf(Date);
-  });
-
-  it('void asks the stock guard for what an accepted transfer counted', async () => {
-    const { service } = build(disputed({ status: TransferStatus.Accepted }));
-    await service.void(owner, 't-1', { reason: 'x' } as never);
-    expect(stock.assertOnHand).toHaveBeenCalledWith(expect.anything(), 'point-a', 200);
-  });
-
-  it('resolve does not ask when the resolution is not below the report', async () => {
-    const { service } = build(disputed());
-    await service.resolve(owner, 't-1', resolution as never);
-    expect(stock.assertOnHand).not.toHaveBeenCalled();
-  });
-
-  it('resolve asks for the difference when the resolution is below the report', async () => {
-    const { service } = build(disputed());
-    await service.resolve(owner, 't-1', { ...resolution, resolved_crates: 190 } as never);
-    expect(stock.assertOnHand).toHaveBeenCalledWith(expect.anything(), 'point-a', 5);
-  });
-
-  it('resolve does not ask when the transfer is voided — a voided transfer counts nothing', async () => {
-    const { service } = build(disputed({ voided_at: new Date() }));
-    await service.resolve(owner, 't-1', { ...resolution, resolved_crates: 190 } as never);
-    expect(stock.assertOnHand).not.toHaveBeenCalled();
   });
 
   it('void refuses an operator — §9.4, «точка анулювати не може»', async () => {
@@ -549,7 +519,6 @@ describe('TransfersService.list / findOne', () => {
       // is testing. Same argument as `point-cash.db-spec.ts`'s header.
       { appTimezone: 'Europe/Kyiv' },
       shifts as never,
-      stock as never,
     );
     return { service, builder, repo };
   };

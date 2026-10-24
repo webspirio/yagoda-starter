@@ -227,7 +227,6 @@ export function ReceptionPage() {
   const hasUnplaceableError = (serverErrors?.fieldErrors ?? []).some(
     (e) => !isFieldRendered(e.field),
   );
-  const formErrorParams = serverErrors?.formErrorParams;
   const formErrorKey =
     serverErrors?.formErrorKey ?? (hasUnplaceableError ? 'reception.errors.lineRefused' : null);
 
@@ -633,7 +632,6 @@ export function ReceptionPage() {
                   isPreviewing={isPreviewing}
                   isSubmitting={create.isPending}
                   formErrorKey={formErrorKey}
-                  formErrorParams={formErrorParams}
                   showDraftHint={draftIndex > 0 && !draftReady && !draftBlank}
                   // Keyed by the supplier pick: a new pick remounts it, so the
                   // pre-fill follows the ceiling again until the operator types.

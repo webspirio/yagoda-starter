@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
 import { useForm, useWatch } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import {
@@ -16,9 +15,8 @@ import { SelectField } from '@/shared/ui/select-field';
 import { Button } from '@/shared/ui/button';
 import { toast } from '@/shared/ui/toast';
 import { cratesRules } from '@/shared/lib/money';
+import { cn } from '@/shared/lib/cn';
 import { toBannerError, type BannerError } from '@/shared/lib/api-error';
-import { ApiError } from '@/shared/api';
-import { queryKeys } from '@/shared/api/queryKeys';
 import { useSuppliersQuery, supplierName } from '@/entities/supplier';
 import { useCrateStandingQuery, type CrateIssuanceMode } from '@/entities/crate';
 import { useIssueCratesMutation } from '../api/useIssueCrates';
@@ -39,6 +37,12 @@ interface IssueFormValues {
  * грошах» — and an operator who does not know which one they are choosing is
  * choosing whether the network is covered.
  *
+ * THE EMPTIES AT THE POINT ARE A HINT, NEVER A CAP. Since the 23.10.2026 call
+ * (§6.9) a point may hand out crates it does not have on paper: the minus is
+ * crates it owes people, who is owed goes in the operator's notebook, and the
+ * next transfer pays it off. So the dialog says where the point will land —
+ * amber below zero — and lets the issue through.
+ *
  * THE DEPOSIT PRICE IS NOT ENTERED HERE. It comes from whichever tare type is
  * marked as the crate, and the server reads it; a field would invite someone
  * to type a different number than the catalogue says.
@@ -54,14 +58,14 @@ export function IssueCratesDialog({
   open: boolean;
   onClose: () => void;
 }) {
-  const { t } = useTranslation();
-  const qc = useQueryClient();
+  const { t, i18n } = useTranslation();
+  // A count, not money; the true minus sign, as «Ящики» prints it.
+  const n = (value: number) => value.toLocaleString(i18n.language).replace('-', '−');
   const issue = useIssueCratesMutation();
   const suppliers = useSuppliersQuery('', pointId ?? null);
   const standing = useCrateStandingQuery({ pointId: pointId ?? null, isOwner: Boolean(pointId) });
   const onHand = standing.data?.on_hand;
   const inTransit = standing.data?.in_transit ?? 0;
-  const noneLeft = onHand !== undefined && onHand <= 0;
 
   const {
     register,
@@ -76,6 +80,11 @@ export function IssueCratesDialog({
   // `useWatch`, not `watch()` — the same choice `PayoutDialog` makes, and the
   // one the react-hooks lint rule accepts.
   const mode = useWatch({ control, name: 'mode' });
+  const unitsText = useWatch({ control, name: 'units' });
+  // Where the point lands after this issue — only for a count the field itself would accept.
+  const unitsOk = cratesRules('crates.errors.unitsFormat').validate(unitsText) === true;
+  const units = unitsOk ? Number.parseInt(unitsText.trim(), 10) : undefined;
+  const after = onHand !== undefined && units !== undefined ? onHand - units : undefined;
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
@@ -90,10 +99,6 @@ export function IssueCratesDialog({
       toast.success(t('crates.issue.toast'));
       onClose();
     } catch (error) {
-      // The server counted differently from the hint — bring the hint up to its figure.
-      if (error instanceof ApiError && error.code === 'CRATES_ON_HAND_INSUFFICIENT') {
-        void qc.invalidateQueries({ queryKey: queryKeys.crateBalances });
-      }
       setFormError(
         toBannerError(error, 'crates.errors.issueFailed', {
           // Shared code, screen-specific consequence — see `apiErrorToBanner`.
@@ -140,31 +145,25 @@ export function IssueCratesDialog({
             label={t('crates.field.units')}
             required
             error={errors.units?.message}
-            errorParams={{ on_hand: onHand }}
           >
             {(a11y) => (
               <TextInput
                 {...a11y}
                 inputMode="numeric"
                 className="font-mono"
-                {...register('units', {
-                  ...cratesRules('crates.errors.unitsFormat'),
-                  // A hint, not the rule: the server's CrateStockGuard is the final word.
-                  validate: {
-                    format: cratesRules('crates.errors.unitsFormat').validate,
-                    onHand: (v: string) =>
-                      onHand === undefined ||
-                      Number.parseInt(v.trim(), 10) <= onHand ||
-                      'crates.errors.overOnHand',
-                  },
-                })}
+                {...register('units', cratesRules('crates.errors.unitsFormat'))}
               />
             )}
           </Field>
           {onHand !== undefined ? (
-            <p className={noneLeft ? 'text-sm text-destructive' : 'text-sm text-muted-foreground'}>
-              {t('crates.issue.onHandHint', { on_hand: onHand })}
+            <p className={cn('text-sm', onHand < 0 ? 'text-amber' : 'text-muted-foreground')}>
+              {t('crates.issue.onHandHint', { on_hand: n(onHand) })}
               {inTransit > 0 ? ` ${t('crates.issue.inTransitHint', { in_transit: inTransit })}` : null}
+            </p>
+          ) : null}
+          {after !== undefined && after < 0 ? (
+            <p className="text-sm font-medium text-amber">
+              {t('crates.issue.goesNegativeHint', { after: n(after) })}
             </p>
           ) : null}
 
@@ -192,7 +191,7 @@ export function IssueCratesDialog({
             <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
               {t('common.cancel')}
             </Button>
-            <Button type="submit" disabled={isSubmitting || noneLeft}>
+            <Button type="submit" disabled={isSubmitting}>
               {t('crates.issue.submit')}
             </Button>
           </DialogFooter>
