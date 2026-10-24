@@ -7,15 +7,36 @@ import { UserRole } from '../users/user-role.enum';
 // (`auth/jwt.strategy.ts`); see `reweighs.service.spec.ts`'s own note.
 const owner = { sub: 'u-owner', role: UserRole.NetworkOwner, collection_point_id: null } as never;
 
+/**
+ * `forShift` runs three statements through `dataSource.query` — `gradeTotals`,
+ * `topUpsByGradeForShift` and `tareUnitsByGrade` — so the fake answers by the
+ * table each one reads. Unset sources answer `[]`: no доплати, no tare units.
+ */
+const fakeQuery = (
+  grades: () => unknown[],
+  receipts: () => unknown[] = () => [],
+  tare: () => unknown[] = () => [],
+) =>
+  jest.fn(async (sql: string) => {
+    if (sql.includes('intake_top_ups')) return receipts();
+    if (sql.includes('intake_item_tare_types')) return tare();
+    return grades();
+  });
+
 describe('ReweighReconciliationService.forShift', () => {
-  const build = (shift: Record<string, unknown>, rows: Record<string, unknown>[]) => {
+  const build = (
+    shift: Record<string, unknown>,
+    rows: Record<string, unknown>[],
+    receipts: Record<string, unknown>[] = [],
+    tare: Record<string, unknown>[] = [],
+  ) => {
     // `items` (§5.3) is read through the repository, not through `query`;
     // the empty list keeps these cases about the PRODUCT arithmetic, which
     // is all this spec ever asserted. `reweigh-reconciliation.db-spec.ts`
     // is where the item list is proven, because what matters there is that
     // the relations are really loaded.
     const dataSource = {
-      query: jest.fn(async () => rows),
+      query: fakeQuery(() => rows, () => receipts, () => tare),
       getRepository: jest.fn(() => ({ find: jest.fn(async () => []) })),
     };
     const shifts = { findOneRaw: jest.fn(async () => shift) };
@@ -97,6 +118,97 @@ describe('ReweighReconciliationService.forShift', () => {
     expect(p.missing_kg).toBe('-5.00');
   });
 
+  /**
+   * Гайове 19.10 (review §0): Малина 333,70 + 263,10 = 596,80 кг at the point,
+   * 227,40 + 368,00 = 595,40 at the base, receipts 41 977,00 + 56 067,20 and
+   * one 15 000,00 доплата. Receipts alone price it at 164,28 → 229,99 ₴; with
+   * the доплата it is 113 044,20 ÷ 596,80 = 189,42 → 265,19 ₴, cost-of-day's
+   * figure.
+   */
+  const haiove = [
+    {
+      ...raspberry, product_grade_id: 'g-rasp-1', product_grade_name: '1 сорт',
+      intake_net_kg: '333.70', intake_amount: '41977.00', reweigh_net_kg: '227.40',
+    },
+    {
+      ...raspberry, product_grade_id: 'g-rasp-2', product_grade_name: '2 сорт',
+      intake_net_kg: '263.10', intake_amount: '56067.20', reweigh_net_kg: '368.00',
+    },
+  ];
+  const haioveTopUp = [
+    {
+      intake_id: 'i-3',
+      top_up_total: '15000.00',
+      lines: [{ product_grade_id: 'g-rasp-1', amount: '41977.00' }],
+    },
+  ];
+
+  it('prices the shortfall at accrued INCLUDING доплати, and says the rate — review §0, W2', async () => {
+    const svc = build({ id: 's-1', closed_at: new Date() }, haiove, haioveTopUp);
+    const p = (await svc.forShift(owner, 's-1')).products[0];
+    expect(p.missing_kg).toBe('1.40');
+    expect(p.rate).toBe('189.42');
+    expect(p.missing_amount).toBe('265.19');
+  });
+
+  it('without a доплата the same day prices at the receipts alone', async () => {
+    const svc = build({ id: 's-1', closed_at: new Date() }, haiove);
+    const p = (await svc.forShift(owner, 's-1')).products[0];
+    expect(p.rate).toBe('164.28');
+    expect(p.missing_amount).toBe('229.99');
+  });
+
+  it('totals only the shortfalls — a surplus never offsets another product — W2', async () => {
+    const cornel = {
+      ...raspberry, product_id: 'p-corn', product_name: 'Кизил', product_grade_id: 'g-corn',
+      intake_net_kg: '15.70', intake_amount: '600.00', reweigh_net_kg: '17.70',
+    };
+    const svc = build({ id: 's-1', closed_at: new Date() }, [...haiove, cornel], haioveTopUp);
+    const out = await svc.forShift(owner, 's-1');
+    expect(out.products.find((p) => p.product_id === 'p-corn')?.missing_kg).toBe('-2.00');
+    expect(out.missing_total_kg).toBe('1.40');
+    expect(out.missing_total_amount).toBe('265.19');
+  });
+
+  it('totals 0.00 when every priced product is a surplus, and null while nothing is priced', async () => {
+    const surplus = build({ id: 's-1', closed_at: new Date() }, [{ ...raspberry, reweigh_net_kg: '805.00' }]);
+    const s1 = await surplus.forShift(owner, 's-1');
+    expect(s1.missing_total_kg).toBe('0.00');
+    expect(s1.missing_total_amount).toBe('0.00');
+
+    const open = build({ id: 's-1', closed_at: null }, [raspberry]);
+    const s2 = await open.forShift(owner, 's-1');
+    expect(s2.missing_total_kg).toBeNull();
+    expect(s2.missing_total_amount).toBeNull();
+  });
+
+  it('counts tare units per grade and per product, point vs base, never from kilograms — W5', async () => {
+    const svc = build({ id: 's-1', closed_at: new Date() }, haiove, [], [
+      { product_grade_id: 'g-rasp-1', tare_type_id: 't-crate', tare_type_name: 'Ящик', point_units: 82, base_units: 48 },
+      { product_grade_id: 'g-rasp-2', tare_type_id: 't-crate', tare_type_name: 'Ящик', point_units: 54, base_units: 88 },
+      { product_grade_id: 'g-rasp-2', tare_type_id: 't-lub', tare_type_name: 'Лубянка', point_units: 3, base_units: 0 },
+    ]);
+    const out = await svc.forShift(owner, 's-1');
+    expect(out.grades.map((g) => [g.crates.point, g.crates.base])).toEqual([
+      [82, 48],
+      [57, 88],
+    ]);
+    expect(out.products[0].crates).toEqual({
+      point: 139,
+      base: 136,
+      by_type: [
+        { tare_type_id: 't-lub', tare_type_name: 'Лубянка', point: 3, base: 0 },
+        { tare_type_id: 't-crate', tare_type_name: 'Ящик', point: 136, base: 136 },
+      ],
+    });
+  });
+
+  it('carries zero crates, not a guess, when no unit rows exist', async () => {
+    const svc = build({ id: 's-1', closed_at: new Date() }, [raspberry]);
+    const out = await svc.forShift(owner, 's-1');
+    expect(out.products[0].crates).toEqual({ point: 0, base: 0, by_type: [] });
+  });
+
   it('says so when the point accepted nothing that day — §8.1', async () => {
     const svc = build({ id: 's-1', closed_at: new Date() }, []);
     const out = await svc.forShift(owner, 's-1');
@@ -123,7 +235,7 @@ describe('grades[]', () => {
   beforeEach(() => {
     rows = [];
     const dataSource = {
-      query: jest.fn(async () => rows),
+      query: fakeQuery(() => rows),
       getRepository: jest.fn(() => ({ find: jest.fn(async () => []) })),
     };
     const shifts = { findOneRaw: jest.fn(async () => ({ id: 'shift-1', closed_at: new Date() })) };
@@ -151,11 +263,13 @@ describe('grades[]', () => {
         product_grade_id: 'g-1', product_grade_name: 'Малина 1',
         product_id: 'prod-1', product_name: 'Малина',
         intake_net_kg: '200.00', reweigh_net_kg: '190.00',
+        crates: { point: 0, base: 0, by_type: [] },
       },
       {
         product_grade_id: 'g-2', product_grade_name: 'Малина 3',
         product_id: 'prod-1', product_name: 'Малина',
         intake_net_kg: '100.00', reweigh_net_kg: '0.00',
+        crates: { point: 0, base: 0, by_type: [] },
       },
     ]);
   });
@@ -194,7 +308,7 @@ describe('include_voided', () => {
     rows = [];
     itemRepo = { find: jest.fn(async () => []) };
     const dataSource = {
-      query: jest.fn(async () => rows),
+      query: fakeQuery(() => rows),
       getRepository: jest.fn(() => itemRepo),
     };
     const shifts = { findOneRaw: jest.fn(async () => ({ id: 'shift-1', closed_at: new Date() })) };

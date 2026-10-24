@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { Reconciliation } from './Reconciliation';
-import type { ReconciliationProduct } from '@/entities/reweigh';
+import type { ReconciliationGrade, ReconciliationProduct } from '@/entities/reweigh';
+
+const NO_CRATES = { point: 0, base: 0, by_type: [] };
 
 const weighed = (over: Partial<ReconciliationProduct> = {}): ReconciliationProduct => ({
   product_id: 'p1',
@@ -11,93 +14,125 @@ const weighed = (over: Partial<ReconciliationProduct> = {}): ReconciliationProdu
   state: 'weighed' as const,
   missing_kg: '2.50',
   missing_amount: '175.00',
+  rate: '70.00',
+  crates: NO_CRATES,
   ...over,
 });
 
+const grade = (over: Partial<ReconciliationGrade> = {}): ReconciliationGrade => ({
+  product_grade_id: 'g1',
+  product_grade_name: '1 сорт',
+  product_id: 'p1',
+  product_name: 'Малина',
+  intake_net_kg: '333.70',
+  reweigh_net_kg: '227.40',
+  crates: NO_CRATES,
+  ...over,
+});
+
+type Props = ComponentProps<typeof Reconciliation>;
+const view = (over: Partial<Props> = {}) =>
+  render(
+    <Reconciliation
+      products={[weighed()]}
+      grades={[]}
+      missingTotalKg="2.50"
+      missingTotalAmount="175.00"
+      drafts={[]}
+      shiftClosed
+      acceptedAnything
+      pointName="Шипинки"
+      {...over}
+    />,
+  );
+
 describe('Reconciliation', () => {
   it('shows the point, ours, the difference and the money when the shift is closed', () => {
-    render(<Reconciliation products={[weighed()]} drafts={[]} shiftClosed acceptedAnything pointName="Шипинки" />);
+    view();
     const row = screen.getByRole('row', { name: /Малина/ });
     expect(within(row).getByText('341.00 kg')).toBeInTheDocument();
     expect(within(row).getByText('338.50 kg')).toBeInTheDocument();
-    expect(within(row).getByText(/2\.50/)).toBeInTheDocument();
+    expect(within(row).getByText('−2.50 kg')).toBeInTheDocument();
+  });
+
+  it('prints the shortfall money as a formula a calculator re-checks, in amber — W3', () => {
+    view({
+      products: [weighed({ missing_kg: '1.40', rate: '189.42', missing_amount: '265.19' })],
+      missingTotalKg: '1.40',
+      missingTotalAmount: '265.19',
+    });
+    const row = screen.getByRole('row', { name: /Малина/ });
+    const money = within(row).getByText('1.40 × 189.42 = 265.19 ₴');
+    expect(money).toHaveClass('text-amber');
+    expect(within(row).getByText('−1.40 kg')).toHaveClass('text-amber');
+  });
+
+  it('prints the day total from the SERVER, never a browser sum of the rows — W2', () => {
+    // Malina short 1.40, Kizil 2.00 over: a browser sum would print 0.60 surplus.
+    view({
+      products: [
+        weighed({ missing_kg: '1.40', rate: '189.42', missing_amount: '265.19' }),
+        weighed({ product_id: 'p2', product_name: 'Кизил', missing_kg: '-2.00', missing_amount: '-80.00' }),
+      ],
+      missingTotalKg: '1.40',
+      missingTotalAmount: '265.19',
+    });
+    expect(screen.getByTestId('missing-total')).toHaveTextContent('−1.40 kg · 265.19 ₴');
   });
 
   it('holds the claim back while the shift is open — a dash, and it says why', () => {
-    render(
-      <Reconciliation
-        products={[weighed({ missing_kg: null, missing_amount: null })]}
-        drafts={[]}
-        shiftClosed={false}
-        acceptedAnything
-        pointName="Шипинки"
-      />,
-    );
+    view({
+      products: [weighed({ missing_kg: null, missing_amount: null })],
+      missingTotalKg: null,
+      missingTotalAmount: null,
+      shiftClosed: false,
+    });
     const row = screen.getByRole('row', { name: /Малина/ });
     expect(within(row).getAllByText('—')).toHaveLength(2);
+    expect(screen.getByTestId('missing-total')).toHaveTextContent('—');
     expect(screen.getByText(/still open|ще відкрита/i)).toBeInTheDocument();
   });
 
   it('renders «не перезважено» as a state and NEVER as a zero', () => {
-    render(
-      <Reconciliation
-        products={[
-          weighed({ state: 'not_reweighed', reweigh_net_kg: '0.00', missing_kg: null, missing_amount: null }),
-        ]}
-        drafts={[]}
-        shiftClosed
-        acceptedAnything
-        pointName="Шипинки"
-      />,
-    );
+    view({
+      products: [
+        weighed({ state: 'not_reweighed', reweigh_net_kg: '0.00', missing_kg: null, missing_amount: null }),
+      ],
+      missingTotalKg: null,
+      missingTotalAmount: null,
+    });
     const row = screen.getByRole('row', { name: /Малина/ });
     expect(within(row).getByText(/not reweighed|не перезважено/i)).toBeInTheDocument();
     expect(within(row).queryByText('0.00 kg')).not.toBeInTheDocument();
   });
 
   it('counts the products still without a line', () => {
-    render(
-      <Reconciliation
-        products={[
-          weighed(),
-          weighed({ product_id: 'p2', product_name: 'Порічка', state: 'not_reweighed', missing_kg: null, missing_amount: null }),
-        ]}
-        drafts={[]}
-        shiftClosed
-        acceptedAnything
-        pointName="Шипинки"
-      />,
-    );
-    // A bare /1/ would also match "341.00 kg" (both rows share that default
-    // intake value) and "175.00 ₴", so it is scoped to the interpolated
-    // count inside the note itself — still fails if the count is wrong or
-    // the note goes missing.
-    expect(screen.getByText(/without a line:\s*1\b|без позиції:\s*1\b/i)).toBeInTheDocument();
+    view({
+      products: [
+        weighed(),
+        weighed({ product_id: 'p2', product_name: 'Порічка', state: 'not_reweighed', missing_kg: null, missing_amount: null }),
+      ],
+    });
+    expect(screen.getByText(/not reweighed:\s*1\b|не перезважено товарів:\s*1\b/i)).toBeInTheDocument();
   });
 
   it('reports unposted drafts on their own line and leaves «Наша» untouched', () => {
-    render(
-      <Reconciliation
-        products={[weighed()]}
-        drafts={[
-          {
-            key: 'k',
-            product_grade_id: 'g',
-            product_grade_name: 'Малина 1',
-            product_id: 'p1',
-            product_name: 'Малина',
-            gross_kg: '12.00',
-            pallet_kg: '0.00',
-            tare: [],
-            tare_weight_kg: '0.00',
-            net_kg: '12.00',
-          },
-        ]}
-        shiftClosed
-        acceptedAnything
-        pointName="Шипинки"
-      />,
-    );
+    view({
+      drafts: [
+        {
+          key: 'k',
+          product_grade_id: 'g',
+          product_grade_name: 'Малина 1',
+          product_id: 'p1',
+          product_name: 'Малина',
+          gross_kg: '12.00',
+          pallet_kg: '0.00',
+          tare: [],
+          tare_weight_kg: '0.00',
+          net_kg: '12.00',
+        },
+      ],
+    });
     const row = screen.getByRole('row', { name: /Малина/ });
     expect(within(row).getByText('338.50 kg')).toBeInTheDocument(); // NOT 350.50
     expect(screen.getByText(/12\.00/)).toBeInTheDocument();
@@ -105,26 +140,76 @@ describe('Reconciliation', () => {
   });
 
   it('says there is nothing to compare when the day accepted nothing', () => {
-    render(<Reconciliation products={[]} drafts={[]} shiftClosed acceptedAnything={false} pointName="Шипинки" />);
+    view({ products: [], acceptedAnything: false, missingTotalKg: null, missingTotalAmount: null });
     expect(screen.getByText(/nothing to compare|порівнювати ні з чим/i)).toBeInTheDocument();
   });
 
-  it('shows a surplus as a surplus, not as a negative shortfall', () => {
-    render(
-      <Reconciliation
-        products={[weighed({ missing_kg: '-4.00', missing_amount: '-280.00' })]}
-        drafts={[]}
-        shiftClosed
-        acceptedAnything
-        pointName="Шипинки"
-      />,
-    );
-    expect(screen.getByText(/surplus|надлишок/i)).toBeInTheDocument();
-    // Row-level: the SIGNED Diff cell itself must read as a surplus (a
-    // leading `+` on the absolute value), never as a bare minus in front of
-    // what would look like a shortfall — the totals-row label alone does not
-    // cover this cell.
+  it('shows a surplus as «+x», muted, with no money claim — §8.2 правка', () => {
+    view({
+      products: [weighed({ missing_kg: '-4.00', missing_amount: '-280.00' })],
+      missingTotalKg: '0.00',
+      missingTotalAmount: '0.00',
+    });
     const row = screen.getByRole('row', { name: /Малина/ });
-    expect(within(row).getByText('+4.00 kg')).toBeInTheDocument();
+    const diff = within(row).getByText('+4.00 kg');
+    expect(diff).toHaveClass('text-muted-foreground');
+    expect(within(row).queryByText(/280/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/surplus|надлишок/i)).not.toBeInTheDocument();
+  });
+
+  it('shows tare units point → base under the product, amber when they differ — W5', () => {
+    view({
+      products: [
+        weighed({
+          crates: {
+            point: 140,
+            base: 139,
+            by_type: [
+              { tare_type_id: 't1', tare_type_name: 'Ящик', point: 136, base: 136 },
+              { tare_type_id: 't2', tare_type_name: 'Лубянка', point: 4, base: 3 },
+            ],
+          },
+        }),
+      ],
+    });
+    const line = screen.getByTestId('crates-line');
+    expect(line).toHaveTextContent('Ящик 136 → 136 · Лубянка 4 → 3');
+    expect(line).toHaveClass('text-amber');
+  });
+
+  it('keeps an equal crate count muted, and prints nothing when no unit was counted', () => {
+    view({
+      products: [
+        weighed({
+          crates: {
+            point: 136,
+            base: 136,
+            by_type: [{ tare_type_id: 't1', tare_type_name: 'Ящик', point: 136, base: 136 }],
+          },
+        }),
+        weighed({ product_id: 'p2', product_name: 'Кизил' }),
+      ],
+    });
+    const lines = screen.getAllByTestId('crates-line');
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toHaveClass('text-muted-foreground');
+  });
+
+  it('lists the grades under a product with more than one, point kg next to base kg — пересорт', () => {
+    view({
+      grades: [
+        grade(),
+        grade({ product_grade_id: 'g2', product_grade_name: '2 сорт', intake_net_kg: '263.10', reweigh_net_kg: '368.00' }),
+      ],
+    });
+    const second = screen.getByRole('row', { name: /2 сорт/ });
+    expect(within(second).getByText('263.10 kg')).toBeInTheDocument();
+    expect(within(second).getByText('368.00 kg')).toBeInTheDocument();
+    expect(screen.getByRole('row', { name: /1 сорт/ })).toBeInTheDocument();
+  });
+
+  it('adds no grade rows for a single-grade product', () => {
+    view({ grades: [grade()] });
+    expect(screen.queryByRole('row', { name: /1 сорт/ })).not.toBeInTheDocument();
   });
 });

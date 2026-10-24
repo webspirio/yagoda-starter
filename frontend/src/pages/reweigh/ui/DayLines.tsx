@@ -13,6 +13,7 @@ import { apiErrorToBanner } from '@/shared/lib/api-error';
 import { useVoidReweighItemMutation } from '@/entities/reweigh';
 import { useStaffQuery } from '@/entities/user';
 import type { DayLine } from '../api/useDayReweighs';
+import { netFormula } from '../lib/formula';
 
 const COLUMN_COUNT = 6;
 
@@ -149,14 +150,35 @@ export function DayLines({
               const grade = item.product_grade_name ?? '';
               const productGrade =
                 product && grade ? t('reweigh.productGrade', { product, grade }) : product || grade;
+              // W4 — the stored line as its own formula. Per-unit weights come
+              // from the server (`unit_weight_kg`, proven against the stored
+              // tare); without them it prints the stored tare total.
+              const formula = netFormula(t, locale, {
+                gross: item.gross_kg,
+                pallet: item.pallet_kg,
+                tare: item.tare.map((term) => ({
+                  units: term.units,
+                  unitWeightKg: term.unit_weight_kg,
+                })),
+                tareKg: item.tare_weight_kg,
+                net: item.net_kg,
+              });
               return (
                 <Fragment key={item.id}>
-                  <TableRow className={voided ? 'text-muted-foreground' : undefined}>
+                  <TableRow
+                    title={formula ?? undefined}
+                    className={voided ? 'text-muted-foreground' : undefined}
+                  >
                     <TableCell className="font-medium">{pointName}</TableCell>
                     <TableCell className="font-mono text-xs">{formatTime(item.created_at, locale)}</TableCell>
                     <TableCell>{productGrade}</TableCell>
                     <TableCell className="text-right font-mono tabular-nums">
-                      {formatKg(item.net_kg, locale)}
+                      <span className="whitespace-nowrap">{formatKg(item.net_kg, locale)}</span>
+                      {formula ? (
+                        <span className="block text-xs font-normal whitespace-nowrap text-muted-foreground">
+                          {formula}
+                        </span>
+                      ) : null}
                     </TableCell>
                     <TableCell>
                       {item.voided_at !== null ? (

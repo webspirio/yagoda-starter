@@ -77,22 +77,18 @@ export function ReturnedCratesField({
   const hintId = `${FIELD}-hint`;
 
   return (
-    // ≤ 64 px (spec §5.1): the settlement card already pads, so only a
-    // separator here; label + «із N ящиків…» (32 px) stacked beside a 32 px
-    // input on one row, the refund instruction on its own 20 px line under
-    // it. The a11y wiring is `Field`'s, by hand — `Field` stacks label over
+    // The settlement card already pads, so only a separator here; label +
+    // «із N ящиків…» stacked beside the input on one row, the refund
+    // instruction on its own line under it, at the card's 14 px body size.
+    // The a11y wiring is `Field`'s, by hand — `Field` stacks label over
     // control.
-    <div className="border-t border-border pt-1">
+    <div className="flex flex-col gap-2 border-t border-border pt-3">
       <div className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <label
-            id={labelId}
-            htmlFor={FIELD}
-            className="block truncate text-[11px] leading-4 font-bold tracking-wider text-muted-foreground uppercase"
-          >
+          <label id={labelId} htmlFor={FIELD} className="block text-sm leading-5 font-medium">
             {t('reception.returned.label')}
           </label>
-          <p id={hintId} className="truncate text-xs leading-4 text-muted-foreground">
+          <p id={hintId} className="text-sm leading-5 text-muted-foreground">
             {t('reception.returned.held', { held })}
           </p>
         </div>
@@ -101,7 +97,7 @@ export function ReturnedCratesField({
           aria-labelledby={labelId}
           aria-describedby={hintId}
           inputMode="numeric"
-          className="h-8 w-20 shrink-0 font-mono"
+          className="h-10 w-24 shrink-0 text-center font-mono text-lg font-semibold"
           value={value}
           disabled={disabled}
           onChange={(e) => {

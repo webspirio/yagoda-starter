@@ -74,6 +74,8 @@ function mockReweigh(shiftId: string, items: ReweighItem[]) {
     items,
     products: [],
     grades: [],
+    missing_total_kg: null,
+    missing_total_amount: null,
   };
   mock.onGet(`/shifts/${shiftId}/reweigh`, { params: { include_voided: true } }).reply(200, body);
 }

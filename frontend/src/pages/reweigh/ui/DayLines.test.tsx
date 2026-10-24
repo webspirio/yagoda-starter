@@ -43,7 +43,7 @@ const line = (over = {}): DayLine => ({
     pallet_kg: '0.00',
     tare_weight_kg: '12.00',
     net_kg: '108.50',
-    tare: [{ tare_type_id: 't1', tare_type_name: 'Ящик', units: 10 }],
+    tare: [{ tare_type_id: 't1', tare_type_name: 'Ящик', units: 10, unit_weight_kg: '1.20' }],
     weighed_by_user_id: 'u1',
     voided_at: null,
     voided_by_user_id: null,
@@ -64,6 +64,38 @@ describe('DayLines', () => {
     render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
     const row = screen.getByRole('row', { name: /Шипинки/ });
     expect(within(row).getByText('108.50 kg')).toBeInTheDocument();
+  });
+
+  it('shows the stored line as its net formula, under the figure and as the row title — W4', () => {
+    render(<DayLines lines={[line()]} isPending={false} isError={false} date="2026-09-21" />);
+    const row = screen.getByRole('row', { name: /Шипинки/ });
+    expect(within(row).getByText('120.50 − 10 × 1.20 = 108.50')).toBeInTheDocument();
+    expect(row).toHaveAttribute('title', '120.50 − 10 × 1.20 = 108.50');
+  });
+
+  it('falls back to the stored tare total when the per-unit weight is unproven', () => {
+    const base = line();
+    render(
+      <DayLines
+        lines={[
+          {
+            ...base,
+            item: {
+              ...base.item,
+              pallet_kg: '15.60',
+              gross_kg: '300.60',
+              tare_weight_kg: '57.60',
+              net_kg: '227.40',
+              tare: [],
+            },
+          },
+        ]}
+        isPending={false}
+        isError={false}
+        date="2026-09-21"
+      />,
+    );
+    expect(screen.getByText('300.60 − 15.60 − 57.60 tare = 227.40')).toBeInTheDocument();
   });
 
   /**

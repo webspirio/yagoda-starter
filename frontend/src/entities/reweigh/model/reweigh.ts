@@ -3,6 +3,9 @@ interface ReweighItemTare {
   tare_type_id: string;
   tare_type_name?: string;
   units: number;
+  /** Per-unit kg that reproduce the line's stored `tare_weight_kg` — `null`
+   *  when the server cannot prove one; print the stored total then. */
+  unit_weight_kg: string | null;
 }
 
 /**
@@ -47,6 +50,20 @@ export interface ReconciliationProduct {
   state: 'weighed' | 'not_reweighed';
   missing_kg: string | null;
   missing_amount: string | null;
+  /** ₴/кг the shortfall is priced at — accrued incl. доплати ÷ the point's kg,
+   *  so `missing_kg × rate = missing_amount` re-checks by hand. */
+  rate: string | null;
+  crates: ReconciliationCrates;
+}
+
+/**
+ * Tare UNITS at the point and at the base — counted on the documents, never
+ * inferred from kilograms. Totals across tare types; `by_type` keeps them apart.
+ */
+export interface ReconciliationCrates {
+  point: number;
+  base: number;
+  by_type: { tare_type_id: string; tare_type_name: string; point: number; base: number }[];
 }
 
 /**
@@ -61,6 +78,7 @@ export interface ReconciliationGrade {
   product_name: string;
   intake_net_kg: string;
   reweigh_net_kg: string;
+  crates: ReconciliationCrates;
 }
 
 /** `GET /shifts/:shiftId/reweigh` — one shift's reconciliation: its reweigh
@@ -72,4 +90,8 @@ export interface Reweigh {
   items: ReweighItem[];
   products: ReconciliationProduct[];
   grades: ReconciliationGrade[];
+  /** Σ of the positive per-product shortfalls — a surplus never offsets
+   *  another product. `null` while nothing is priced. */
+  missing_total_kg: string | null;
+  missing_total_amount: string | null;
 }

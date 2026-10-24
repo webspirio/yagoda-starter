@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/shared/ui/page-header';
 import { SelectField } from '@/shared/ui/select-field';
 import { DateStepper } from '@/shared/ui/date-stepper';
-import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
 import { toast } from '@/shared/ui/toast';
 import { useUrlParam } from '@/shared/lib/url-state';
@@ -197,8 +196,6 @@ export function ReweighPage() {
     toast.success(t('reweigh.posted', { kg: formatKg(total, locale) }));
   }
 
-  const draftsTotal = drafts.length ? sum(drafts.map((d) => d.net_kg)) : '0.00';
-
   const actions = (
     <div className="flex flex-wrap items-center gap-2">
       {canPick ? (
@@ -247,8 +244,12 @@ export function ReweighPage() {
           <Spinner />
         </div>
       ) : (
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.15fr)_minmax(340px,1fr)]">
-          <div className="flex flex-col gap-5">
+        // TWO COLUMNS ONLY FROM `2xl` (1536 px): at 1366 the звірка beside the
+        // form was clipped (review 2026-10-23, W6), so below that the form,
+        // its drafts and the звірка stack — form → drafts → «Провести» reads
+        // top to bottom either way.
+        <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="flex min-w-0 flex-col gap-5">
             <WeighingForm
               grades={grades}
               hasShift={hasShift}
@@ -257,36 +258,31 @@ export function ReweighPage() {
               date={date}
               onAdd={addDraft}
             />
-            <DraftLines drafts={drafts} onRemove={removeDraft} />
+            <DraftLines
+              drafts={drafts}
+              onRemove={removeDraft}
+              onPost={post}
+              posting={addLine.isPending}
+              canPost={Boolean(shiftId)}
+              note={
+                hasShift
+                  ? null
+                  : t('reweigh.noShift', { date: formatShortDate(date, locale), point: pointName })
+              }
+            />
           </div>
 
-          <div className="flex flex-col gap-5">
+          <div className="flex min-w-0 flex-col gap-5">
             <Reconciliation
               products={products}
+              grades={grades}
+              missingTotalKg={reweigh.data?.missing_total_kg ?? null}
+              missingTotalAmount={reweigh.data?.missing_total_amount ?? null}
               drafts={drafts}
               shiftClosed={shiftClosed}
               acceptedAnything={acceptedAnything}
               pointName={pointName}
             />
-
-            <div className="rounded-xl bg-card p-4 ring-1 ring-foreground/10">
-              <Button
-                size="lg"
-                className="w-full"
-                onClick={post}
-                disabled={!shiftId || drafts.length === 0 || addLine.isPending}
-              >
-                {t('reweigh.post', { kg: formatKg(draftsTotal, locale) })}
-              </Button>
-              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-                {t('reweigh.postNote')}
-              </p>
-              {!hasShift ? (
-                <p className="mt-2 text-xs leading-relaxed text-[var(--amber)]">
-                  {t('reweigh.noShift', { date: formatShortDate(date, locale), point: pointName })}
-                </p>
-              ) : null}
-            </div>
           </div>
         </div>
       )}

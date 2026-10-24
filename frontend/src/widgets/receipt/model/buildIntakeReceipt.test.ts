@@ -60,13 +60,16 @@ function intake(over: Partial<IntakeDetail> = {}): IntakeDetail {
   };
 }
 
-function build(i: IntakeDetail) {
+function build(i: IntakeDetail, balance = '9000.00') {
   return buildIntakeReceipt({
     intake: i,
     supplierName: 'Галина Кушнірук',
-    tareNameById: new Map([['tare-1', 'Ящик']]),
+    tareNameById: new Map([
+      ['tare-1', 'Ящик'],
+      ['tare-2', 'Чешка'],
+    ]),
     note: null,
-    balance: '9000.00',
+    balance,
     t,
     locale: 'en',
   });
@@ -91,21 +94,16 @@ describe('buildIntakeReceipt', () => {
     expect(build(intake({ received_by_number: null })).header.staff).toBe('—');
   });
 
-  it('fills the meta rows: code, operation, supplier — no date (#254)', () => {
+  it('fills the meta rows: code, supplier — no date (#254), no «Операція» (client 23.10)', () => {
     const { meta } = build(intake());
-    expect(meta.map((r) => r.label)).toEqual([
-      'receipt.number',
-      'receipt.operation',
-      'receipt.supplier',
-    ]);
+    expect(meta.map((r) => r.label)).toEqual(['receipt.number', 'receipt.supplier']);
     expect(meta[0].value).toBe('SHP-IN-20260908-00412');
-    expect(meta[1].value).toBe('receipt.operationIntake');
-    expect(meta[2].value).toBe('Галина Кушнірук');
+    expect(meta[1].value).toBe('Галина Кушнірук');
   });
 
-  it('makes one berry group per item, then the totals group', () => {
+  it('makes one berry group per item, then the totals group, then the tare tally', () => {
     const { sections } = build(intake());
-    expect(sections).toHaveLength(3);
+    expect(sections).toHaveLength(4);
     expect(sections[0]).toHaveLength(1);
     expect(sections[0][0]).toMatchObject({
       kind: 'berryLine',
@@ -144,7 +142,7 @@ describe('buildIntakeReceipt', () => {
         } as IntakeDetail['crate_return'],
       }),
     );
-    expect(sections).toHaveLength(4);
+    expect(sections).toHaveLength(5);
     expect(sections[2]).toEqual([
       { kind: 'rows', rows: [{ label: 'receipt.crateReturnVoided', value: '', muted: true }] },
     ]);
@@ -183,13 +181,37 @@ describe('buildIntakeReceipt', () => {
     expect(row.muted).toBeUndefined();
   });
 
-  it('omits «Видано готівкою» when nothing was paid', () => {
-    const totals = ((sections) => sections[sections.length - 1])(build(intake()).sections);
-    const labels = totals.flatMap((s) => (s.kind === 'rows' ? s.rows.map((r) => r.label) : []));
-    expect(labels).toEqual(['receipt.accrued', 'receipt.balance']);
+  // The agreed footer: Сума · Борг · Разом · Виплачено · Залишок, each a
+  // calculator check of the ones before it.
+  const totalsOf = (sections: ReturnType<typeof build>['sections']) =>
+    sections[sections.length - 2];
+
+  it('prints all five footer lines, «Виплачено» as 0.00 when nothing was paid', () => {
+    // Balance 30 120 after a 29 120 receipt with nothing paid: the supplier
+    // walked in owed 1 000.
+    const totals = totalsOf(build(intake(), '30120.00').sections);
+    expect(totals).toEqual([
+      {
+        kind: 'rows',
+        rows: [
+          { label: 'receipt.sum', value: '29,120.00 ₴' },
+          { label: 'receipt.debt', value: '1,000.00 ₴' },
+          { label: 'receipt.total', value: '30,120.00 ₴', strong: true },
+          { label: 'receipt.paidOut', value: '0.00 ₴' },
+        ],
+      },
+      { kind: 'rows', rows: [{ label: 'receipt.balance', value: '30,120.00 ₴', strong: true }] },
+    ]);
   });
 
-  it('totals: accrued, paid, live codes, voided annulments, live balance', () => {
+  it('prints «Борг» as 0.00 when nothing was owed before this receipt', () => {
+    const totals = totalsOf(build(intake({ paid_amount: '29120.00' }), '0.00').sections);
+    const rows = totals.flatMap((s) => (s.kind === 'rows' ? s.rows : []));
+    expect(rows.find((r) => r.label === 'receipt.debt')?.value).toBe('0.00 ₴');
+    expect(rows.find((r) => r.label === 'receipt.total')?.value).toBe('29,120.00 ₴');
+  });
+
+  it('derives «Борг» = Залишок − Сума + Виплачено, with live codes and voided annulments', () => {
     const all = build(
       intake({
         paid_amount: '10000.00',
@@ -205,14 +227,57 @@ describe('buildIntakeReceipt', () => {
           },
         ],
       }),
+      '20120.00',
     ).sections;
-    const totals = all[all.length - 1];
-    expect(totals).toEqual([
-      { kind: 'rows', rows: [{ label: 'receipt.accrued', value: '29,120.00 ₴', strong: true }] },
-      { kind: 'rows', rows: [{ label: 'receipt.paid', value: '10,000.00 ₴' }] },
+    expect(totalsOf(all)).toEqual([
+      {
+        kind: 'rows',
+        rows: [
+          { label: 'receipt.sum', value: '29,120.00 ₴' },
+          // 20 120 + 10 000 − 29 120
+          { label: 'receipt.debt', value: '1,000.00 ₴' },
+          { label: 'receipt.total', value: '30,120.00 ₴', strong: true },
+          { label: 'receipt.paidOut', value: '10,000.00 ₴' },
+        ],
+      },
       { kind: 'caption', text: 'PO-1, PO-2' },
       { kind: 'caption', text: 'receipt.payoutVoided{"code":"PO-3"}' },
-      { kind: 'rows', rows: [{ label: 'receipt.balance', value: '9,000.00 ₴' }] },
+      { kind: 'rows', rows: [{ label: 'receipt.balance', value: '20,120.00 ₴', strong: true }] },
+    ]);
+  });
+
+  it('prints a negative «Борг» signed, so the column still adds up', () => {
+    // The supplier owed US 500 walking in: 1 000 − 500 = 500 paid, nothing left.
+    const totals = totalsOf(
+      build(intake({ amount: '1000.00', paid_amount: '500.00' }), '0.00').sections,
+    );
+    const rows = totals.flatMap((s) => (s.kind === 'rows' ? s.rows : []));
+    expect(rows.find((r) => r.label === 'receipt.debt')?.value).toBe('−500.00 ₴');
+    expect(rows.find((r) => r.label === 'receipt.total')?.value).toBe('500.00 ₴');
+  });
+
+  it('ends with the tare tally — one emphasised line per type, summed across lines', () => {
+    const { sections } = build(
+      intake({
+        items: [
+          item('a'),
+          item('b', {
+            tare: [
+              { tare_type_id: 'tare-2', units: 3 },
+              { tare_type_id: 'tare-1', units: 2 },
+            ],
+          }),
+        ],
+      }),
+    );
+    expect(sections[sections.length - 1]).toEqual([
+      {
+        kind: 'emphasis',
+        rows: [
+          { label: 'Ящик', value: '14' },
+          { label: 'Чешка', value: '3' },
+        ],
+      },
     ]);
   });
 

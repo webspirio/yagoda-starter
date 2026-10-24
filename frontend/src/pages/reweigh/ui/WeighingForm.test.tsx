@@ -20,6 +20,7 @@ const GRADES = [
     product_name: 'Малина',
     intake_net_kg: '200.00',
     reweigh_net_kg: '0.00',
+    crates: { point: 0, base: 0, by_type: [] },
   },
   {
     product_grade_id: 'g2',
@@ -28,6 +29,7 @@ const GRADES = [
     product_name: 'Малина',
     intake_net_kg: '100.00',
     reweigh_net_kg: '0.00',
+    crates: { point: 0, base: 0, by_type: [] },
   },
 ];
 
@@ -47,8 +49,8 @@ beforeEach(() => {
   // a non-default selection rather than merely never having touched it.
   tareMock.mockReturnValue({
     data: [
-      { id: 't1', name: 'Ящик', weight_kg: '1.20' },
-      { id: 't2', name: 'Диб', weight_kg: '2.50' },
+      { id: 't1', name: 'Ящик', weight_kg: '1.20', is_crate: true },
+      { id: 't2', name: 'Диб', weight_kg: '2.50', is_crate: false },
     ],
     isPending: false,
   });
@@ -71,6 +73,34 @@ describe('WeighingForm', () => {
 
     // 120.50 − 20.00 − (10 × 1.20) = 88.50
     expect(screen.getByTestId('net-kg')).toHaveTextContent('88.50');
+    // W4 — and says so, as a formula a calculator re-checks.
+    expect(screen.getByTestId('net-formula')).toHaveTextContent('120.50 − 20.00 − 10 × 1.20 = 88.50');
+  });
+
+  it('leaves the pallet out of the formula when there is none — W4', async () => {
+    render(<WeighingForm {...base} />);
+    await userEvent.type(screen.getByLabelText(/gross|вага з ягодою/i), '18.10');
+    await userEvent.clear(screen.getByLabelText(/crates|кількість ящиків/i));
+    await userEvent.type(screen.getByLabelText(/crates|кількість ящиків/i), '2');
+    expect(screen.getByTestId('net-formula')).toHaveTextContent('18.10 − 2 × 1.20 = 15.70');
+  });
+
+  it('defaults the tare type to THE CRATE, not the catalogue’s first entry — W1', async () => {
+    // Alphabetical order puts «Лубянка 0,30» first; 10 crates against it
+    // would overstate the net by 9 кг without a word.
+    tareMock.mockReturnValue({
+      data: [
+        { id: 't-lub', name: 'Лубянка', weight_kg: '0.30', is_crate: false },
+        { id: 't-crate', name: 'Ящик', weight_kg: '1.20', is_crate: true },
+      ],
+      isPending: false,
+    });
+    render(<WeighingForm {...base} />);
+    expect(screen.getByLabelText(/tare type|тип тари/i)).toHaveValue('t-crate');
+    await userEvent.type(screen.getByLabelText(/gross|вага з ягодою/i), '100');
+    await userEvent.clear(screen.getByLabelText(/crates|кількість ящиків/i));
+    await userEvent.type(screen.getByLabelText(/crates|кількість ящиків/i), '10');
+    expect(screen.getByTestId('net-kg')).toHaveTextContent('88.00');
   });
 
   it("groups the picker by product and offers only the day's grades", () => {

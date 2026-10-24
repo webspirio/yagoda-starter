@@ -1,8 +1,7 @@
 import { Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/shared/ui/button';
-import { cmp, formatDecimal } from '@/shared/lib/money';
-import { formatBonusSign } from '../lib/formatBonusSign';
+import { add, formatDecimal } from '@/shared/lib/money';
 import type { IntakePreviewItem } from '../model/intakeForm';
 
 export interface CommittedLine {
@@ -22,7 +21,10 @@ function Pending() {
  * The basket: the lines «Ще позиція» (the draft block's footer) has committed,
  * read back as the server priced them (§2.4/§2.8/§2.9). Every figure in the
  * table comes from the preview — the only client-side content is the grade's
- * name. It sits AFTER the draft block, so its ✕ buttons are never Tab stops
+ * name. A row re-checks on a calculator (R5, spec 2026-10-23): Брутто −
+ * Піддон − Тара (in kg, the units in its `title`) = Нетто, × Ціна (the final
+ * price, the bonus folded in as on the draft line and the receipt, #164) =
+ * Сума. It sits AFTER the draft block, so its ✕ buttons are never Tab stops
  * between the picker and Брутто (spec §5.2), and with nothing committed it
  * renders nothing at all.
  */
@@ -42,7 +44,7 @@ export function LinesTable({
   if (rows.length === 0) return null;
 
   return (
-    <div className="px-4 pb-3">
+    <div className="px-4 pb-4">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[560px] text-xs">
           <caption className="sr-only">{t('reception.lines.title')}</caption>
@@ -84,26 +86,24 @@ export function LinesTable({
                 <td className="px-2 py-0 text-right text-muted-foreground">
                   {row.item ? formatDecimal(row.item.pallet_kg, locale) : <Pending />}
                 </td>
-                <td className="px-2 py-0 text-right text-muted-foreground">
-                  {row.item ? (
-                    row.item.tare.reduce((n, tareRow) => n + tareRow.units, 0)
-                  ) : (
-                    <Pending />
-                  )}
+                <td
+                  className="px-2 py-0 text-right text-muted-foreground"
+                  title={
+                    row.item
+                      ? t('reception.lines.tareUnits', {
+                          count: row.item.tare.reduce((n, tareRow) => n + tareRow.units, 0),
+                        })
+                      : undefined
+                  }
+                >
+                  {row.item ? formatDecimal(row.item.tare_weight_kg, locale) : <Pending />}
                 </td>
                 <td className="px-2 py-0 text-right font-semibold">
                   {row.item ? formatDecimal(row.item.net_kg, locale) : <Pending />}
                 </td>
                 <td className="px-2 py-0 text-right">
                   {row.item ? (
-                    <>
-                      {formatDecimal(row.item.price, locale)}
-                      {cmp(row.item.bonus, '0') !== 0 ? (
-                        <span className="ml-1 text-amber">
-                          {formatBonusSign(row.item.bonus, locale)}
-                        </span>
-                      ) : null}
-                    </>
+                    formatDecimal(add(row.item.price, row.item.bonus), locale)
                   ) : (
                     <Pending />
                   )}

@@ -3,7 +3,10 @@ import { DataSource, EntityManager, IsNull } from 'typeorm';
 import { ShiftsService } from '../shifts/shifts.service';
 import { ReweighItem } from './reweigh-item.entity';
 import { toReweighItemResponse, ReweighItemResponse } from './reweigh-item.mapper';
-import { div, mul, sub, sum, isZero } from '../common/money';
+import { add, div, gt, mul, sub, sum, isZero } from '../common/money';
+// From `top-up-allocation.ts` itself, NEVER via `product-cost-rows.ts`: that
+// file imports this one, and going through it would close an import cycle.
+import { topUpsByGradeForShift } from '../day-costs/top-up-allocation';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
 
 export interface GradeTotalsRow {
@@ -24,10 +27,11 @@ export interface GradeTotalsRow {
  * because a later task (cost-of-day, §8's PR-B) imports and reuses this exact
  * query rather than reimplementing it — see the task-5 brief's «Interfaces».
  *
- * `intake_amount` here is the INTAKE SIDE ONLY. Top-ups are added on top of it
- * by the cost-of-day service, in a later task; the reconciliation screen is
- * about weights, and adding a доплата to it would change the недостача shown
- * on a dispute screen for a reason the operator cannot see.
+ * `intake_amount` here is the INTAKE SIDE ONLY. Each reader adds the shift's
+ * доплати on top of it from `topUpsByGradeForShift` — the reconciliation and
+ * cost-of-day both price a shortfall at the accrued average WITH доплати (spec
+ * §3.12; 2026-10-23 review §0: the two screens printed 229,99 and 265,19 ₴ for
+ * the same 1,40 кг while they added them differently).
  *
  * The reweigh side is a PRE-AGGREGATED subquery, joined with `LEFT JOIN`, so a
  * grade with no lines survives as `NULL` rather than as `0` — the caller keys
@@ -104,6 +108,19 @@ export function productShortfall(
   return { kg, amount: mul(kg, div(accrued, intakeNetKg)) };
 }
 
+/**
+ * Tare UNITS — counted, never inferred from kilograms — at the point
+ * (`intake_item_tare_types` of the shift's live receipts) and at the base
+ * (`reweigh_item_tare_types` of its live reweigh lines). Totals across tare
+ * types; `by_type` keeps the types apart, because the client counts a Чешка
+ * and a Лубянка separately (receipt request §1). Client MUST, 23.10 47:55.
+ */
+interface ReconciliationCrates {
+  point: number;
+  base: number;
+  by_type: { tare_type_id: string; tare_type_name: string; point: number; base: number }[];
+}
+
 export interface ReconciliationGrade {
   product_grade_id: string;
   product_grade_name: string;
@@ -111,6 +128,7 @@ export interface ReconciliationGrade {
   product_name: string;
   intake_net_kg: string;
   reweigh_net_kg: string;
+  crates: ReconciliationCrates;
 }
 
 export interface ReconciliationProduct {
@@ -121,6 +139,14 @@ export interface ReconciliationProduct {
   state: 'weighed' | 'not_reweighed';
   missing_kg: string | null;
   missing_amount: string | null;
+  /**
+   * ₴/кг the shortfall is priced at: accrued INCLUDING доплати ÷ the point's
+   * kilograms — the very `div` `productShortfall` multiplies by, so
+   * `missing_kg × rate = missing_amount` re-checks on a hand calculator.
+   * `null` when the point's kilograms are zero (nothing to divide by).
+   */
+  rate: string | null;
+  crates: ReconciliationCrates;
 }
 
 export interface ReconciliationResponse {
@@ -152,6 +178,81 @@ export interface ReconciliationResponse {
    * rule at grade level is how the two screens drift apart.
    */
   grades: ReconciliationGrade[];
+  /**
+   * The day's недостача — Σ of the POSITIVE per-product shortfalls only: a
+   * surplus on one berry never offsets a shortfall on another (the same clamp
+   * cost-of-day applies). `null` while nothing is priced (open shift, every
+   * product «не перезважено», nothing accepted) — «—», never a zero.
+   */
+  missing_total_kg: string | null;
+  missing_total_amount: string | null;
+}
+
+interface TareUnitsRow {
+  product_grade_id: string;
+  tare_type_id: string;
+  tare_type_name: string;
+  point_units: number;
+  base_units: number;
+}
+
+/**
+ * Tare units per (grade, tare type), point side and base side, LIVE documents
+ * only. Two PRE-AGGREGATED subqueries joined FULL OUTER: joining the unit rows
+ * straight into `gradeTotals` would multiply its `SUM(net_kg)` by the number of
+ * tare types on a line — and it stays out of `gradeTotals` so cost-of-day's
+ * reader is untouched. `::int` so the driver hands back JS numbers, not
+ * bigint strings.
+ */
+async function tareUnitsByGrade(
+  runner: DataSource | EntityManager,
+  shiftId: string,
+): Promise<TareUnitsRow[]> {
+  return runner.query(
+    `SELECT COALESCE(pt.product_grade_id, bs.product_grade_id) AS product_grade_id,
+            tt.id                        AS tare_type_id,
+            tt.name                      AS tare_type_name,
+            COALESCE(pt.units, 0)::int   AS point_units,
+            COALESCE(bs.units, 0)::int   AS base_units
+       FROM (
+            SELECT ii.product_grade_id, iit.tare_type_id, SUM(iit.units) AS units
+              FROM intake_item_tare_types iit
+              JOIN intake_items ii ON ii.id = iit.item_id
+              JOIN intakes i       ON i.id = ii.intake_id AND i.voided_at IS NULL
+             WHERE i.shift_id = $1
+             GROUP BY ii.product_grade_id, iit.tare_type_id
+       ) pt
+       FULL OUTER JOIN (
+            SELECT ri.product_grade_id, rit.tare_type_id, SUM(rit.units) AS units
+              FROM reweigh_item_tare_types rit
+              JOIN reweigh_items ri ON ri.id = rit.item_id AND ri.voided_at IS NULL
+              JOIN reweighs r       ON r.id = ri.reweigh_id
+             WHERE r.shift_id = $1
+             GROUP BY ri.product_grade_id, rit.tare_type_id
+       ) bs ON bs.product_grade_id = pt.product_grade_id AND bs.tare_type_id = pt.tare_type_id
+       JOIN tare_types tt ON tt.id = COALESCE(pt.tare_type_id, bs.tare_type_id)
+      ORDER BY tt.name`,
+    [shiftId],
+  ) as Promise<TareUnitsRow[]>;
+}
+
+/** Sum per-type crate counts (one grade's, or several grades') into totals,
+ *  keeping tare types apart. Integer `+` on unit COUNTS — not money, and never
+ *  a kilogram. */
+function mergeCrates(types: ReconciliationCrates['by_type']): ReconciliationCrates {
+  const byType = new Map<string, ReconciliationCrates['by_type'][number]>();
+  for (const t of types) {
+    const into = byType.get(t.tare_type_id) ?? { ...t, point: 0, base: 0 };
+    into.point += t.point;
+    into.base += t.base;
+    byType.set(t.tare_type_id, into);
+  }
+  const by_type = [...byType.values()].sort((a, b) => a.tare_type_name.localeCompare(b.tare_type_name));
+  return {
+    point: by_type.reduce((n, t) => n + t.point, 0),
+    base: by_type.reduce((n, t) => n + t.base, 0),
+    by_type,
+  };
 }
 
 /**
@@ -160,8 +261,8 @@ export interface ReconciliationResponse {
  * what was actually paid rather than at the day's list price (§3.6).
  *
  * THREE STATES THAT NEVER COLLAPSE INTO EACH OTHER: a real shortfall (signed,
- * possibly negative — a надлишок is surfaced, not clamped or hidden, because
- * clamping happens later, elsewhere, when it enters the day's cost), «не
+ * possibly negative — a надлишок is surfaced per product, not clamped or
+ * hidden; only the day's `missing_total_*` clamp, exactly as cost-of-day), «не
  * перезважено» (a product with any unweighed grade — the shortfall on that
  * grade would otherwise read as real), and «the shift is still open» (the
  * claim waits — §3.9). All three render as a dash on screen; only the first
@@ -184,6 +285,30 @@ export class ReweighReconciliationService {
 
     const rows = await gradeTotals(this.dataSource, shiftId);
     const open = shift.closed_at === null;
+    // Spec §0 (2026-10-23): the ONE reader of a shift's доплати per grade —
+    // the same one cost-of-day calls, so both screens price a shortfall alike.
+    const topUps = rows.length
+      ? await topUpsByGradeForShift(this.dataSource, shiftId)
+      : new Map<string, string>();
+    const tareRows = rows.length ? await tareUnitsByGrade(this.dataSource, shiftId) : [];
+    const cratesByGrade = new Map<string, ReconciliationCrates>();
+    for (const r of rows) {
+      cratesByGrade.set(
+        r.product_grade_id,
+        mergeCrates(
+          tareRows
+            .filter((t) => t.product_grade_id === r.product_grade_id)
+            .map((t) => ({
+              tare_type_id: t.tare_type_id,
+              tare_type_name: t.tare_type_name,
+              point: t.point_units,
+              base: t.base_units,
+            })),
+        ),
+      );
+    }
+    const cratesOf = (gradeId: string): ReconciliationCrates =>
+      cratesByGrade.get(gradeId) ?? { point: 0, base: 0, by_type: [] };
 
     // The RELATIONS the mapper reads are loaded here on purpose: without
     // them `product_name`, `product_grade_name` and every `tare_type_name`
@@ -214,6 +339,7 @@ export class ReweighReconciliationService {
       product_name: r.product_name,
       intake_net_kg: r.intake_net_kg,
       reweigh_net_kg: r.reweigh_net_kg ?? '0.00',
+      crates: cratesOf(r.product_grade_id),
     }));
 
     const byProduct = new Map<string, GradeTotalsRow[]>();
@@ -227,6 +353,12 @@ export class ReweighReconciliationService {
     for (const [productId, productGrades] of byProduct) {
       const intakeNet = sum(productGrades.map((g) => g.intake_net_kg));
       const reweighNet = sum(productGrades.map((g) => g.reweigh_net_kg ?? '0.00'));
+      // Accrued INCLUDING доплати (spec §3.12, review §0) — 265,19 ₴, not 229,99.
+      const accrued = sum(
+        productGrades.map((g) => add(g.intake_amount, topUps.get(g.product_grade_id) ?? '0.00')),
+      );
+      const rate = isZero(intakeNet) ? null : div(accrued, intakeNet);
+      const crates = mergeCrates(productGrades.flatMap((g) => cratesOf(g.product_grade_id).by_type));
 
       // §3.15 — one unweighed grade makes the whole product «не перезважено»,
       // because the shortfall on that grade would otherwise read as real.
@@ -241,18 +373,15 @@ export class ReweighReconciliationService {
           state: complete ? 'weighed' : 'not_reweighed',
           missing_kg: null,
           missing_amount: null,
+          rate,
+          crates,
         });
         continue;
       }
 
-      // Per PRODUCT, at the product's average actually accrued (bonuses included, because it is
-      // already paid) — `productShortfall`. Since #56 that is the whole-hryvnia amount, so it
-      // can sit just under the rate.
-      const missing = productShortfall(
-        intakeNet,
-        reweighNet,
-        sum(productGrades.map((g) => g.intake_amount)),
-      );
+      // Per PRODUCT, at the product's average actually accrued — bonuses and доплати
+      // included, because both are paid — `productShortfall`.
+      const missing = productShortfall(intakeNet, reweighNet, accrued);
 
       products.push({
         product_id: productId,
@@ -262,8 +391,18 @@ export class ReweighReconciliationService {
         state: 'weighed',
         missing_kg: missing.kg,
         missing_amount: missing.amount,
+        rate,
+        crates,
       });
     }
+
+    // THE CLAMP, per product: only a positive shortfall enters the day's total.
+    const priced = products.filter((p) => p.missing_kg !== null);
+    const short = priced.filter((p) => gt(p.missing_kg as string, '0.00'));
+    const missing_total_kg = priced.length ? sum(short.map((p) => p.missing_kg as string)) : null;
+    const missing_total_amount = priced.length
+      ? sum(short.map((p) => p.missing_amount as string))
+      : null;
 
     return {
       shift_id: shiftId,
@@ -272,6 +411,8 @@ export class ReweighReconciliationService {
       items: items.map(toReweighItemResponse),
       products,
       grades,
+      missing_total_kg,
+      missing_total_amount,
     };
   }
 }

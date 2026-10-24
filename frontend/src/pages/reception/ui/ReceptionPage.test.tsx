@@ -127,6 +127,8 @@ vi.mock('@/entities/shift', () => ({
 
 vi.mock('@/entities/supplier', () => ({
   useSupplierBalanceQuery: (id: string | null) => balanceMock(id),
+  supplierName: (s: { first_name: string; last_name: string }) => `${s.last_name} ${s.first_name}`,
+  KindBadge: () => null,
 }));
 
 // The picker itself (search, grouping, inline creation) is `SupplierPicker`'s
@@ -319,6 +321,7 @@ const PREVIEW: IntakePreview = {
       price: '10.00',
       bonus: '0.00',
       amount: '1204.00',
+      amount_exact: '1204.00',
       tare: [{ tare_type_id: 't1', units: 12 }],
     },
   ],
@@ -505,12 +508,15 @@ describe('ReceptionPage — before the shift is open', () => {
     shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
   });
 
-  it('says the shift is not open, offers to open it and refuses to accept anything', async () => {
+  it('replaces the form with what to do: the status in the header, «Open shift» in place of the form', async () => {
     const user = userEvent.setup();
     renderReception();
 
     expect(screen.getByText('Shift not opened yet')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
+    expect(screen.getByText("Today's shift isn't open yet")).toBeInTheDocument();
+    // Nothing can be received without a shift, so nothing is offered.
+    expect(screen.queryByRole('button', { name: 'Accept' })).toBeNull();
+    expect(screen.queryByLabelText('Gross, kg')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Open shift' }));
     const dialog = await screen.findByRole('dialog');
@@ -559,7 +565,11 @@ describe('ReceptionPage — before the shift is open', () => {
 
     renderReception();
 
-    expect(screen.getByText('Shift not opened yet — the operator opens it')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The point's operator opens the shift. Once it's open, reception appears here.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
     // Only real points to pick from — no «Select a point» entry.
     expect(screen.getByLabelText('Select a point').querySelector('option[value=""]')).toBeNull();
@@ -583,10 +593,16 @@ describe('ReceptionPage — before the shift is open', () => {
 });
 
 describe('ReceptionPage — choosing the supplier', () => {
-  it('picks a supplier and shows their last receipts in one line beside the picker', async () => {
+  it('picks a supplier and shows their last receipts in the profile popup', async () => {
     const user = userEvent.setup();
     balanceMock.mockReturnValue({
-      data: { supplier_id: 's1', debt: '10944.00' },
+      data: {
+        supplier_id: 's1',
+        debt: '10944.00',
+        intakes_count: 2,
+        kg_total: '240.80',
+        last_intake_date: '2026-09-07',
+      },
       isPending: false,
       isError: false,
     });
@@ -605,36 +621,56 @@ describe('ReceptionPage — choosing the supplier', () => {
     // The debt plaque and its note are gone from this section — the balance
     // is read in «Settlement» only.
     expect(screen.queryByText(/added to “Total” below/)).toBeNull();
-    // «Recent:» and every item share ONE truncating line.
-    const line = screen.getByText('Recent:').closest('.truncate') as HTMLElement;
-    expect(line).not.toBeNull();
+    // The row itself carries no history — it lives behind the profile button.
+    expect(screen.queryByRole('list', { name: 'Recent intakes' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Supplier profile' }));
+    const line = screen.getByRole('list', { name: 'Recent intakes' });
+    expect(within(line).getAllByRole('listitem')).toHaveLength(2);
     // Both mocked rows share the fixture's default net weight.
     expect(within(line).getAllByText('120.40 kg')).toHaveLength(2);
     expect(within(line).getByText('820.50 ₴')).toBeInTheDocument();
     expect(within(line).getByText('1,290.00 ₴')).toBeInTheDocument();
-    // The card link is the row's only navigation: it sits OUTSIDE the
-    // truncating element so the ellipsis can never clip it.
+    // No balance tile (R7): the balance reads once, as «Previous balance» in
+    // «Settlement» («+ 10,944.00 ₴»), never a second time in the popup.
+    expect(screen.queryByText('10,944.00 ₴')).toBeNull();
+    expect(screen.getByText('Crates on hand')).toBeInTheDocument();
+    expect(screen.getByText('240.80 kg')).toBeInTheDocument();
+    // The popup's way out is the full supplier card.
     const link = screen.getByRole('link', { name: 'Supplier card' });
     expect(link).toHaveAttribute('href', '/suppliers/s1');
-    expect(line.contains(link)).toBe(false);
   });
 
-  it('reads a negative balance as money owed to the supplier, not by them', async () => {
+  it('reads a negative balance signed and takes it off «Total» — the server’s own ceiling (R3)', async () => {
     const user = userEvent.setup();
     balanceMock.mockReturnValue({
       data: { supplier_id: 's1', debt: '-250.00' },
       isPending: false,
       isError: false,
     });
+    pointCashMock.mockReturnValue({
+      data: { collection_point_id: 'p1', cash: '9000.00' },
+      isPending: false,
+      isError: false,
+    });
+    previewMock.mockReturnValue(SETTLED);
 
     renderReception();
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
 
-    // The credit sits inside the «Settlement» card, below «Total to pay out».
     const card = screen.getByRole('region', { name: 'Settlement' });
-    expect(within(card).getByText('Overpaid by us 250.00 ₴')).toBeInTheDocument();
-    expect(within(card).queryByText(/Previous balance/)).toBeNull();
-    expect(screen.queryByText(/Previous balance/)).toBeNull();
+    expect(within(card).getByText('Previous balance').parentElement).toHaveTextContent(
+      '− 250.00 ₴',
+    );
+    // 1 204 accrued − 250 the supplier owes us = 954, suggested and sent.
+    expect(within(card).getByText('Total to pay out').parentElement).toHaveTextContent(
+      '954.00 ₴',
+    );
+    expect(within(card).queryByText(/Overpaid/)).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Accept · pay out 954.00 ₴' }));
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith(expect.objectContaining({ paid_amount: '954.00' })),
+    );
   });
 });
 
@@ -648,16 +684,15 @@ describe('ReceptionPage — a one-line receipt', () => {
     renderReception();
 
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
-    // The history line only renders while a supplier is chosen (no receipts
-    // are mocked here, so it is the card link that proves it).
-    expect(screen.getByRole('link', { name: 'Supplier card' })).toBeInTheDocument();
+    // The profile button only renders while a supplier is chosen.
+    expect(screen.getByRole('button', { name: 'Supplier profile' })).toBeInTheDocument();
     await fillDraft(user);
 
     // Net weight and the amount are the SERVER's, never computed here.
-    expect(screen.getByText(/net 120\.40 kg/)).toBeInTheDocument();
+    expect(screen.getByText(/= 120\.40 kg ×/)).toBeInTheDocument();
     expect(screen.getByText('Accrued today').closest('div')).toHaveTextContent('1,204.00 ₴');
 
-    const submit = screen.getByRole('button', { name: 'Accept 120.40 kg' });
+    const submit = screen.getByRole('button', { name: 'Accept without payout' });
     expect(submit).toBeEnabled();
     await user.click(submit);
 
@@ -697,7 +732,7 @@ describe('ReceptionPage — a one-line receipt', () => {
 
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
-    await user.click(screen.getByRole('button', { name: 'Accept 120.40 kg' }));
+    await user.click(screen.getByRole('button', { name: 'Accept without payout' }));
 
     await waitFor(() =>
       expect(createMock).toHaveBeenCalledWith(
@@ -719,9 +754,9 @@ describe('ReceptionPage — a one-line receipt', () => {
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
-    // No weight on the button and no total: those numbers are not this form's.
+    // No payout on the button and no total: those numbers are not this form's.
     expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
-    expect(screen.queryByRole('button', { name: /Accept 120.40 kg/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /without payout/ })).toBeNull();
     expect(screen.getByText('Accrued today').closest('div')).toHaveTextContent('…');
     expect(screen.getByRole('button', { name: 'Add line' })).toBeDisabled();
   });
@@ -735,7 +770,7 @@ describe('ReceptionPage — a one-line receipt', () => {
 
     expect(screen.queryByLabelText('Receipt no.')).not.toBeInTheDocument();
     // And nothing is standing between a complete line and the submit.
-    expect(screen.getByRole('button', { name: 'Accept 120.40 kg' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Accept without payout' })).toBeEnabled();
   });
 });
 
@@ -789,7 +824,7 @@ describe('ReceptionPage — several lines', () => {
     ).toBeInTheDocument();
   });
 
-  it('locks the per-row trash once the shift is closed, like every other control', async () => {
+  it('takes the form away once the shift is closed elsewhere', async () => {
     const user = userEvent.setup();
     renderReception();
 
@@ -803,19 +838,20 @@ describe('ReceptionPage — several lines', () => {
     expect(rowTrash()).toBeEnabled();
 
     // The operator closed the shift in the other tab; the receipt cannot be
-    // written any more, so it cannot be edited any more either.
+    // written any more, so the form gives way to the closed-shift state.
     shiftMock.mockReturnValue({ data: null, isPending: false, isError: false });
     // Any keystroke will do — this one just has to re-render the screen with
     // the mock above in place.
     await user.type(screen.getByLabelText('Gross, kg'), '1');
 
-    expect(rowTrash()).toBeDisabled();
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByText("Today's shift isn't open yet")).toBeInTheDocument();
   });
 
   // §5.2 — DOM order is §2.1 order, with no `tabIndex` overrides: the one
-  // stop between the picker and Брутто is the card link, and the committed
+  // stop between the picker and Брутто is the profile button, and the committed
   // rows' trash comes only after the whole draft, its footer included.
-  it('tabs from the supplier to Брутто through only the card link, and reaches committed rows after the draft', async () => {
+  it('tabs from the supplier to Брутто through only the profile button, and reaches committed rows after the draft', async () => {
     const user = userEvent.setup();
     renderReception();
 
@@ -827,7 +863,7 @@ describe('ReceptionPage — several lines', () => {
 
     screen.getByRole('button', { name: 'pick-nina' }).focus();
     await user.tab();
-    expect(screen.getByRole('link', { name: 'Supplier card' })).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Supplier profile' })).toHaveFocus();
     await user.tab();
     expect(screen.getByLabelText('Gross, kg')).toHaveFocus();
 
@@ -843,10 +879,10 @@ describe('ReceptionPage — several lines', () => {
     const at = (el: Element) => visited.indexOf(el);
     const add = screen.getByRole('button', { name: 'Add line' });
     expect(at(screen.getByLabelText('Tare type 1'))).toBeGreaterThan(-1);
-    expect(at(screen.getByLabelText('Extra price, ₴/kg'))).toBeGreaterThan(
+    expect(at(screen.getByLabelText('Price, ₴/kg'))).toBeGreaterThan(
       at(screen.getByLabelText('Tare type 1')),
     );
-    expect(at(add)).toBeGreaterThan(at(screen.getByLabelText('Extra price, ₴/kg')));
+    expect(at(add)).toBeGreaterThan(at(screen.getByLabelText('Price, ₴/kg')));
     expect(at(rowTrash)).toBeGreaterThan(at(add));
   });
 });
@@ -882,7 +918,7 @@ describe('ReceptionPage — an accidental extra line', () => {
     // Un-committing restores the (still-complete) surviving line, so the
     // preview — and submit — are unstuck again.
     expect(screen.queryByText('Finish this line or remove it')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Accept 120.40 kg' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Accept without payout' })).toBeEnabled();
   });
 });
 
@@ -945,11 +981,14 @@ describe('ReceptionPage — tare rows', () => {
 });
 
 describe('ReceptionPage — the draft line preview', () => {
-  it('shows a discount without a doubled sign', async () => {
+  it('shows the line at the price actually paid — the grade price with the discount taken off', async () => {
     const user = userEvent.setup();
     previewMock.mockReturnValue(
       previewState({
-        preview: { ...PREVIEW, items: [{ ...PREVIEW.items[0], bonus: '-5.00' }] },
+        preview: {
+          ...PREVIEW,
+          items: [{ ...PREVIEW.items[0], bonus: '-5.00', amount: '602.00', amount_exact: '602.00' }],
+        },
         isSettled: true,
       }),
     );
@@ -958,8 +997,94 @@ describe('ReceptionPage — the draft line preview', () => {
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
-    expect(screen.getByText(/10\.00−5\.00/)).toBeInTheDocument();
-    expect(screen.queryByText(/\+−/)).toBeNull();
+    // 10.00 with a −5.00 discount reads as the 5.00 paid, not a sum to do.
+    expect(screen.getByText(/× 5\.00 = 602 ₴$/)).toBeInTheDocument();
+    expect(screen.queryByText(/10\.00−5\.00/)).toBeNull();
+  });
+
+  // R4 (spec 2026-10-23): the line is its own calculator check.
+  it('reads as a formula — gross − tare = net × price = amount — every figure the server’s', async () => {
+    const user = userEvent.setup();
+    previewMock.mockReturnValue(SETTLED);
+
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    // Whole already: printed once, no «→».
+    expect(
+      screen.getByText('126.40 − 6.00 tare = 120.40 kg × 10.00 = 1,204 ₴'),
+    ).toBeInTheDocument();
+  });
+
+  it('prints the exact product and the whole-hryvnia amount when §2.12 rounding moved it', async () => {
+    const user = userEvent.setup();
+    // The client's screenshot: 52,30 − 1,20 = 51,10 × 28 = 1 430,80 → 1 431.
+    previewMock.mockReturnValue(
+      previewState({
+        preview: {
+          ...PREVIEW,
+          amount: '1431.00',
+          items: [
+            {
+              ...PREVIEW.items[0],
+              gross_kg: '52.30',
+              tare_weight_kg: '1.20',
+              net_kg: '51.10',
+              price: '28.00',
+              amount: '1431.00',
+              amount_exact: '1430.80',
+            },
+          ],
+        },
+        isSettled: true,
+      }),
+    );
+
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    expect(
+      screen.getByText('52.30 − 1.20 tare = 51.10 kg × 28.00 = 1,430.80 → 1,431 ₴'),
+    ).toBeInTheDocument();
+  });
+
+  it('names the pallet in the formula when there is one, in §2.4 order', async () => {
+    const user = userEvent.setup();
+    // §2.4's worked row: 552,30 − 14,30 піддон − 120,00 тара = 418,00 × 65 = 27 170.
+    previewMock.mockReturnValue(
+      previewState({
+        preview: {
+          ...PREVIEW,
+          amount: '27170.00',
+          items: [
+            {
+              ...PREVIEW.items[0],
+              gross_kg: '552.30',
+              pallet_kg: '14.30',
+              tare_weight_kg: '120.00',
+              net_kg: '418.00',
+              price: '58.00',
+              bonus: '7.00',
+              amount: '27170.00',
+              amount_exact: '27170.00',
+            },
+          ],
+        },
+        isSettled: true,
+      }),
+    );
+
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    expect(
+      screen.getByText(
+        '552.30 − 14.30 pallet − 120.00 tare = 418.00 kg × 65.00 = 27,170 ₴',
+      ),
+    ).toBeInTheDocument();
   });
 });
 
@@ -982,15 +1107,16 @@ describe("ReceptionPage — the supplier's history and today's badge", () => {
 
     renderReception();
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await user.click(screen.getByRole('button', { name: 'Supplier profile' }));
 
     // The history row shows date · net weight (or «voided») · amount — no
     // code any more, so the rows are found by their amount instead.
+    expect(screen.getByText('100.00 ₴')).toHaveClass('line-through');
     const voidedRow = screen.getByText('100.00 ₴').closest('li');
-    expect(voidedRow).toHaveClass('line-through');
     expect(within(voidedRow!).getByText('voided')).toBeInTheDocument();
 
+    expect(screen.getByText('200.00 ₴')).not.toHaveClass('line-through');
     const liveRow = screen.getByText('200.00 ₴').closest('li');
-    expect(liveRow).not.toHaveClass('line-through');
     expect(within(liveRow!).getByText('120.40 kg')).toBeInTheDocument();
   });
 
@@ -1081,7 +1207,7 @@ describe("ReceptionPage — today's receipts open the receipt, which carries the
     // A fully fillable form, so a stray submit would really post.
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
-    expect(await screen.findByRole('button', { name: 'Accept 120.40 kg' })).toBeEnabled();
+    expect(await screen.findByRole('button', { name: 'Accept without payout' })).toBeEnabled();
 
     await user.click(screen.getByRole('button', { name: /Today/ }));
     const popover = document.querySelector('[data-slot="popover-content"]');
@@ -1227,7 +1353,7 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
-    const submit = screen.getByRole('button', { name: 'Accept 120.40 kg · pay out 1,616.10 ₴' });
+    const submit = screen.getByRole('button', { name: 'Accept · pay out 1,616.10 ₴' });
     expect(submit).toBeEnabled();
     await user.click(submit);
 
@@ -1250,7 +1376,7 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
 
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
-    await user.click(screen.getByRole('button', { name: 'Accept 120.40 kg · pay out 1,616.10 ₴' }));
+    await user.click(screen.getByRole('button', { name: 'Accept · pay out 1,616.10 ₴' }));
 
     await waitFor(() =>
       expect(toastSuccessMock).toHaveBeenCalledWith('Accepted 120.40 kg — 5,460.00 ₴', {
@@ -1266,7 +1392,7 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
 
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
-    await user.click(screen.getByRole('button', { name: 'Accept 120.40 kg · pay out 1,616.10 ₴' }));
+    await user.click(screen.getByRole('button', { name: 'Accept · pay out 1,616.10 ₴' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'The receipt was not recorded: the berry cash drawer holds less. Lower the amount and try again.',
@@ -1301,10 +1427,55 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
     // Before the fix, `cash === null` suggested/clamped to '0.00' — a blur
     // here would have wiped the typed figure back to zero instead of merely
     // canonicalising it.
-    expect(paidInput).toHaveValue('1000.00');
+    expect(paidInput).toHaveValue('1,000.00');
 
-    await user.click(screen.getByRole('button', { name: /Accept 120\.40 kg/ }));
+    await user.click(screen.getByRole('button', { name: 'Accept · pay out 1,000.00 ₴' }));
 
+    await waitFor(() =>
+      expect(createMock).toHaveBeenCalledWith(
+        expect.objectContaining({ supplier_id: 's1', paid_amount: '1000.00' }),
+      ),
+    );
+  });
+
+  // R1 (client, 23.10): «кнопка має бути неактивна» — refused, never clamped.
+  it('refuses a payout above the cap: «Accept» disabled, Enter blocked, the figure left as typed (R1)', async () => {
+    const user = userEvent.setup();
+    renderReception();
+
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    const paidInput = screen.getByLabelText('Paid in cash');
+    await user.clear(paidInput);
+    await user.type(paidInput, '50000');
+
+    expect(
+      screen.getByText('Cannot pay out more than is in the berry drawer — at most 1,616.10 ₴'),
+    ).toBeInTheDocument();
+    const submit = screen.getByRole('button', { name: 'Accept · pay out 50,000.00 ₴' });
+    expect(submit).toBeDisabled();
+
+    // Enter — from «Видано готівкою» or any other field — never reaches the
+    // browser's implicit submit (`dispatchEvent` is false exactly when the
+    // guard called `preventDefault()`, same proof as the gross-field test).
+    const enter = () => new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    expect(paidInput.dispatchEvent(enter())).toBe(false);
+    expect(screen.getByLabelText('Gross, kg').dispatchEvent(enter())).toBe(false);
+    // And a submit that gets there some other way is refused by the handler.
+    fireEvent.submit(submit.closest('form')!);
+    await user.click(submit);
+    expect(createMock).not.toHaveBeenCalled();
+
+    // Nothing moved the typed figure to the cap behind the operator's back.
+    await user.tab();
+    expect(paidInput).toHaveValue('50,000.00');
+
+    // Under the cap, «Accept» and Enter come back.
+    await user.clear(paidInput);
+    await user.type(paidInput, '1000');
+    expect(paidInput.dispatchEvent(enter())).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Accept · pay out 1,000.00 ₴' }));
     await waitFor(() =>
       expect(createMock).toHaveBeenCalledWith(
         expect.objectContaining({ supplier_id: 's1', paid_amount: '1000.00' }),
@@ -1385,7 +1556,7 @@ describe('ReceptionPage — «Видано готівкою» rides along with �
     const paidInput = screen.getByLabelText('Paid in cash');
     await user.clear(paidInput);
     await user.type(paidInput, '1.2.3');
-    await user.click(screen.getByRole('button', { name: /Accept 120\.40 kg/ }));
+    await user.click(screen.getByRole('button', { name: 'Accept' }));
 
     expect(await screen.findByText('Enter a number, e.g. 12000 or 980.40')).toBeInTheDocument();
     expect(createMock).not.toHaveBeenCalled();
@@ -1476,7 +1647,7 @@ describe('ReceptionPage — focus returns to the supplier picker', () => {
 
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
-    await user.click(screen.getByRole('button', { name: 'Accept 120.40 kg' }));
+    await user.click(screen.getByRole('button', { name: 'Accept without payout' }));
 
     expect(await screen.findByText('Receipt for i-new')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'pick-nina' })).toHaveFocus();
@@ -1505,32 +1676,46 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     expect(screen.queryByText('out of range')).not.toBeInTheDocument();
   });
 
-  it("clamps the surcharge to the grade's bounds on blur and by the stepper", async () => {
+  it("starts the price at the grade's price and clamps it to the grade's bounds", async () => {
     const user = userEvent.setup();
     renderReception();
 
-    // Line 0 is pre-selected onto the fixture's first grade (g1: max_markup
+    // Line 0 is pre-selected onto the fixture's first grade (g1: 10.00, max_markup
     // 3.00, max_discount 2.00) — see the "pre-selects" test below.
     await waitFor(() => {
       expect(screen.getByLabelText('Grade')).toHaveValue('g1');
     });
-    const bonus = screen.getByLabelText('Extra price, ₴/kg');
-    await user.clear(bonus);
-    await user.type(bonus, '5');
-    await user.tab();
-    expect(bonus).toHaveValue('3.00');
+    const price = screen.getByLabelText('Price, ₴/kg');
+    expect(price).toHaveValue('10.00');
 
-    await user.click(screen.getByRole('button', { name: 'Extra price up' }));
-    expect(bonus).toHaveValue('3.00');
+    await user.clear(price);
+    await user.type(price, '15');
+    await user.tab();
+    expect(price).toHaveValue('13.00');
+    // The deviation is said; the bound itself never is (§2.10).
+    expect(screen.getByText('+3.00 vs the grade price')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Price up' }));
+    expect(price).toHaveValue('13.00');
+
+    await user.clear(price);
+    await user.type(price, '1');
+    await user.tab();
+    expect(price).toHaveValue('8.00');
   });
 
-  it('keeps the surcharge minus sign through the shared field (#72)', async () => {
+  it('a new grade starts at its own price', async () => {
     const user = userEvent.setup();
     renderReception();
-    const bonus = screen.getByLabelText('Extra price, ₴/kg');
-    await user.clear(bonus);
-    await user.type(bonus, '-2');
-    expect(bonus).toHaveValue('-2');
+    await waitFor(() => {
+      expect(screen.getByLabelText('Grade')).toHaveValue('g1');
+    });
+    const price = screen.getByLabelText('Price, ₴/kg');
+    await user.click(screen.getByRole('button', { name: 'Price up' }));
+    expect(price).toHaveValue('11.00');
+
+    await user.selectOptions(screen.getByLabelText('Grade'), 'g2');
+    expect(price).toHaveValue('8.00');
   });
 
   it('a tare count drops spaces and letters but never a separator — «2,0» is not 20 (#233 review)', async () => {

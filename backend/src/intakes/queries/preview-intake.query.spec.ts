@@ -65,6 +65,8 @@ describe('PreviewIntakeQuery', () => {
             price: '57.00',
             bonus: '0.00',
             amount: '2103.00',
+            // 36.90 × 57.00 — the calculator's figure before §2.12's rounding.
+            amount_exact: '2103.30',
             tare: [{ tare_type_id: CRATE, units: 3 }],
           },
         ],

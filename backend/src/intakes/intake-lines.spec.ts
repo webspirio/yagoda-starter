@@ -50,6 +50,7 @@ describe('buildIntake', () => {
 
       expect(built.items[0].net_kg).toBe('418.00');
       expect(built.items[0].amount).toBe('27170.00');
+      expect(built.items[0].amount_exact).toBe('27170.00');
     });
 
     it('refuses a pallet heavier than the gross', () => {
@@ -261,12 +262,39 @@ describe('buildIntake', () => {
 
       expect(built.items[0].net_kg).toBe('36.90');
       expect(built.items[0].amount).toBe('2103.00'); // 36.90 × 57.00 = 2103.30
+      // The calculator's product rides along, so the screen can show both.
+      expect(built.items[0].amount_exact).toBe('2103.30');
     });
 
     it('rounds up from 80 kopiykas', () => {
       const built = buildIntake([line({ bonus: '0.10' })], prices(), tare());
 
       expect(built.items[0].amount).toBe('2107.00'); // 36.90 × 57.10 = 2106.99
+      expect(built.items[0].amount_exact).toBe('2106.99');
+    });
+
+    it('carries the exact product with the BONUS in the rate, rounded half-up at 2 decimals', () => {
+      // 70,55 − (14,40 + 1,50) = 54,65 kg × (90 − 3,50) = 4 727,225
+      // → `mul` 4 727,23 (half-up) → 23 < 80 → 4 727.
+      const built = buildIntake(
+        [
+          line({
+            gross_kg: '70.55',
+            pallet_kg: '0.00',
+            bonus: '-3.50',
+            tare: [
+              { tare_type_id: CRATE, units: 12 }, // 14.40
+              { tare_type_id: BUCKET, units: 3 }, // 1.50
+            ],
+          }),
+        ],
+        prices({ base_price: '90.00' }),
+        tare(),
+      );
+
+      expect(built.items[0].net_kg).toBe('54.65');
+      expect(built.items[0].amount_exact).toBe('4727.23'); // 54.65 × 86.50 = 4727.225
+      expect(built.items[0].amount).toBe('4727.00');
     });
 
     it('applies the threshold to the kopiykas the supplier sees', () => {

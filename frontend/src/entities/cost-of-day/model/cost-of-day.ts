@@ -12,6 +12,8 @@ export interface CostOfDayProduct {
   product_name: string;
   /** «нараховано» — the accrued purchase, top-ups included. NOT cash paid out. */
   accrued: string;
+  /** The доплати inside `accrued`; '0.00' when there are none. */
+  top_ups: string;
   /** What the POINT weighed in. */
   intake_net_kg: string;
   /** «наша вага» — what the base's scale said. `null` when `complete` is false. */
@@ -34,7 +36,7 @@ export interface CostOfDayProduct {
   /** «повна вартість» — `accrued − shortfall + basket_share`, a money figure,
    *  never divided into a per-kg one. `null` exactly when `basket_share` is. */
   full_cost: string | null;
-  /** «було» — нараховано ÷ вага пункту. */
+  /** «ціна закупки» — нараховано ÷ вага пункту, доплати included. */
   price_was: string;
   /** «собівартість» — було + на кілограм. `null` when there is no на кілограм. */
   price_cost: string | null;
@@ -53,6 +55,8 @@ interface CostOfDayGrade {
   product_grade_name: string;
   /** This grade's нараховано, top-ups included. */
   accrued: string;
+  /** The доплати inside `accrued`; '0.00' when there are none. */
+  top_ups: string;
   intake_net_kg: string;
   /** `null` when nothing was weighed for this grade. */
   reweigh_net_kg: string | null;
@@ -72,27 +76,28 @@ export interface CostOfDay {
   expenses_amount: string;
   /** СПІЛЬНИЙ КОШИК — недостача + витрати. */
   basket: string;
-  /** «на кілограм» — `null` when nothing was weighed, and then so are the two
-   *  halves below and every product's `basket_share`. */
+  /** «на кілограм» — `shortfall_per_kg + expenses_per_kg`. `null` when
+   *  nothing was weighed, and then so are the two halves below and every
+   *  product's `basket_share`. */
   per_kg: string | null;
-  /** The недостача half of `per_kg`; with `expenses_per_kg` it adds up to
-   *  `per_kg` exactly (a split of `per_kg`, not two quotients). `null` as `per_kg`. */
+  /** `shortfall_amount ÷ reweighed_kg`, its own quotient. `null` as `per_kg`. */
   shortfall_per_kg: string | null;
-  /** The витрати half of `per_kg`. `null` as `per_kg`. */
+  /** `expenses_amount ÷ reweighed_kg`, its own quotient. `null` as `per_kg`. */
   expenses_per_kg: string | null;
   /** §8.4's own звірка: нараховано + витрати. */
   total_check: string;
-  /** The total row, over the `complete` products only. `null` when `per_kg` is. */
+  /** The total row, over the `complete` products only — sums, never a per-kg
+   *  figure. `null` when `per_kg` is. */
   weighed: {
     intake_kg: string;
     shortfall_kg: string;
     accrued: string;
     shortfall: string;
-    price_was: string;
   } | null;
-  /** Σ product `full_cost` = `weighed.accrued + expenses_amount`. `null` as `per_kg`. */
+  /** Σ product `full_cost` = `weighed.accrued + expenses_amount` exactly. `null` as `per_kg`. */
   full_cost: string | null;
-  /** `full_cost ÷ reweighed_kg` — an average, not any product's `price_cost`. `null` as `per_kg`. */
+  /** `full_cost ÷ reweighed_kg` — the day's average, printed under the table
+   *  as «(weighed.accrued + expenses_amount) ÷ reweighed_kg». `null` as `per_kg`. */
   price_cost_avg: string | null;
   /** The products not weighed in full, kept out of `weighed`. A real zero, never `null`. */
   unweighed: { intake_kg: string; accrued: string };
@@ -101,5 +106,7 @@ export interface CostOfDay {
   top_ups_included: true;
   /** §3.12's marker — a late доплата moved an already-closed day. */
   top_ups_latest_at: string | null;
+  /** Σ product `top_ups` — every доплата on the day; '0.00' when none. */
+  top_ups_total: string;
   products: CostOfDayProduct[];
 }

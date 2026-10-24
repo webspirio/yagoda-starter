@@ -47,6 +47,11 @@ export interface BuiltLine {
   price: string;
   bonus: string;
   amount: string;
+  /** `net_kg × (price + bonus)` at 2 decimals, half-up (`mul`) — the number a
+   *  calculator gives BEFORE §2.12's whole-hryvnia rounding. Shown beside
+   *  `amount` on the reception screen so the operator can re-check the line;
+   *  never stored (the document's `amount` is the rounded one). */
+  amount_exact: string;
   tare: { tare_type_id: string; units: number }[];
 }
 
@@ -182,6 +187,9 @@ function buildLine(
 
   // §2.12 (#56) — the line is paid in whole hryvnia; weight and rate stay exact.
   // Below 0,80 that is nothing, and a receipt for berries paid 0,00 is refused.
+  // `amount_exact` is the same product before that rounding — what the
+  // operator's calculator shows (spec 2026-10-23 R4).
+  const amount_exact = mul(net_kg, rate);
   const amount = mulWholeHryvnia(net_kg, rate);
   if (gt(rate, '0.00') && isZero(amount)) {
     bad(
@@ -200,6 +208,7 @@ function buildLine(
     price: price.base_price,
     bonus: input.bonus,
     amount,
+    amount_exact,
     tare: input.tare,
   };
 }

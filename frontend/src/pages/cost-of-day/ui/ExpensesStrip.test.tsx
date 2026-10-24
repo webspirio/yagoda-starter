@@ -54,7 +54,6 @@ const day: CostOfDay = {
     shortfall_kg: '11.00',
     accrued: '131900.00',
     shortfall: '1660.00',
-    price_was: '152.49',
   },
   full_cost: '135700.00',
   price_cost_avg: '158.90',
@@ -62,6 +61,7 @@ const day: CostOfDay = {
   checks: { shares_ok: true, total_ok: true },
   top_ups_included: true,
   top_ups_latest_at: null,
+  top_ups_total: '0.00',
   products: [],
 };
 
@@ -287,9 +287,9 @@ describe('ExpensesStrip', () => {
   });
 
   it("sums the day's expenses and their rate in plum", () => {
-    renderPanel({ expenses_amount: '1700.00', expenses_per_kg: '2.79' });
+    renderPanel({ expenses_amount: '1700.00', expenses_per_kg: '2.78' });
 
-    expect(screen.getByText('= 1 700,00 ₴ · 2,79 ₴/кг')).toBeInTheDocument();
+    expect(screen.getByText('= 1 700,00 ₴ · 2,78 ₴/кг')).toBeInTheDocument();
   });
 
   it('drops the rate when nothing was weighed', () => {

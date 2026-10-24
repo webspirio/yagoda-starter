@@ -14,6 +14,7 @@ import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import type { ReconciliationGrade } from '@/entities/reweigh';
 import { netOf, newDraftKey, tareWeightOf, type Draft } from '../model/draft';
 import { addBlockReason, grossHint, tareHint } from '../lib/hints';
+import { netFormula } from '../lib/formula';
 import { FieldWarning } from './FieldWarning';
 
 interface ProductGroup {
@@ -92,9 +93,15 @@ export function WeighingForm({
   );
 
   // The crate type does not change between pallets (per the task's own
-  // requirement), so `tareId` is never reset by `handleAdd` — it only
-  // defaults to the catalogue's first entry until the owner picks one.
-  const effectiveTareId = tareId ?? tareTypes.data?.[0]?.id ?? null;
+  // requirement), so `tareId` is never reset by `handleAdd`. Until the owner
+  // picks one it defaults to THE CRATE (`is_crate`), as reception does — the
+  // catalogue's alphabetical first is «Лубянка 0,30», and 115 crates weighed
+  // against it overstate the net by 103,5 кг without a word (spec W1).
+  const effectiveTareId =
+    tareId ??
+    (tareTypes.data ?? []).find((type) => type.is_crate)?.id ??
+    tareTypes.data?.[0]?.id ??
+    null;
   const tareCount = tareCountInput === '' ? 0 : Number(tareCountInput);
 
   // #72 — a malformed weight blocks the add at once (`isMalformed`), but the
@@ -117,6 +124,21 @@ export function WeighingForm({
   // `Math.max(0, …)`. `addBlockReason` (below) is what actually refuses a
   // non-positive line; this clamp never touches the value handed to `onAdd`.
   const netForDisplay = cmp(net, '0.00') < 0 ? '0.00' : net;
+  // W4 — the same figure as a formula, from the parts already on screen; only
+  // while it is a real (positive) net, since a clamped zero has no formula.
+  const formula =
+    cmp(net, '0.00') > 0
+      ? netFormula(t, locale, {
+          gross: grossForCalc,
+          pallet: palletForCalc,
+          tare: tare.map((term) => ({
+            units: term.units,
+            unitWeightKg: weightById.get(term.tare_type_id) ?? null,
+          })),
+          tareKg: tareWeight,
+          net,
+        })
+      : null;
 
   const block = addBlockReason({
     hasShift,
@@ -327,6 +349,11 @@ export function WeighingForm({
           >
             {formatKg(netForDisplay, locale)}
           </div>
+          {formula ? (
+            <p data-testid="net-formula" className="mt-1.5 font-mono text-xs text-muted-foreground">
+              {formula}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-col items-end gap-1.5">
           <Button type="button" size="lg" onClick={handleAdd} disabled={Boolean(block)}>

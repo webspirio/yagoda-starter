@@ -79,6 +79,10 @@ interface FieldProps {
   errorParams?: Record<string, unknown>;
   children: (a11y: FieldA11y) => ReactNode;
   className?: string;
+  /** `'large'` — a 14 px sentence-case label and 14 px hint/error, for a
+   *  screen read at arm's length while working (reception). The default is
+   *  the kit's 11 px uppercase eyebrow. */
+  size?: 'default' | 'large';
 }
 
 /**
@@ -99,7 +103,10 @@ export function Field({
   errorParams,
   children,
   className,
+  size = 'default',
 }: FieldProps) {
+  const large = size === 'large';
+  const noteSize = large ? 'text-sm' : 'text-xs';
   const { t } = useTranslation();
   const labelId = `${name}-label`;
   const hintId = `${name}-hint`;
@@ -117,7 +124,13 @@ export function Field({
         // a marker nested inside `<label>` would leak its "*" into every
         // exact-text label query. Wrapping div carries the block layout/type
         // styling so both render on one line exactly as before.
-        <div className="mb-[7px] text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+        <div
+          className={
+            large
+              ? 'mb-1.5 text-sm font-medium text-muted-foreground'
+              : 'mb-[7px] text-[11px] font-bold uppercase tracking-wider text-muted-foreground'
+          }
+        >
           <label id={labelId} htmlFor={name}>
             {label}
           </label>
@@ -140,7 +153,8 @@ export function Field({
         <p
           id={hintId}
           className={cn(
-            'mt-1.5 text-xs leading-snug',
+            'mt-1.5 leading-snug',
+            noteSize,
             hintTone === 'warning'
               ? 'inline-flex items-center gap-1.5 text-amber'
               : 'text-muted-foreground',
@@ -154,7 +168,11 @@ export function Field({
         </p>
       )}
       {error && (
-        <p id={errorId} role="alert" className={cn('mt-1.5 text-xs leading-snug text-destructive')}>
+        <p
+          id={errorId}
+          role="alert"
+          className={cn('mt-1.5 leading-snug text-destructive', noteSize)}
+        >
           {t(error, errorParams)}
         </p>
       )}

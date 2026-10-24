@@ -4,9 +4,9 @@ import { LinesTable, type CommittedLine } from './LinesTable';
 
 /** Two committed lines, straight off a server preview (§2.4/§2.8/§2.9) — the
  *  same shape `ReceptionPage` hands the table. Line 1 carries 3 crates worth
- *  3,60 kg of tare (proving the «Тара» column now counts UNITS, not weight);
- *  line 2 carries a −2,00 ₴/kg discount, which the «Ціна» cell must show as a
- *  signed, amber addition to the price. Net weights sum to 55,70 kg. */
+ *  3,60 kg of tare; line 2 two tare rows and a −2,00 ₴/kg discount. Each row
+ *  must re-check on a calculator (R5): Брутто − Піддон − Тара (kg) = Нетто,
+ *  × the FINAL price = Сума. */
 const ROWS: CommittedLine[] = [
   {
     key: 'line-1',
@@ -21,6 +21,7 @@ const ROWS: CommittedLine[] = [
       price: '10.00',
       bonus: '0.00',
       amount: '264.00',
+      amount_exact: '264.00',
       tare: [{ tare_type_id: 't1', units: 3 }],
     },
   },
@@ -37,6 +38,7 @@ const ROWS: CommittedLine[] = [
       price: '8.00',
       bonus: '-2.00',
       amount: '175.80',
+      amount_exact: '175.80',
       tare: [
         { tare_type_id: 't1', units: 1 },
         { tare_type_id: 't0', units: 1 },
@@ -46,7 +48,7 @@ const ROWS: CommittedLine[] = [
 ];
 
 describe('LinesTable — reads like the mock', () => {
-  it('shows unit counts in the tare column and a signed amber bonus in the price cell', () => {
+  it('shows the tare in kg (units in its title) and the final price, so a row re-checks (R5)', () => {
     render(<LinesTable rows={ROWS} disabled={false} onRemove={vi.fn()} />);
 
     const table = screen.getByRole('table');
@@ -54,19 +56,20 @@ describe('LinesTable — reads like the mock', () => {
     const line1 = rows[1];
     const line2 = rows[2];
 
-    // The tare cell reads the UNIT COUNT (3), never the tare weight (3.60).
-    expect(within(line1).getByText('3')).toBeInTheDocument();
-    expect(within(line1).queryByText('3.60')).not.toBeInTheDocument();
-    // Two tare rows, one unit each — still a plain count, not 3.00.
-    expect(within(line2).getByText('2')).toBeInTheDocument();
+    // 30.00 − 3.60 = 26.40: the tare cell is the WEIGHT, the count rides in its title.
+    const tare1 = within(line1).getByText('3.60');
+    expect(tare1).toHaveAttribute('title', '3 tare units');
+    expect(within(line1).queryByText('3')).not.toBeInTheDocument();
+    // Two tare rows, one unit each — 3.00 kg, two units in the title.
+    expect(within(line2).getByText('3.00')).toHaveAttribute('title', '2 tare units');
 
-    // Line 1 has no bonus — the price cell shows only the price.
+    // Line 1 has no bonus — the price is the grade's.
     expect(within(line1).getByText('10.00')).toBeInTheDocument();
 
-    // Line 2's discount renders as a signed, amber addition to the price.
-    expect(within(line2).getByText('8.00')).toBeInTheDocument();
-    const bonus = within(line2).getByText('−2.00');
-    expect(bonus).toHaveClass('text-amber');
+    // Line 2's −2.00 is folded into the price: 8.00 − 2.00 = 6.00, no separate bonus.
+    expect(within(line2).getByText('6.00')).toBeInTheDocument();
+    expect(within(line2).queryByText('8.00')).not.toBeInTheDocument();
+    expect(within(line2).queryByText('−2.00')).not.toBeInTheDocument();
   });
 
   // «Ще позиція» and its hint live in the draft block's footer now (spec §4),

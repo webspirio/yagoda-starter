@@ -130,6 +130,7 @@ const GRADES: ReconciliationGrade[] = [
     product_name: 'Малина',
     intake_net_kg: '200.00',
     reweigh_net_kg: '0.00',
+    crates: { point: 0, base: 0, by_type: [] },
   },
   {
     product_grade_id: 'g2',
@@ -138,6 +139,7 @@ const GRADES: ReconciliationGrade[] = [
     product_name: 'Малина',
     intake_net_kg: '100.00',
     reweigh_net_kg: '0.00',
+    crates: { point: 0, base: 0, by_type: [] },
   },
 ];
 
@@ -198,6 +200,8 @@ beforeEach(() => {
       items: [],
       products: [],
       grades: GRADES,
+      missing_total_kg: null,
+      missing_total_amount: null,
     },
     isPending: false,
     isError: false,
@@ -206,8 +210,8 @@ beforeEach(() => {
   voidMock.mockResolvedValue({ id: 'ri1' });
   tareMock.mockReturnValue({
     data: [
-      { id: 't1', name: 'Ящик', weight_kg: '1.20' },
-      { id: 't2', name: 'Диб', weight_kg: '2.50' },
+      { id: 't1', name: 'Ящик', weight_kg: '1.20', is_crate: true },
+      { id: 't2', name: 'Диб', weight_kg: '2.50', is_crate: false },
     ],
     isPending: false,
   });

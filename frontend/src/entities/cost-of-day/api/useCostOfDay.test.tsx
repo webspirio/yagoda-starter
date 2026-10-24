@@ -33,7 +33,6 @@ const day = {
     shortfall_kg: '11.00',
     accrued: '131900.00',
     shortfall: '1660.00',
-    price_was: '152.49',
   },
   full_cost: '135700.00',
   price_cost_avg: '158.90',
@@ -41,6 +40,7 @@ const day = {
   checks: { shares_ok: true, total_ok: true },
   top_ups_included: true,
   top_ups_latest_at: null,
+  top_ups_total: '0.00',
   products: [],
 };
 

@@ -344,7 +344,7 @@ export function AppLayout() {
           and a null token is exactly what puts the layout on that branch —
           so no lazy element is ever rendered there.
         */}
-        <main className="min-w-0 flex-1 p-6">
+        <main className="min-w-0 flex-1 p-4 sm:p-6">
           <Suspense fallback={<RouteFallback />}>
             <Outlet />
           </Suspense>

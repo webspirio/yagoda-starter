@@ -29,7 +29,10 @@ export type ReceiptSection =
   | { kind: 'rows'; rows: ReceiptRow[] }
   | { kind: 'berryLine'; line: ReceiptBerryLine }
   /** A muted small line (payout codes, annulments). */
-  | { kind: 'caption'; text: string };
+  | { kind: 'caption'; text: string }
+  /** Rows the reader must find at a glance — label AND value bold and
+   *  larger (the intake's tare tally, client 23.10: «жирний і крупніше»). */
+  | { kind: 'emphasis'; rows: ReceiptRow[] };
 
 /** The receipt as data: a builder per document type fills it, `ReceiptView`
  *  is the one place that turns it into paper. */
@@ -108,6 +111,14 @@ function Section({ section }: { section: ReceiptSection }) {
       return <BerryLine line={section.line} />;
     case 'caption':
       return <div className="text-[0.87em]">{section.text}</div>;
+    case 'emphasis':
+      return (
+        <div className="text-[1.2em] font-bold">
+          {section.rows.map((r, i) => (
+            <Row key={i} label={r.label} value={r.value} />
+          ))}
+        </div>
+      );
     default: {
       const unreachable: never = section;
       return unreachable;

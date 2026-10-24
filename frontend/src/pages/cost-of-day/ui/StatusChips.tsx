@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, CheckCircle2, Clock, XCircle } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, Coins, XCircle } from 'lucide-react';
 import { Badge } from '@/shared/ui/badge';
 import { formatDateTime } from '@/shared/lib/date';
+import { formatUah } from '@/shared/lib/money';
 import type { CostOfDay } from '@/entities/cost-of-day';
 
 /**
@@ -23,6 +24,7 @@ export function StatusChips({
 }) {
   const { t } = useTranslation();
   const notWeighed = day.products.filter((p) => !p.complete).map((p) => p.product_name);
+  const withTopUps = day.products.filter((p) => p.top_ups !== '0.00').map((p) => p.product_name);
 
   return (
     <div className="flex flex-wrap items-center gap-2 print:gap-x-4">
@@ -50,10 +52,25 @@ export function StatusChips({
         </Badge>
       )}
 
-      {day.top_ups_latest_at !== null && (
-        <Badge variant="outline">
-          <Clock aria-hidden />
-          {t('costOfDay.status.topUps', { at: formatDateTime(day.top_ups_latest_at, locale) })}
+      {/* Review C3: the доплати are money no receipt shows, so the chip
+          names the amount and the products; when the last one was entered
+          (§3.12 — it may move a closed day) is the chip's title. */}
+      {day.top_ups_total !== '0.00' && (
+        <Badge
+          variant="outline"
+          title={
+            day.top_ups_latest_at === null
+              ? undefined
+              : t('costOfDay.status.topUpsLatest', {
+                  at: formatDateTime(day.top_ups_latest_at, locale),
+                })
+          }
+        >
+          <Coins aria-hidden />
+          {t('costOfDay.status.topUps', {
+            amount: formatUah(day.top_ups_total, locale),
+            names: withTopUps.join(', '),
+          })}
         </Badge>
       )}
 
