@@ -92,8 +92,15 @@ export function ChecksDisclosure({
     rowId(p.product_id, 'shortfallPerKg'),
     rowId(p.product_id, 'expensesPerKg'),
   ];
+  // The share's hint says how it was split (spec 2026-10-24 §2): by weight the
+  // per-kg halves × база; by money each half is the row's own.
+  const shareHint = {
+    weight: 'costOfDay.trace.share',
+    value: 'costOfDay.trace.shareValue',
+    own: 'costOfDay.trace.shareOwn',
+  }[day.split_applied];
   const share = (p: Product, figure: string) => (
-    <Term refs={shareRefs(p)} hint={t('costOfDay.trace.share', { row: p.product_name })}>
+    <Term refs={shareRefs(p)} hint={t(shareHint, { row: p.product_name })}>
       {figure}
     </Term>
   );

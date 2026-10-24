@@ -1771,7 +1771,7 @@
     "provisional": "Зміна ще відкрита — цифри рухаються",
     "noShift": "Зміну {{date}} на точці «{{point}}» не відкривали.",
     "noIntake": "Цього дня на цій точці прийомки не було.",
-    "sheetTitle": "Собівартість за {{date}} · {{point}}",
+    "sheetTitle": "Собівартість за {{date}} · {{point}} · розподіл: {{split}}",
     "berry": {
       "showGrades": "Показати сорти: {{product}}",
       "hideGrades": "Сховати сорти: {{product}}",
@@ -1800,7 +1800,8 @@
       },
       "addLine": "Додати витрату",
       "total": "= <amount>{{amount}}</amount> · <rate>{{perKg}} ₴/кг</rate>",
-      "totalNoRate": "= <amount>{{amount}}</amount>"
+      "totalNoRate": "= <amount>{{amount}}</amount>",
+      "totalPct": "= <amount>{{amount}}</amount> · ≈ {{pct}} % від закупки"
     },
     "status": {
       "closed": "Зміну закрито",
@@ -1837,12 +1838,22 @@
       "dayFormula": "Середня собівартість кілограма дня: (нараховано <accrued>{{accrued}}</accrued> + витрати <expenses>{{expenses}}</expenses>) ÷ <kg>{{kg}}</kg> = <avg>{{avg}}</avg>",
       "dayFormulaWeighed": "Середня собівартість кілограма дня: (нараховано по перезваженому <accrued>{{accrued}}</accrued> + витрати <expenses>{{expenses}}</expenses>) ÷ <kg>{{kg}}</kg> = <avg>{{avg}}</avg>",
       "accruedHelpLabel": "Що таке «нараховано»",
-      "accruedHelp": "«Нараховано» — сума квитанцій разом із доплатами, а не готівка з каси: борги існують, тому готівка, що вийшла з каси за цей день, — інше число, і воно на собівартість не впливає."
+      "accruedHelp": "«Нараховано» — сума квитанцій разом із доплатами, а не готівка з каси: борги існують, тому готівка, що вийшла з каси за цей день, — інше число, і воно на собівартість не впливає.",
+      "ownShortfallPerKg": "Своя, ₴/кг",
+      "howToReadValue": "Як читати рядок: <sky>ціна закупки</sky> + <amber>недостача дня на кг</amber> + <plum>витрати дня на кг</plum> = <leaf>собівартість</leaf>. Недостачу й витрати розкладено пропорційно до нарахованого — дорожча ягода несе більшу частку:",
+      "howToReadOwn": "Як читати рядок: <sky>ціна закупки</sky> + <amber>своя недостача на кг</amber> + <plum>витрати дня на кг</plum> = <leaf>собівартість</leaf>. Недостача — своя у кожного товару, витрати розкладено пропорційно до нарахованого:",
+      "howToReadShortfallPct": "<amber>Недостача дня:</amber> <shortfall>{{shortfall}}</shortfall> ÷ <accrued>{{accrued}}</accrued> ≈ {{pct}} % від закупки",
+      "howToReadShortfallOwn": "<amber>Недостача — своя у кожного товару:</amber> своя ₴ ÷ база кг",
+      "howToReadExpensesPct": "<plum>Витрати дня:</plum> <expenses>{{expenses}}</expenses> ÷ <accrued>{{accrued}}</accrued> ≈ {{pct}} % від закупки",
+      "howToReadShareNote": "Частка кожного товару в гривнях — у розгорнутому рядку (›)."
     },
     "chain": {
       "price": "Ціна закупки: <accrued>{{accrued}}</accrued> ÷ <kg>{{kg}}</kg> = <price>{{price}}</price>",
       "shortfall": "Недостача: <kg>{{kg}}</kg> × <price>{{price}}</price> = <amount>{{amount}}</amount>",
-      "cost": "Собівартість: <price>{{price}}</price> + <shortfall>{{shortfall}}</shortfall> + <expenses>{{expenses}}</expenses> = <cost>{{cost}}</cost>"
+      "cost": "Собівартість: <price>{{price}}</price> + <shortfall>{{shortfall}}</shortfall> + <expenses>{{expenses}}</expenses> = <cost>{{cost}}</cost>",
+      "shortfallShare": "Недостача дня: <total>{{total}}</total> × <accrued>{{accrued}}</accrued> ÷ <dayAccrued>{{dayAccrued}}</dayAccrued> ≈ <share>{{share}}</share> ÷ <kg>{{kg}}</kg> = <perKg>{{perKg}}</perKg>",
+      "expensesShare": "Витрати: <total>{{total}}</total> × <accrued>{{accrued}}</accrued> ÷ <dayAccrued>{{dayAccrued}}</dayAccrued> ≈ <share>{{share}}</share> ÷ <kg>{{kg}}</kg> = <perKg>{{perKg}}</perKg>",
+      "shortfallOwn": "Своя недостача на кг: <amount>{{amount}}</amount> ÷ <kg>{{kg}}</kg> = <perKg>{{perKg}}</perKg>"
     },
     "trace": {
       "cell": "Колонка «{{column}}» · {{row}}",
@@ -1858,7 +1869,9 @@
       "dayAccrued": "Нараховано рядка «Усього» + не перезважено",
       "pointExpenses": "Витрати точки «{{point}}»",
       "expensesSpread": "Колонка «{{column}}» · Усього — витрати точок, що перезважили",
-      "expensesTotal": "Витрати всіх точок разом"
+      "expensesTotal": "Витрати всіх точок разом",
+      "shareValue": "Частка «{{row}}»: недостача й витрати дня пропорційно до нарахованого",
+      "shareOwn": "Частка «{{row}}»: своя недостача + витрати пропорційно до нарахованого"
     },
     "checks": {
       "title": "Як перевірити, що жодна гривня не загубилась",
@@ -1904,6 +1917,13 @@
         "cost": "Собівартість: <full>{{full}}</full> ÷ <kg>{{kg}}</kg> = <cost>{{cost}}</cost> — сума ÷ вага по точках: <names/>",
         "unweighed": "Не перезважено, не входить у рядок: <names/> — <kg>{{kg}}</kg> · <amount>{{amount}}</amount>"
       }
+    },
+    "split": {
+      "label": "Розподіл кошика",
+      "weight": "По вазі",
+      "value": "По сумі закупки",
+      "own": "Своя недостача + % витрат",
+      "fallback": "Нараховано 0 ₴ — розкладено по вазі"
     }
   },
   "operatorNote": {

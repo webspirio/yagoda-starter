@@ -167,18 +167,24 @@ export function ExpensesStrip({
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 pt-3 pb-2">
         <Eyebrow className="text-[var(--plum)]">{t('costOfDay.expenses.title')}</Eyebrow>
         {/* The two figures the table's formulas cite (`shared/ui/trace`): the
-            day's expenses, and their per-kg half down the «₴/кг» column. */}
+            day's expenses, and their per-kg half down the «₴/кг» column. Under a
+            split by money that half is each row's own, so the strip names the
+            percentage instead — a caption with «≈», never an operand (spec
+            2026-10-24 §2.2). */}
         <span className="font-mono text-sm font-semibold tabular-nums text-[var(--plum)]">
           <Trans
             t={t}
             i18nKey={
-              day.expenses_per_kg === null
-                ? 'costOfDay.expenses.totalNoRate'
-                : 'costOfDay.expenses.total'
+              day.expenses_pct !== null
+                ? 'costOfDay.expenses.totalPct'
+                : day.expenses_per_kg === null
+                  ? 'costOfDay.expenses.totalNoRate'
+                  : 'costOfDay.expenses.total'
             }
             values={{
               amount: formatUah(day.expenses_amount, locale),
               perKg: day.expenses_per_kg === null ? '' : formatDecimal(day.expenses_per_kg, locale),
+              pct: day.expenses_pct === null ? '' : formatDecimal(day.expenses_pct, locale),
             }}
             components={{
               amount: <span data-trace={DAY.expenses} />,

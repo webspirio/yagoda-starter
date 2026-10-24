@@ -511,3 +511,112 @@ describe('CostTable', () => {
     });
   });
 });
+
+// Spec 2026-10-24 — the same 19.10 day, витрати 1 900,00, split by money.
+// Every figure is the server's (`allocate`, `div`), pinned in the backend suite.
+const byMoney = (
+  split: 'value' | 'own',
+  rows: Record<'cornel' | 'raspberry', [string, string, string, string, string]>,
+): CostOfDay => {
+  const at = (p: CostOfDayProduct, [sShare, eShare, sKg, eKg, cost]: string[]) => ({
+    ...p,
+    shortfall_share: sShare,
+    expenses_share: eShare,
+    shortfall_per_kg: sKg,
+    expenses_per_kg: eKg,
+    price_cost: cost,
+  });
+  return {
+    ...day,
+    split,
+    split_applied: split,
+    expenses_amount: '1900.00',
+    basket: '2165.19',
+    per_kg: '3.54',
+    expenses_per_kg: '3.11',
+    expenses_pct: '1.67',
+    shortfall_pct: split === 'value' ? '0.23' : null,
+    products: [at(cornel, rows.cornel), at(raspberry, rows.raspberry)],
+  };
+};
+const valueDay = byMoney('value', {
+  cornel: ['1.39', '9.97', '0.09', '0.64', '38.73'],
+  raspberry: ['263.80', '1890.03', '0.44', '3.17', '193.03'],
+});
+const ownDay = byMoney('own', {
+  cornel: ['0.00', '9.97', '0.00', '0.64', '38.64'],
+  raspberry: ['265.19', '1890.03', '0.45', '3.17', '193.04'],
+});
+
+describe('CostTable — split by money (spec 2026-10-24 §3.2)', () => {
+  it('prints each row’s own per-kg halves under value', () => {
+    renderTable(valueDay);
+
+    const rasp = cellsOf(screen.getByRole('row', { name: /Малина/ })).map((c) => c.textContent);
+    expect(rasp.slice(7)).toEqual(['0,44', '3,17', '193,03']);
+    const cornelRow = cellsOf(screen.getByRole('row', { name: /Кизил/ })).map((c) => c.textContent);
+    expect(cornelRow.slice(7)).toEqual(['0,09', '0,64', '38,73']);
+  });
+
+  it('states both spreads as ≈ % of the purchase and points at the rows for the hryvnias', () => {
+    const { container } = renderTable(valueDay);
+
+    const lines = Array.from(container.querySelectorAll('[data-how-to-read] > li')).map((li) =>
+      flat(li.textContent),
+    );
+    expect(lines).toEqual([
+      'Недостача дня: 265,19 ₴ ÷ 113 640,80 ₴ ≈ 0,23 % від закупки',
+      'Витрати дня: 1 900,00 ₴ ÷ 113 640,80 ₴ ≈ 1,67 % від закупки',
+      'Частка кожного товару в гривнях — у розгорнутому рядку (›).',
+    ]);
+    expect(flat(screen.getByText(/Як читати рядок/).textContent)).toContain(
+      'пропорційно до нарахованого',
+    );
+  });
+
+  it('opens a row into its shares in hryvnias, never through the rounded percentage', async () => {
+    const user = userEvent.setup();
+    const { container } = renderTable(valueDay);
+
+    await user.click(screen.getByRole('button', { name: 'Показати сорти: Малина' }));
+
+    const chain = container.querySelector('[data-chain]') as HTMLElement;
+    const lines = within(chain)
+      .getAllByRole('listitem')
+      .map((li) => flat(li.textContent));
+    expect(lines).toContain(
+      'Недостача дня: 265,19 ₴ × 113 044,20 ₴ ÷ 113 640,80 ₴ ≈ 263,80 ₴ ÷ 595,40 кг = 0,44 ₴/кг',
+    );
+    expect(lines).toContain(
+      'Витрати: 1 900,00 ₴ × 113 044,20 ₴ ÷ 113 640,80 ₴ ≈ 1 890,03 ₴ ÷ 595,40 кг = 3,17 ₴/кг',
+    );
+    expect(lines).toContain('Собівартість: 189,42 ₴/кг + 0,44 ₴/кг + 3,17 ₴/кг = 193,03 ₴/кг');
+  });
+
+  it('names the shortfall column «своя» under own and keeps each product’s own', async () => {
+    const user = userEvent.setup();
+    const { container } = renderTable(ownDay);
+
+    expect(screen.getByRole('columnheader', { name: 'Своя, ₴/кг' })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: 'Дня, ₴/кг' })).not.toBeInTheDocument();
+    const lines = Array.from(container.querySelectorAll('[data-how-to-read] > li')).map((li) =>
+      flat(li.textContent),
+    );
+    expect(lines[0]).toBe('Недостача — своя у кожного товару: своя ₴ ÷ база кг');
+
+    await user.click(screen.getByRole('button', { name: 'Показати сорти: Малина' }));
+    const chain = container.querySelector('[data-chain]') as HTMLElement;
+    expect(
+      within(chain)
+        .getAllByRole('listitem')
+        .map((li) => flat(li.textContent)),
+    ).toContain('Своя недостача на кг: 265,19 ₴ ÷ 595,40 кг = 0,45 ₴/кг');
+  });
+
+  it('keeps the day average formula as it is under every split', () => {
+    const { container } = renderTable(valueDay);
+    expect(flat(container.querySelector('[data-day-formula]')!.textContent)).toBe(
+      'Середня собівартість кілограма дня: (нараховано 113 640,80 ₴ + витрати 1 900,00 ₴) ÷ 611,10 кг = 188,74 ₴/кг',
+    );
+  });
+});

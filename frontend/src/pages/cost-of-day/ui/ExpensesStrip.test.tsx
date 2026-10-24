@@ -361,6 +361,17 @@ describe('ExpensesStrip', () => {
     expect(total.querySelector('[data-trace="day:expensesPerKg"]')).toHaveTextContent('2,78 ₴/кг');
   });
 
+  it('names витрати as ≈ % of the purchase under a split by money — spec 2026-10-24', () => {
+    renderPanel({ expenses_amount: '1900.00', expenses_per_kg: '3.11', expenses_pct: '1.67' });
+
+    const total = screen.getByText(
+      (_, el) =>
+        el?.tagName === 'SPAN' &&
+        el.textContent?.replace(/\s+/g, ' ') === '= 1 900,00 ₴ · ≈ 1,67 % від закупки',
+    );
+    expect(total.querySelector('[data-trace="day:expenses"]')).toHaveTextContent('1 900,00 ₴');
+  });
+
   it('drops the rate when nothing was weighed', () => {
     renderPanel({ expenses_amount: '1700.00', expenses_per_kg: null });
 

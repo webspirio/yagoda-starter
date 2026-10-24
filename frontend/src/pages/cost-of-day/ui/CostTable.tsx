@@ -57,6 +57,9 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
     });
 
   const w = day.weighed;
+  // Spec 2026-10-24 §3.2 — the split the figures were built with.
+  const split = day.split_applied;
+  const byMoney = split !== 'weight';
   const dec = (s: string) => formatDecimal(s, locale);
   const dash = (v: string | null | undefined, f: (s: string) => string = dec) =>
     v === null || v === undefined ? '—' : f(v);
@@ -140,7 +143,11 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
                 {t('costOfDay.table.ownShortfall')}
               </TableHead>
               <TableHead scope="col" className={`text-right ${AMBER}`} data-group="shortfall">
-                {t('costOfDay.table.dayShortfall')}
+                {t(
+                  split === 'own'
+                    ? 'costOfDay.table.ownShortfallPerKg'
+                    : 'costOfDay.table.dayShortfall',
+                )}
               </TableHead>
               <TableHead scope="col" className={`text-right ${PLUM}`}>
                 {t('costOfDay.table.expensesPerKg')}
@@ -155,8 +162,12 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
               <CostTableRow
                 key={p.product_id}
                 product={p}
-                shortfallPerKg={day.shortfall_per_kg}
-                expensesPerKg={day.expenses_per_kg}
+                split={day.split_applied}
+                day={{
+                  accrued: w?.accrued ?? null,
+                  shortfall: day.shortfall_amount,
+                  expenses: day.expenses_amount,
+                }}
                 open={expanded.has(p.product_id)}
                 onToggle={() => toggle(p.product_id)}
                 locale={locale}
@@ -281,7 +292,13 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
           <p>
             <Trans
               t={t}
-              i18nKey="costOfDay.table.howToRead"
+              i18nKey={
+                split === 'value'
+                  ? 'costOfDay.table.howToReadValue'
+                  : split === 'own'
+                    ? 'costOfDay.table.howToReadOwn'
+                    : 'costOfDay.table.howToRead'
+              }
               components={{
                 sky: <span className="font-medium text-[var(--sky)]" />,
                 amber: <span data-group="shortfall" className="font-medium text-[var(--amber)]" />,
@@ -293,60 +310,126 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
           {/* The two spreads are two formulas — one per line (client, 24.10), each in
               its column group's colour, so neither reads as part of the other. */}
           <ul data-how-to-read className="space-y-0.5">
-            <li data-group="shortfall">
-              <Trans
-                t={t}
-                i18nKey="costOfDay.table.howToReadShortfall"
-                values={{
-                  kg: kg(day.reweighed_kg),
-                  shortfall: uah(day.shortfall_amount),
-                  shortfallPerKg: perKg(day.shortfall_per_kg),
-                }}
-                components={{
-                  amber: <span className="font-medium text-[var(--amber)]" />,
-                  shortfall: (
-                    <Term
-                      refs={TOTAL.shortfall}
-                      tone="amber"
-                      hint={totalCell('costOfDay.table.ownShortfall')}
+            {byMoney ? (
+              <>
+                <li data-group="shortfall">
+                  {split === 'own' ? (
+                    <Trans
+                      t={t}
+                      i18nKey="costOfDay.table.howToReadShortfallOwn"
+                      components={{ amber: <span className="font-medium text-[var(--amber)]" /> }}
                     />
-                  ),
-                  kg: <Term refs={DAY.baseKg} hint={totalCell('costOfDay.table.base')} />,
-                  shortfallPerKg: (
-                    <Term
-                      refs={DAY.shortfallPerKg}
-                      tone="amber"
-                      hint={column(t('costOfDay.table.dayShortfall'))}
+                  ) : (
+                    <Trans
+                      t={t}
+                      i18nKey="costOfDay.table.howToReadShortfallPct"
+                      values={{
+                        shortfall: uah(day.shortfall_amount),
+                        accrued: uah(w.accrued),
+                        pct: dec(day.shortfall_pct ?? '0.00'),
+                      }}
+                      components={{
+                        amber: <span className="font-medium text-[var(--amber)]" />,
+                        shortfall: (
+                          <Term
+                            refs={TOTAL.shortfall}
+                            tone="amber"
+                            hint={totalCell('costOfDay.table.ownShortfall')}
+                          />
+                        ),
+                        accrued: (
+                          <Term
+                            refs={TOTAL.accrued}
+                            tone="sky"
+                            hint={totalCell('costOfDay.table.accrued')}
+                          />
+                        ),
+                      }}
                     />
-                  ),
-                }}
-              />
-            </li>
-            <li>
-              <Trans
-                t={t}
-                i18nKey="costOfDay.table.howToReadExpenses"
-                values={{
-                  kg: kg(day.reweighed_kg),
-                  expenses: uah(day.expenses_amount),
-                  expensesPerKg: perKg(day.expenses_per_kg),
-                }}
-                components={{
-                  plum: <span className="font-medium text-[var(--plum)]" />,
-                  expenses: <Term refs={DAY.expenses} tone="plum" hint={expensesHint} />,
-                  kg: <Term refs={DAY.baseKg} hint={totalCell('costOfDay.table.base')} />,
-                  expensesPerKg: (
-                    <Term
-                      refs={DAY.expensesPerKg}
-                      tone="plum"
-                      hint={column(
-                        `${t('costOfDay.table.groupExpenses')} · ${t('costOfDay.table.expensesPerKg')}`,
-                      )}
-                    />
-                  ),
-                }}
-              />
-            </li>
+                  )}
+                </li>
+                <li>
+                  <Trans
+                    t={t}
+                    i18nKey="costOfDay.table.howToReadExpensesPct"
+                    values={{
+                      expenses: uah(day.expenses_amount),
+                      accrued: uah(w.accrued),
+                      pct: dec(day.expenses_pct ?? '0.00'),
+                    }}
+                    components={{
+                      plum: <span className="font-medium text-[var(--plum)]" />,
+                      expenses: <Term refs={DAY.expenses} tone="plum" hint={expensesHint} />,
+                      accrued: (
+                        <Term
+                          refs={TOTAL.accrued}
+                          tone="sky"
+                          hint={totalCell('costOfDay.table.accrued')}
+                        />
+                      ),
+                    }}
+                  />
+                </li>
+                <li>{t('costOfDay.table.howToReadShareNote')}</li>
+              </>
+            ) : (
+              <>
+                <li data-group="shortfall">
+                  <Trans
+                    t={t}
+                    i18nKey="costOfDay.table.howToReadShortfall"
+                    values={{
+                      kg: kg(day.reweighed_kg),
+                      shortfall: uah(day.shortfall_amount),
+                      shortfallPerKg: perKg(day.shortfall_per_kg),
+                    }}
+                    components={{
+                      amber: <span className="font-medium text-[var(--amber)]" />,
+                      shortfall: (
+                        <Term
+                          refs={TOTAL.shortfall}
+                          tone="amber"
+                          hint={totalCell('costOfDay.table.ownShortfall')}
+                        />
+                      ),
+                      kg: <Term refs={DAY.baseKg} hint={totalCell('costOfDay.table.base')} />,
+                      shortfallPerKg: (
+                        <Term
+                          refs={DAY.shortfallPerKg}
+                          tone="amber"
+                          hint={column(t('costOfDay.table.dayShortfall'))}
+                        />
+                      ),
+                    }}
+                  />
+                </li>
+                <li>
+                  <Trans
+                    t={t}
+                    i18nKey="costOfDay.table.howToReadExpenses"
+                    values={{
+                      kg: kg(day.reweighed_kg),
+                      expenses: uah(day.expenses_amount),
+                      expensesPerKg: perKg(day.expenses_per_kg),
+                    }}
+                    components={{
+                      plum: <span className="font-medium text-[var(--plum)]" />,
+                      expenses: <Term refs={DAY.expenses} tone="plum" hint={expensesHint} />,
+                      kg: <Term refs={DAY.baseKg} hint={totalCell('costOfDay.table.base')} />,
+                      expensesPerKg: (
+                        <Term
+                          refs={DAY.expensesPerKg}
+                          tone="plum"
+                          hint={column(
+                            `${t('costOfDay.table.groupExpenses')} · ${t('costOfDay.table.expensesPerKg')}`,
+                          )}
+                        />
+                      ),
+                    }}
+                  />
+                </li>
+              </>
+            )}
           </ul>
         </div>
       ) : (

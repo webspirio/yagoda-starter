@@ -6,6 +6,7 @@ import { SelectField } from '@/shared/ui/select-field';
 import { HeaderSlot } from '@/shared/ui/header-slot';
 import { DateStepper } from '@/shared/ui/date-stepper';
 import { Button } from '@/shared/ui/button';
+import { Segmented } from '@/shared/ui/segmented';
 import { Spinner } from '@/shared/ui/spinner';
 import { TraceScope } from '@/shared/ui/trace';
 import { useUrlParam } from '@/shared/lib/url-state';
@@ -21,7 +22,7 @@ import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useShiftOnDateQuery } from '@/entities/shift';
 import { useCostOfDayQuery, useNetworkCostOfDayQuery } from '@/entities/cost-of-day';
 import { useDayExpensesQuery } from '@/entities/day-expense';
-import type { CostOfDay } from '@/entities/cost-of-day';
+import { COST_SPLITS, type CostOfDay, type CostSplit } from '@/entities/cost-of-day';
 import { StatusChips } from './StatusChips';
 import { ExpensesStrip } from './ExpensesStrip';
 import { CostTable } from './CostTable';
@@ -147,7 +148,7 @@ export function CostOfDayPage() {
   const allPoints = canPick && pointParam === ALL_POINTS;
 
   const [dateParam, setDateParam] = useUrlParam('date');
-  const [split] = useCostSplit();
+  const [split, setSplit] = useCostSplit();
   const today = todayIso();
   const date = isRealIsoDate(dateParam) && dateParam <= today ? dateParam : today;
 
@@ -195,6 +196,17 @@ export function CostOfDayPage() {
           </SelectField>
         </HeaderSlot>
       ) : null}
+      {/* Spec 2026-10-24 §3.1 — a view of the day, never its state: nothing
+          is stored server-side, and the day's sums are the same under all three. */}
+      <Segmented<CostSplit>
+        label={t('costOfDay.split.label')}
+        options={COST_SPLITS.map((value) => ({ value, label: t(`costOfDay.split.${value}`) }))}
+        value={split}
+        onChange={setSplit}
+        size="sm"
+        fit="content"
+        tone="strong"
+      />
       <DateStepper
         label={formatShortDate(date, locale)}
         onPrev={() => setDateParam(addDaysIso(date, -1))}
@@ -233,7 +245,7 @@ export function CostOfDayPage() {
           </p>
         ) : (
           <div className="printable print-landscape rounded-xl border border-line2 bg-card p-5">
-            <SheetHeading date={date} pointName={pointName} locale={locale} />
+            <SheetHeading date={date} pointName={pointName} split={split} locale={locale} />
             <NetworkCostOfDay day={networkDay} locale={locale} />
           </div>
         )
@@ -243,7 +255,13 @@ export function CostOfDayPage() {
         </p>
       ) : (
         <div className="printable print-landscape rounded-xl border border-line2 bg-card p-5">
-          <SheetHeading date={date} pointName={pointName} locale={locale} />
+          <SheetHeading date={date} pointName={pointName} split={split} locale={locale} />
+          {/* §2.3 — a split by money with no money to split by answered by weight. */}
+          {day.split_applied === day.split ? null : (
+            <p className="print-hide mb-3 text-sm text-muted-foreground">
+              {t('costOfDay.split.fallback')}
+            </p>
+          )}
 
           <CostOfDayBody
             key={day.shift_id}
@@ -260,21 +278,28 @@ export function CostOfDayPage() {
 /** The sheet's title — on PAPER only: on screen the header's point picker and
  *  date stepper already say both, and a second name-and-date line under them
  *  was the same words twice (audit 2026-10-24 E11). The same for one point
- *  and for «Усі точки». */
+ *  and for «Усі точки». It names the split too: the switch is `print-hide`,
+ *  and the same day reads differently under each (spec 2026-10-24 §3.1). */
 function SheetHeading({
   date,
   pointName,
+  split,
   locale,
 }: {
   date: string;
   pointName: string;
+  split: CostSplit;
   locale: string;
 }) {
   const { t } = useTranslation();
   return (
     <div className="print-only mb-4">
       <div className="font-display text-lg font-semibold">
-        {t('costOfDay.sheetTitle', { date: formatLongDate(date, locale), point: pointName })}
+        {t('costOfDay.sheetTitle', {
+          date: formatLongDate(date, locale),
+          point: pointName,
+          split: t(`costOfDay.split.${split}`).toLocaleLowerCase(locale),
+        })}
       </div>
     </div>
   );
