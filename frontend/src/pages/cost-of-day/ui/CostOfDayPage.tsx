@@ -6,7 +6,6 @@ import { SelectField } from '@/shared/ui/select-field';
 import { HeaderSlot } from '@/shared/ui/header-slot';
 import { DateStepper } from '@/shared/ui/date-stepper';
 import { Button } from '@/shared/ui/button';
-import { Segmented } from '@/shared/ui/segmented';
 import { Spinner } from '@/shared/ui/spinner';
 import { TraceScope } from '@/shared/ui/trace';
 import { useUrlParam } from '@/shared/lib/url-state';
@@ -22,12 +21,13 @@ import { usePointOptionsQuery } from '@/entities/collection-point';
 import { useShiftOnDateQuery } from '@/entities/shift';
 import { useCostOfDayQuery, useNetworkCostOfDayQuery } from '@/entities/cost-of-day';
 import { useDayExpensesQuery } from '@/entities/day-expense';
-import { COST_SPLITS, type CostOfDay, type CostSplit } from '@/entities/cost-of-day';
+import type { CostOfDay, CostSplit } from '@/entities/cost-of-day';
 import { StatusChips } from './StatusChips';
 import { ExpensesStrip } from './ExpensesStrip';
 import { CostTable } from './CostTable';
 import { ChecksDisclosure } from './ChecksDisclosure';
 import { NetworkCostOfDay } from './NetworkCostOfDay';
+import { SplitSwitch } from './SplitSwitch';
 import { useCostSplit } from '../model/useCostSplit';
 
 /** `?point=all` — «Усі точки». Not a uuid, so `usePointScope` drops it and
@@ -198,15 +198,7 @@ export function CostOfDayPage() {
       ) : null}
       {/* Spec 2026-10-24 §3.1 — a view of the day, never its state: nothing
           is stored server-side, and the day's sums are the same under all three. */}
-      <Segmented<CostSplit>
-        label={t('costOfDay.split.label')}
-        options={COST_SPLITS.map((value) => ({ value, label: t(`costOfDay.split.${value}`) }))}
-        value={split}
-        onChange={setSplit}
-        size="sm"
-        fit="content"
-        tone="strong"
-      />
+      <SplitSwitch value={split} onChange={setSplit} />
       <DateStepper
         label={formatShortDate(date, locale)}
         onPrev={() => setDateParam(addDaysIso(date, -1))}

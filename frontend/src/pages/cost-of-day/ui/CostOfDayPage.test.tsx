@@ -499,17 +499,14 @@ describe('CostOfDayPage — «Розподіл кошика» (spec 2026-10-24 �
   it('offers three splits and starts by weight', () => {
     render(<CostOfDayPage />);
 
-    const group = screen.getByRole('radiogroup', { name: 'Розподіл кошика' });
-    const options = within(group).getAllByRole('radio');
+    const group = screen.getByRole('group', { name: 'Розподіл кошика' });
+    const options = within(group).getAllByRole('button');
     expect(options.map((o) => o.textContent)).toEqual([
       'По вазі',
       'По сумі закупки',
       'Своя недостача + % витрат',
     ]);
-    expect(within(group).getByRole('radio', { name: 'По вазі' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
+    expect(options.map((o) => o.getAttribute('aria-pressed'))).toEqual(['true', 'false', 'false']);
     expect(daySplitMock).toHaveBeenLastCalledWith('weight');
   });
 
@@ -517,7 +514,7 @@ describe('CostOfDayPage — «Розподіл кошика» (spec 2026-10-24 �
     const user = userEvent.setup();
     render(<CostOfDayPage />);
 
-    await user.click(screen.getByRole('radio', { name: 'По сумі закупки' }));
+    await user.click(screen.getByRole('button', { name: 'По сумі закупки' }));
 
     expect(setSplitParamMock).toHaveBeenCalledWith('value');
     expect(getStoredCostSplit()).toBe('value');
@@ -556,7 +553,7 @@ describe('CostOfDayPage — «Розподіл кошика» (spec 2026-10-24 �
     const { rerender } = render(<CostOfDayPage />);
 
     await user.type(screen.getByPlaceholderText('Підпис витрати'), 'пальне');
-    await user.click(screen.getByRole('radio', { name: 'Своя недостача + % витрат' }));
+    await user.click(screen.getByRole('button', { name: 'Своя недостача + % витрат' }));
     splitParamMock.mockReturnValue('own');
     dayMock.mockReturnValue(ok({ ...day, split: 'own', split_applied: 'own' }));
     rerender(<CostOfDayPage />);

@@ -104,8 +104,9 @@ A single complete product with `accrued = 0` among others simply receives a zero
 ### 3.1 The switch
 
 - A three-way segmented control labelled «Розподіл кошика», in the page's actions row beside the
-  date stepper; `print-hide`. Use the existing `shared/ui/segmented.tsx`. *(author's call on
-  placement)*
+  date stepper; `print-hide`. Three `Button`s with `aria-pressed` in one labelled group
+  (`pages/cost-of-day/ui/SplitSwitch.tsx`) — not `shared/ui/segmented.tsx`, whose `motion/react`
+  thumb put the lazy bundle 11 KiB over its ceiling. *(author's call on placement and control)*
 - State lives in the URL as `?split=weight|value|own` via `useUrlParam`. An absent or unknown
   value falls back to the **remembered** choice, then to `weight`.
 - The last choice is remembered per browser in a new `shared/lib/split-preference`, modelled on
