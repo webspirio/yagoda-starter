@@ -11,7 +11,7 @@ import { usePointCashForPointQuery } from '@/entities/point-cash';
 import { useCashCountsQuery } from '@/entities/cash-count';
 import { usePayoutsQuery } from '@/entities/payout';
 import { useIntakesQuery } from '@/entities/intake';
-import { useCrateBalancesQuery } from '@/entities/crate';
+import { useCrateStandingQuery, type CrateStanding } from '@/entities/crate';
 import type { Shift } from '@/entities/shift';
 import { TodayReceipts } from './TodayReceipts';
 
@@ -23,7 +23,7 @@ export type StripShift =
 
 /**
  * One horizontal strip above the intake form: the berry drawer,
- * the crates out with people and today's receipts — what the operator would
+ * the point's crates against its allotment and today's receipts — what the operator would
  * otherwise have to leave the form to look up. The figures come from the SAME
  * reads «Каса точки» and «Ящики» use for themselves: every one is a straight
  * `sum` over the live rows of the same entity reads, never re-derived a
@@ -37,15 +37,11 @@ export function PointStrip({
   pointId,
   shift,
   isOwner,
-  targetCrates,
   onOpenReceipt,
 }: {
   pointId: string;
   shift: StripShift;
   isOwner: boolean;
-  /** `collection_points.target_crates` — `null` means «не задано», never
-   *  zero (see `PointOption`'s own doc for why that distinction matters). */
-  targetCrates: number | null;
   onOpenReceipt: (intakeId: string) => void;
 }) {
   const { t, i18n } = useTranslation();
@@ -59,7 +55,9 @@ export function PointStrip({
   const cashCounts = useCashCountsQuery({ shiftId });
   const payouts = usePayoutsQuery({ shiftId });
   const intakes = useIntakesQuery({ shiftId });
-  const balances = useCrateBalancesQuery({ pointId, isOwner });
+  // The same read «Ящики» draws its allotment bar from — on the point, with
+  // people, with berries and the allotment, all the server's.
+  const standing = useCrateStandingQuery({ pointId, isOwner });
 
   const openingBerry = (cashCounts.data?.data ?? []).find(
     (row) => row.kind === 'opening' && row.book === 'berry',
@@ -79,12 +77,6 @@ export function PointStrip({
   // this caption the cell would silently read as the day's true total.
   const paidOutTruncated = isTruncated(payouts.data);
   const todayTruncated = isTruncated(intakes.data);
-  // A row COUNT, never money — see `entities/crate`'s header for why the two
-  // must not mix.
-  const outstanding = (balances.data?.data ?? []).reduce(
-    (total, row) => total + row.outstanding_units,
-    0,
-  );
 
   const openTodayText = t('reception.today.open', { uah: formatUah(openToday, locale) });
   const todaySummary = t('reception.today.summary', {
@@ -101,12 +93,16 @@ export function PointStrip({
   const paidOutText = paidOutTruncated
     ? `${t('reception.state.paidOut', { uah: formatUah(paidOut, locale) })} · ${t('reception.state.truncatedCaption')}`
     : t('reception.state.paidOut', { uah: formatUah(paidOut, locale) });
+  const crates = standing.data ?? null;
+  const n = (value: number) => value.toLocaleString(locale).replace('-', '−');
   const cratesAside =
-    targetCrates === null
-      ? t('reception.state.noTarget')
-      : outstanding > targetCrates
-        ? t('reception.state.cratesOver', { count: outstanding - targetCrates })
-        : t('reception.state.cratesLeft', { count: targetCrates - outstanding });
+    crates === null
+      ? ''
+      : t('reception.state.cratesSplit', {
+          onHand: n(crates.on_hand),
+          inField: n(crates.in_field),
+          withBerry: n(crates.with_berry),
+        });
 
   return (
     // One compact row at `xl`: two meters (label over «figure + bar») and
@@ -127,14 +123,20 @@ export function PointStrip({
         <Meter
           to={cratesHref}
           title={t('reception.state.crates')}
-          aside={cratesAside}
-          value={t('reception.state.cratesValue', {
-            out: outstanding,
-            target: targetCrates === null ? '—' : targetCrates,
-          })}
+          aside={crates === null ? '' : <CratesLegend crates={crates} n={n} />}
+          asideTitle={cratesAside}
+          value={
+            crates === null
+              ? '…'
+              : t('reception.state.cratesValue', {
+                  total: n(crates.total),
+                  // «—» is «не задано», never zero (§6.9 / §8.2).
+                  target: crates.allotment === null ? '—' : n(crates.allotment),
+                })
+          }
           className="xl:flex-1"
         >
-          <CratesBar outstanding={outstanding} target={targetCrates} />
+          <CratesBar crates={crates} />
         </Meter>
 
         <Popover>
@@ -181,8 +183,6 @@ export function PointStrip({
 /** Below this share of the day's berry money left in the drawer, the bar
  *  turns amber: time to bring cash to the point. */
 const CASH_LOW_SHARE = 0.2;
-/** Above this share of the allotment out with people, the crates bar turns amber. */
-const CRATES_HIGH_SHARE = 0.9;
 
 /**
  * A bar WIDTH, never a figure anyone reads: the two decimals are turned into
@@ -202,13 +202,16 @@ function Meter({
   to,
   title,
   aside,
+  asideTitle,
   value,
   className,
   children,
 }: {
   to: string;
   title: string;
-  aside: string;
+  aside: React.ReactNode;
+  /** The aside as plain text, for its hover title when `aside` is a node. */
+  asideTitle?: string;
   value: string;
   className?: string;
   children: React.ReactNode;
@@ -225,7 +228,10 @@ function Meter({
         <Eyebrow className="shrink-0 leading-4 tracking-wide group-hover:text-brand">
           {title}
         </Eyebrow>
-        <span className="min-w-0 truncate font-mono text-xs text-muted-foreground" title={aside}>
+        <span
+          className="min-w-0 truncate font-mono text-xs text-muted-foreground"
+          title={asideTitle ?? (typeof aside === 'string' ? aside : undefined)}
+        >
           {aside}
         </span>
       </div>
@@ -243,12 +249,12 @@ function Meter({
 }
 
 function Track({ children, label }: { children?: React.ReactNode; label: string }) {
+  // No label means nothing to show yet (a read still loading): a bare track is
+  // decoration, not an image with no name.
+  const a11y =
+    label === '' ? { 'aria-hidden': true as const } : { role: 'img', 'aria-label': label };
   return (
-    <div
-      role="img"
-      aria-label={label}
-      className="flex h-1.5 min-w-12 flex-1 overflow-hidden rounded-full bg-muted"
-    >
+    <div {...a11y} className="flex h-1.5 min-w-12 flex-1 overflow-hidden rounded-full bg-muted">
       {children}
     </div>
   );
@@ -278,18 +284,81 @@ function CashBar({ cash, paidOut }: { cash: string | null; paidOut: string }) {
   );
 }
 
-/** Crates out with people against the allotment; no allotment, no scale. */
-function CratesBar({ outstanding, target }: { outstanding: number; target: number | null }) {
+/** The bar's three parts named in its own colours, so each figure reads
+ *  straight off the segment it is. */
+function CratesLegend({ crates, n }: { crates: CrateStanding; n: (value: number) => string }) {
   const { t } = useTranslation();
-  if (target === null) return <Track label={t('reception.state.noTarget')} />;
-  const ratio = target > 0 ? outstanding / target : outstanding > 0 ? 2 : 0;
-  const tone = ratio > 1 ? 'bg-destructive' : ratio > CRATES_HIGH_SHARE ? 'bg-amber' : 'bg-brand';
+  const items = [
+    {
+      key: 'onHand',
+      dot: 'bg-[var(--leaf)]',
+      text: t('reception.state.cratesOnHand', { count: n(crates.on_hand) }),
+      negative: crates.on_hand < 0,
+    },
+    {
+      key: 'inField',
+      dot: 'bg-[var(--amber)]',
+      text: t('reception.state.cratesInField', { count: n(crates.in_field) }),
+      negative: false,
+    },
+    {
+      key: 'withBerry',
+      dot: 'bg-primary',
+      text: t('reception.state.cratesWithBerry', { count: n(crates.with_berry) }),
+      negative: false,
+    },
+  ];
   return (
-    <Track label={t('reception.state.cratesValue', { out: outstanding, target })}>
-      <div
-        className={cn('h-full transition-[width]', tone)}
-        style={{ width: `${Math.min(1, ratio) * 100}%` }}
-      />
+    <>
+      {items.map((item, i) => (
+        <span key={item.key} className={cn(item.negative && 'text-destructive')}>
+          {i > 0 ? ' · ' : null}
+          <span
+            className={cn('mr-1 inline-block size-2 rounded-[2px] align-middle', item.dot)}
+            aria-hidden="true"
+          />
+          {item.text}
+        </span>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Every crate of the point in ONE bar, the same three parts and colours as
+ * «Ящики»'s allotment bar: on the point (leaf), out with people (amber), under
+ * berries today (berry). The scale is the allotment, so the empty track is
+ * what is missing from it; with no allotment, or more crates than it, the
+ * scale is the point's own total. Widths only — every figure is the server's.
+ */
+function CratesBar({ crates }: { crates: CrateStanding | null }) {
+  const { t } = useTranslation();
+  if (crates === null) return <Track label="" />;
+  const parts = [
+    { key: 'onHand', value: Math.max(0, crates.on_hand), className: 'bg-[var(--leaf)]' },
+    { key: 'inField', value: Math.max(0, crates.in_field), className: 'bg-[var(--amber)]' },
+    { key: 'withBerry', value: Math.max(0, crates.with_berry), className: 'bg-primary' },
+  ];
+  const filled = parts.reduce((total, part) => total + part.value, 0);
+  const scale = Math.max(filled, crates.allotment ?? 0);
+  return (
+    <Track
+      label={t('reception.state.cratesSplit', {
+        onHand: crates.on_hand,
+        inField: crates.in_field,
+        withBerry: crates.with_berry,
+      })}
+    >
+      {scale > 0
+        ? parts.map((part) => (
+            <div
+              key={part.key}
+              data-segment={part.key}
+              className={cn('h-full transition-[width]', part.className)}
+              style={{ width: `${(part.value / scale) * 100}%` }}
+            />
+          ))
+        : null}
     </Track>
   );
 }

@@ -33,6 +33,10 @@ export interface SeedPoint {
   is_active: boolean;
   target_cash: string | null;
   target_crates: number | null;
+  /** The allotment an EARLIER seed wrote, before the generated season existed —
+   *  a database still holding exactly this value gets `target_crates` instead
+   *  (`dev-seed.ts`); any other value is somebody's choice and stays. */
+  legacy_target_crates?: number;
   /** Added to every grade's base price at this point. Signed, decimal string. */
   price_offset: string;
 }
@@ -44,7 +48,11 @@ export const SEED_POINTS: readonly SeedPoint[] = [
     kind: 'reception',
     is_active: true,
     target_cash: '145453.00',
-    target_crates: 120,
+    // Sized to what the point actually holds once the generated season's
+    // transfers have landed (~1 170 crates): 120 left every bar «понад наділ»
+    // by ~1 000 (client, 24.10).
+    target_crates: 1200,
+    legacy_target_crates: 120,
     price_offset: '0',
   },
   {
@@ -53,7 +61,8 @@ export const SEED_POINTS: readonly SeedPoint[] = [
     kind: 'reception',
     is_active: true,
     target_cash: null,
-    target_crates: 60,
+    target_crates: 1500,
+    legacy_target_crates: 60,
     price_offset: '-5',
   },
   {
@@ -62,7 +71,8 @@ export const SEED_POINTS: readonly SeedPoint[] = [
     kind: 'reception',
     is_active: true,
     target_cash: '50000.00',
-    target_crates: 40,
+    target_crates: 1300,
+    legacy_target_crates: 40,
     price_offset: '-3',
   },
   {
