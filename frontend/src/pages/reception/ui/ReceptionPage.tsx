@@ -30,8 +30,10 @@ import { suggestedPaid } from '../lib/suggestedPaid';
 import {
   crateTareUnits,
   emptyLine,
+  isBlankLine,
   parseCount,
   toCreateBody,
+  withoutBlankDraft,
   type IntakeFormValues,
 } from '../model/intakeForm';
 import { SupplierSection } from './SupplierSection';
@@ -158,7 +160,10 @@ export function ReceptionPage() {
         : { status: 'none' };
   const balance = useSupplierBalanceQuery(values.supplier_id || null);
   const debt = balance.data?.debt ?? null;
-  const preview = useIntakePreview(values, bodyPointId, { enabled: shiftOpen });
+  // The receipt as it will be sent: an untouched trailing draft is not a line
+  // (`withoutBlankDraft`), so it neither darkens the preview nor blocks submit.
+  const outgoing = withoutBlankDraft(values);
+  const preview = useIntakePreview(outgoing, bodyPointId, { enabled: shiftOpen });
   // The drawer for berries — only read once a shift is open, same gate the
   // preview itself uses; `pointId` (not `bodyPointId`) because an operator's
   // OWN point still has cash to read even though their token, not this id,
@@ -213,6 +218,8 @@ export function ReceptionPage() {
     draft.product_grade_id !== '' &&
     draft.gross_kg.trim() !== '' &&
     draft.tare.some((row) => Number.parseInt(row.units, 10) >= 1);
+  // «Ще позиція» left a fresh draft nobody has touched — ignored, not nagged.
+  const draftBlank = draftIndex > 0 && draft !== undefined && isBlankLine(draft);
   const atCap = lines.fields.length >= MAX_LINES;
 
   const gradeLabel = (gradeId: string) => {
@@ -326,7 +333,8 @@ export function ReceptionPage() {
   // Every receipt that returns our crates passes through `ConfirmRefundDialog`,
   // which decides on the server's FRESH split whether there is a deposit to
   // hand over — and confirms straight through when there is none.
-  const requestSubmit = (formValues: IntakeFormValues) => {
+  const requestSubmit = (typed: IntakeFormValues) => {
+    const formValues = withoutBlankDraft(typed);
     // #72 — a malformed «Видано готівкою» is never sent (`toCreateBody`), so
     // going ahead would record the receipt WITHOUT the payout the operator
     // typed. The field already names the refusal; the submit agrees with it.
@@ -570,7 +578,7 @@ export function ReceptionPage() {
                 isSubmitting={create.isPending}
                 formErrorKey={formErrorKey}
                 formErrorParams={formErrorParams}
-                showDraftHint={draftIndex > 0 && !draftReady}
+                showDraftHint={draftIndex > 0 && !draftReady && !draftBlank}
                 // Keyed by the supplier pick: a new pick remounts it, so the
                 // pre-fill follows the ceiling again until the operator types.
                 crateReturn={
@@ -578,7 +586,7 @@ export function ReceptionPage() {
                     key={`${values.supplier_id}:${supplierPick}`}
                     supplierId={values.supplier_id || null}
                     pointId={bodyPointId ?? undefined}
-                    crateTareUnits={crateTareUnits(values.items, tareTypes.data ?? [])}
+                    crateTareUnits={crateTareUnits(outgoing.items, tareTypes.data ?? [])}
                     value={values.returned_crates}
                     onChange={(v) => setValue('returned_crates', v, { shouldDirty: true })}
                     disabled={!shiftOpen}

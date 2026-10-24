@@ -888,26 +888,50 @@ describe('ReceptionPage — several lines', () => {
 });
 
 describe('ReceptionPage — an accidental extra line', () => {
-  it('offers an escape hatch back to a submittable state', async () => {
+  // Mirrors the real hook's `isPreviewable`: settled only once EVERY line it
+  // is handed is complete.
+  const settleWhenComplete = (values: IntakeFormValues) => {
+    const complete = values.items.every(
+      (line) => line.product_grade_id !== '' && line.gross_kg.trim() !== '',
+    );
+    return complete ? SETTLED : previewState({ preview: PREVIEW, isSettled: false });
+  };
+
+  it('ignores the untouched draft «Ще позиція» leaves behind — the receipt still goes (client, 24.10)', async () => {
     const user = userEvent.setup();
-    // Mirrors the real hook's `isPreviewable`: settled only once EVERY line
-    // is complete, so committing the draft leaves a fresh empty one and the
-    // preview goes dark — exactly what strands the real screen (finding 1).
-    previewMock.mockImplementation((values: IntakeFormValues) => {
-      const complete = values.items.every(
-        (line) => line.product_grade_id !== '' && line.gross_kg.trim() !== '',
-      );
-      return complete ? SETTLED : previewState({ preview: PREVIEW, isSettled: false });
-    });
+    previewMock.mockImplementation(settleWhenComplete);
+
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+    await user.click(screen.getByRole('button', { name: 'Add line' }));
+
+    // The preview is asked about the committed line alone, not the empty draft.
+    const asked = previewMock.mock.lastCall?.[0] as IntakeFormValues;
+    expect(asked.items).toHaveLength(1);
+    expect(asked.items[0].product_grade_id).not.toBe('');
+    expect(screen.queryByText('Finish this line or remove it')).toBeNull();
+    const accept = screen.getByRole('button', { name: /^Accept/ });
+    expect(accept).toBeEnabled();
+
+    await user.click(accept);
+    await waitFor(() => expect(createMock).toHaveBeenCalledTimes(1));
+    // One line on the wire — the blank draft never leaves the screen.
+    expect(createMock.mock.calls[0][0].items).toHaveLength(1);
+  });
+
+  it('offers an escape hatch from a half-filled draft back to a submittable state', async () => {
+    const user = userEvent.setup();
+    previewMock.mockImplementation(settleWhenComplete);
 
     renderReception();
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
     await user.click(screen.getByRole('button', { name: 'Add line' }));
+    // A gross weight with no grade: started, not finished — this one blocks.
+    await user.type(screen.getByLabelText('Gross, kg'), '10');
 
-    // The fresh draft is empty: nothing previews, so nothing can be added,
-    // submitted, or explained — until the hint and the escape hatch.
     expect(screen.getByText('Finish this line or remove it')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Accept' })).toBeDisabled();
 
@@ -955,6 +979,8 @@ describe('ReceptionPage — the committed table while the preview catches up', (
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
     await user.click(screen.getByRole('button', { name: 'Add line' }));
+    // A started draft — a blank one is not sent at all (`withoutBlankDraft`).
+    await user.type(screen.getByLabelText('Gross, kg'), '10');
 
     const table = screen.getByRole('table');
     expect(within(table).queryByText('120.40')).toBeNull();

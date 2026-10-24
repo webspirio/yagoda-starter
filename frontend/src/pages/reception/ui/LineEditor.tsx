@@ -701,11 +701,11 @@ export function LineEditor({
               {t('reception.weight.pallet')}
             </Button>
           )}
-          {/* «Ще позиція» always leaves an empty draft behind, and an empty
-              draft cannot preview (`isPreviewable` wants every line complete)
-              — with no way back the operator is stuck staring at a dark submit
-              button. This is that way back, offered the moment there IS a
-              committed line to fall back to. */}
+          {/* «Ще позиція» always leaves a fresh draft behind. An untouched one
+              is ignored (`withoutBlankDraft`), but a half-filled one cannot
+              preview (`isPreviewable` wants every line complete) — this is the
+              way back from it, offered the moment there IS a committed line
+              to fall back to. */}
           {index > 0 ? (
             <Button
               type="button"
