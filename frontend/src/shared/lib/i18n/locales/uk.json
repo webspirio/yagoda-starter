@@ -474,7 +474,7 @@
       "receipts_few": "{{count}} квитанції",
       "receipts_many": "{{count}} квитанцій",
       "receipts_other": "{{count}} квитанцій",
-      "accrued": "Нараховано",
+      "accrued": "Нараховано за квитанціями",
       "accruedHint": "вартість прийнятої ягоди",
       "cashOut": "Вийшло з каси",
       "cashOutHint": "уся видана готівка — і за ягоду цього дня, і за старі залишки; анульовані — доки гроші не повернули",
@@ -489,7 +489,7 @@
     },
     "ledger": {
       "title": "Звірка каси",
-      "accrued": "Нараховано за ягоду цього дня",
+      "accrued": "Нараховано за квитанціями цього дня",
       "debtCreated": "Пішло в залишок за нами",
       "debtPaidDown": "Видано понад нараховане",
       "debtPaidDownHint": "погашено старі залишки",
@@ -502,7 +502,17 @@
       "voidedReturned": "повернули пізніше — у касу зайшли в день повернення",
       "voidedNotReturned": "з них {{notReturned}} ще чекає повернення в касу",
       "voidedNoneReturned": "ще чекають повернення в касу",
-      "note": "Доплати керівника сюди не входять — у них немає дати. Не входять і гроші, повернуті цього дня за анульовану виплату іншого дня: їх видно в «Звідки взялося це число».",
+      "note": "Сюди не входять гроші, повернуті цього дня за анульовану виплату іншого дня: їх видно в «Звідки взялося це число».",
+      "topUps": "Доплати керівника до квитанцій цього дня ({{amount}}) касу не рухають, тому тут їх немає; у «Собівартості дня» вони входять у «Нараховано».",
+      "trace": {
+        "accrued": "Плитка «Нараховано за квитанціями» · квитанції в стрічці дня",
+        "debtCreated": "Плитка «Залишків створено»",
+        "debtPaidDown": "Плитка «Видано понад нараховане»",
+        "voided": "Анульовані виплати в стрічці дня",
+        "cashOut": "Плитка «Вийшло з каси»",
+        "atReception": "Виплати з квитанцією в стрічці дня",
+        "withoutBerry": "Виплати без ягоди в стрічці дня"
+      },
       "truncated": "Показано лише перші документи — суми неповні"
     },
     "feed": {
@@ -618,14 +628,19 @@
   },
   "void": {
     "title": "Анулювати {{code}}?",
+    "topUpTitle": "Анулювати доплату {{amount}} до {{code}}?",
     "description": "Документ не редагується — анулюйте його і випишіть новий. Причина лишається в журналі.",
+    "topUpDescription": "Квитанція {{code}} не зміниться. Готівка не рухається.",
     "reason": "Причина",
     "submit": "Анулювати",
     "toast": {
-      "voided": "Документ анульовано"
+      "voided": "Документ анульовано",
+      "topUpVoided": "Доплату анульовано"
     },
     "ack": {
       "legend": "Підтвердьте наслідки",
+      "topUpDebt": "Залишок {{supplier}} зменшиться на {{amount}}",
+      "topUps": "Доплату {{topUps}} теж буде знято — після нової квитанції її треба додати знову",
       "cash": "Клієнт повернув або не отримав {{amount}} — гроші в касі",
       "payout": "Виплату {{code}} буде скасовано",
       "reopens": "Квитанції {{codes}} знову стануть відкритими",
@@ -710,7 +725,8 @@
       "over": "Понад наділ",
       "shortfallUnset": "без наділу порівнювати нема з чим",
       "shortfallOwed": "керівник ще не переказав",
-      "shortfallOnTheRoad": "з них {{uah}} уже в дорозі",
+      "shortfallOnTheRoad": "з них <road>{{uah}}</road> уже в дорозі",
+      "traceOnTheRoad": "Перекази в дорозі — картки нижче",
       "shortfallOver": "у касі більше, ніж наділ",
       "shortfallSettled": "наділ на точці відновлено"
     },
@@ -745,7 +761,8 @@
       "total": "У касі за ягоду",
       "negative": "Каса за ягоду пішла в мінус: наділ не покриває цього дня. Це не помилка вводу — це означає, що видали більше, ніж на точці було грошей на ягоду.",
       "closedOn": "Пораховано під час закриття {{date}}",
-      "totalAtClose": "У касі за ягоду — пораховано під час закриття"
+      "totalAtClose": "У касі за ягоду — пораховано під час закриття",
+      "traceTotal": "Рядок «У касі за ягоду» і плитка вгорі"
     },
     "crates": {
       "title": "Каса за ящики",
@@ -936,6 +953,10 @@
     "print": "Друк",
     "void": "Анулювати",
     "voidRow": "Анулювати {{code}}",
+    "topUps": {
+      "title": "Доплати до цієї квитанції (не друкуються)",
+      "voided": "анульовано: {{reason}}"
+    },
     "docTitle": "КВИТАНЦІЯ",
     "thanks": "Дякуємо за співпрацю!",
     "notFiscal": "Не є фіскальним чеком",
@@ -999,14 +1020,22 @@
       "price": "Ціна, ₴/кг",
       "priceDown": "Ціна менше",
       "priceUp": "Ціна більше",
-      "priceDelta": "{{delta}} до ціни сорту"
+      "priceDelta": "{{delta}} ₴/кг до ціни сорту"
     },
     "line": {
-      "formula": "{{gross}}{{pallet}}{{tare}} = {{net}} кг × {{price}} = {{amount}}",
-      "palletPart": " − {{kg}} піддон",
-      "tarePart": " − {{kg}} тара",
-      "amountWhole": "{{amount}} ₴",
-      "amountRounded": "{{exact}} → {{amount}} ₴",
+      "formula": "<gross>{{gross}}</gross><pallet></pallet> − <tare>{{tare}}</tare>\u00a0тара = <net>{{net}}</net> × <price>{{price}}</price> = <amount></amount>",
+      "palletPart": " − <kg>{{kg}}</kg>\u00a0піддон",
+      "amountWhole": "<amount>{{amount}}\u00a0₴</amount>",
+      "amountRounded": "<exact>{{exact}}</exact> → <amount>{{amount}}\u00a0₴</amount>",
+      "trace": {
+        "gross": "Поле «Брутто»",
+        "pallet": "Поле «Піддон»",
+        "tare": "Тара — сума рядків тари",
+        "net": "Чиста вага позиції",
+        "price": "Поле «Ціна»",
+        "exact": "Чиста вага × ціна, до округлення",
+        "amount": "Сума позиції — входить у «Нараховано сьогодні»"
+      },
       "pending": "…",
       "tareMissing": "Вкажіть кількість тари — без неї брутто пішло б у чисту вагу цілком.",
       "gradeMissing": "Оберіть сорт для цієї позиції — інакше вона не потрапить у квитанції.",
@@ -1085,7 +1114,15 @@
       "paysOld": "Гасимо з попереднього залишку",
       "balanceAfter": "Залишок за нами після здачі",
       "supplierOwes": "Постачальник винен нам",
-      "debtFailed": "не вдалося прочитати"
+      "debtFailed": "не вдалося прочитати",
+      "trace": {
+        "total": "«Нараховано сьогодні» + «Попередній залишок»",
+        "totalAccrued": "«Нараховано сьогодні»",
+        "newDebt": "«Нараховано сьогодні» − «Видано готівкою»",
+        "newDebtOwed": "«Нараховано сьогодні» − «Видано готівкою» − борг постачальника перед нами",
+        "paysOld": "«Видано готівкою» понад «Нараховано сьогодні»",
+        "remainder": "«Разом до видачі» − «Видано готівкою»"
+      }
     },
     "submit": "Прийняти",
     "submitPay": "Прийняти · видати {{uah}}",
@@ -1093,18 +1130,27 @@
     "state": {
       "shiftOpen": "Зміна відкрита о {{time}}",
       "cashTitle": "Каса за ягоду",
-      "paidOut": "− видано {{uah}}",
-      "openingCash": "на ранок {{uah}}",
-      "cashIn": "+ надійшло {{uah}}",
-      "returned": "+ повернуто {{uah}}",
+      "paidOut": "− видано <n>{{uah}}</n>",
+      "openingCash": "на ранок <n>{{uah}}</n>",
+      "cashIn": "+ надійшло <n>{{uah}}</n>",
+      "returned": "+ повернуто <n>{{uah}}</n>",
       "cashBar": "У касі {{cash}}, видано {{paid}}",
       "crates": "Ящики",
-      "cratesValue": "{{total}} з {{target}}",
-      "cratesSplit": "на точці {{onHand}} · у людей {{inField}} · з ягодою {{withBerry}}",
-      "cratesOnHand": "на точці {{count}}",
-      "cratesInField": "у людей {{count}}",
-      "cratesWithBerry": "з ягодою {{count}}",
-      "truncatedCaption": "перші 100 документів"
+      "cratesValue": "{{total}}\u00a0ящ. з {{target}}",
+      "cratesSplit": "на точці {{onHand}}\u00a0ящ. · у людей {{inField}}\u00a0ящ. · з ягодою {{withBerry}}\u00a0ящ.",
+      "cratesOnHand": "на точці <n>{{count}}\u00a0ящ.</n>",
+      "cratesInField": "у людей <n>{{count}}\u00a0ящ.</n>",
+      "cratesWithBerry": "з ягодою <n>{{count}}\u00a0ящ.</n>",
+      "truncatedCaption": "перші 100 документів",
+      "trace": {
+        "opening": "Ранковий перерахунок каси",
+        "cashIn": "Перекази, що надійшли на точку сьогодні",
+        "paidOut": "Видано з каси за ягоду сьогодні",
+        "returned": "Повернуто в касу анулюваннями виплат",
+        "onHand": "Частина «на точці» смуги ящиків",
+        "inField": "Частина «у людей» смуги ящиків",
+        "withBerry": "Частина «з ягодою» смуги ящиків"
+      }
     },
     "today": {
       "title": "Сьогоднішні квитанції",
@@ -1195,18 +1241,26 @@
       "kgTotal": "Ягоди здано",
       "accrued": "Нараховано",
       "balance": "Залишок",
-      "balanceHint": "усе розраховано"
+      "balanceHint": "усе розраховано",
+      "accruedTopUps": "у т.ч. доплати <topUps>{{uah}}</topUps>"
+    },
+    "trace": {
+      "intakes": "Квитанції в історії · плитка «Нараховано»",
+      "topUps": "Доплати в історії · плитка «Нараховано»",
+      "payouts": "Видачі в історії",
+      "debt": "Плитка «Залишок» · відкриті залишки"
     },
     "line": {
       "what": "{{product}} «{{grade}}»",
-      "weights": "{{gross}} брутто − {{tare}} тара · {{price}} ₴/кг",
-      "weightsWithPallet": "{{gross}} брутто − {{pallet}} піддон − {{tare}} тара · {{price}} ₴/кг"
+      "weights": "{{gross}}\u00a0брутто − {{tare}}\u00a0тара · {{price}}",
+      "weightsWithPallet": "{{gross}}\u00a0брутто − {{pallet}}\u00a0піддон − {{tare}}\u00a0тара · {{price}}"
     },
-    "breakdown": "здачі {{intakes}} + доплати {{topUps}} − видано {{payouts}} = {{debt}}",
-    "breakdownNoTopUps": "здачі {{intakes}} − видано {{payouts}} = {{debt}}",
+    "breakdown": "здачі <intakes>{{intakes}}</intakes> + доплати <topUps>{{topUps}}</topUps> − видано <payouts>{{payouts}}</payouts> = <debt>{{debt}}</debt>",
+    "breakdownNoTopUps": "здачі <intakes>{{intakes}}</intakes> − видано <payouts>{{payouts}}</payouts> = <debt>{{debt}}</debt>",
     "open": {
       "title": "Відкриті залишки — за що саме винні",
       "topUp": "Доплата до {{code}}",
+      "topUpReason": "Доплата · {{reason}}",
       "unallocated": "Переплата — не розподілено",
       "openReceipt": "Відкрити квитанцію {{code}}",
       "ofAmount": "з {{uah}}",
@@ -1217,7 +1271,7 @@
       "oldest_other": "найстаріший з {{date}} — {{count}} дня"
     },
     "timeline": {
-      "title": "Історія — здачі та виплати",
+      "title": "Історія — здачі, доплати й виплати",
       "empty": "Здач ще не було — це буде перша.",
       "intake": "Квитанція",
       "payout": "Видано",
@@ -1228,7 +1282,9 @@
       "addTopUp": "Додати доплату",
       "againstReceipt": "до {{code}}",
       "parentVoided": "квитанцію анульовано — не рахується",
-      "openLeft": "у залишок {{uah}}",
+      "addedBy": "Додано: {{name}}",
+      "topUpVoided": "Анульовано {{date}} · {{name}}: {{reason}}",
+      "openLeft": "не виплачено {{uah}}",
       "closed": "закрито ягоду за {{dates}}",
       "unallocated": "не розподілено {{uah}}"
     }
@@ -1365,7 +1421,9 @@
     "tiles": {
       "totalOwed": "Винні точкам",
       "totalOwedHint": "Показано перші {{count}} точок — сума часткова",
-      "onTheRoad": "з них {{uah}} уже в дорозі"
+      "onTheRoad": "з них <road>{{uah}}</road> уже в дорозі",
+      "traceOwed": "Колонка «Не вистачає» — точки, яким винні",
+      "traceRoad": "Рядки «у дорозі» в колонці «Не вистачає»"
     },
     "col": {
       "point": "Точка",
@@ -1391,7 +1449,7 @@
       "sentCash": "Відправили",
       "reportedCash": "Нарахувала точка",
       "discrepancy": "Різниця",
-      "crates": "Ящики: відправили {{sent}} · нарахувала {{reported}} · різниця {{diff}}",
+      "crates": "Ящики: відправили {{sent}}\u00a0ящ. · нарахувала {{reported}}\u00a0ящ. · різниця {{diff}}\u00a0ящ.",
       "note": "Точка написала: «{{note}}»",
       "resolved": "Врегульовано: {{cash}} · {{crates}} ящ. · {{date}}"
     },
@@ -1415,9 +1473,26 @@
   },
   "topUp": {
     "title": "Додати доплату",
-    "description": "Квитанція {{code}} · {{supplier}}. Борг зросте на цю суму; готівка не рухається до виплати.",
+    "description": "{{supplier}}. Залишок зросте на цю суму.",
+    "note": "Готівка не рухається до виплати. На квитанції не друкується; додається до «Нараховано» й ціни закупки в «Собівартості дня» за {{date}}. Зменшити не можна — лише анулювати.",
+    "facts": {
+      "receipt": "Квитанція",
+      "date": "Дата",
+      "products": "Ягода",
+      "net": "Нетто",
+      "amount": "Сума"
+    },
+    "balance": "Залишок: <before>{{before}}</before> → <after>{{after}}</after>",
+    "balanceNow": "Залишок: <before>{{before}}</before>",
+    "tooBig": "Доплата більша за саму квитанцію (<amount>{{amount}}</amount>) — перевірте суму.",
+    "trace": {
+      "before": "Залишок постачальника зараз",
+      "after": "Залишок зараз + сума доплати",
+      "receipt": "Сума квитанції вище"
+    },
     "amount": "Сума, ₴",
     "reason": "Причина (обовʼязково)",
+    "reasonPlaceholder": "Напр.: домовились про 48 ₴/кг замість 45 ₴/кг",
     "submit": "Додати",
     "toast": {
       "created": "Доплату додано"
@@ -1445,9 +1520,11 @@
       "onHand": "Пустих на точці",
       "inField": "У людей",
       "withBerry": "У нас з ягодою",
-      "received": "Отримано переказами: {{received}}",
-      "inTransit": "У дорозі: {{in_transit}} — ще не прийнято переказ",
-      "total": "Усього за точкою",
+      "received": "Отримано переказами: {{received}}\u00a0ящ.",
+      "inTransit": "У дорозі: {{in_transit}}\u00a0ящ. — ще не прийнято переказ",
+      "identity": "Усього за точкою <total>{{total}}\u00a0ящ.</total> = <onHand>{{onHand}}\u00a0ящ.</onHand> + <inField>{{inField}}\u00a0ящ.</inField> + <withBerry>{{withBerry}}\u00a0ящ.</withBerry>",
+      "identityTotal": "Пустих на точці + у людей + у нас з ягодою",
+      "value": "{{n}}\u00a0ящ.",
       "shortfall": "Не вистачає до наділу:",
       "shortfallNone": "—",
       "complete": "Наділ укомплектовано",
@@ -1473,10 +1550,13 @@
       "submit": "Видати",
       "toast": "Ящики видано",
       "toastDeposit": "Ящики видано, завдаток {{amount}} — у касі за ящики",
-      "depositLine": "Завдаток: {{units}} × {{price}} = {{total}}",
+      "depositLine": "Завдаток: <units>{{units}}\u00a0ящ.</units> × <price>{{price}}</price> = <total>{{total}}</total>",
+      "traceUnits": "Поле «Ящиків»",
+      "tracePrice": "Завдаток за ящик — з довідника тари",
+      "traceTotal": "Ящиків × завдаток за ящик",
       "onHandHint": "На точці {{on_hand}} пустих ящиків.",
       "inTransitHint": "Ящиків у дорозі: {{in_transit}} — спершу прийміть переказ.",
-      "goesNegativeHint": "Після видачі на точці буде {{after}} — точка винна людям ящики; запишіть у зошит, кому."
+      "goesNegativeHint": "Після видачі на точці буде {{after}}\u00a0ящ. — точка винна людям ящики; запишіть у зошит, кому."
     },
     "return": {
       "noHolders": "Ні в кого на цій точці немає ящиків.",
@@ -1488,6 +1568,7 @@
       "splitTitle": "З чого складається повернення",
       "splitIdle": "Оберіть людину й кількість, щоб побачити розкладку.",
       "splitFailed": "Не вдалося порахувати розкладку. Оновіть сторінку.",
+      "units": "{{units}}\u00a0ящ.",
       "byDeposit": "по {{price}}",
       "byReceipt": "за розпискою, без грошей",
       "refund": "Повертаємо",
@@ -1537,7 +1618,7 @@
       "truncated": "Показано останні 100 документів кожного виду.",
       "blockedByReturn": "на цю видачу вже лягло повернення — спершу анулюйте його",
       "void": "Анулювати",
-      "returnLabel": "повернення {{units}} · {{date}}",
+      "returnLabel": "повернення {{units}}\u00a0ящ. · {{date}}",
       "withBerriesPrefix": "з ягодою · ",
       "linkedToIntake": "записано з квитанцією {{code}} — анулюйте квитанцію"
     },
@@ -1610,13 +1691,25 @@
       "shortfallTotal": "Недостача разом",
       "shiftOpen": "Зміна ще відкрита — недостача порахується після закриття.",
       "notWeighed": "Не перезважено товарів: {{count}} — недостача по них не рахується.",
-      "drafted": "Не проведено: +{{kg}} — у «Базі» їх ще немає.",
+      "drafted": "Не проведено: +<kg>{{kg}}</kg> — у «Базі» їх ще немає.",
       "shortfallKg": "−{{kg}}",
       "surplusKg": "+{{kg}}",
-      "moneyFormula": "{{kg}} × {{rate}} = {{amount}}",
-      "totalValue": "{{kg}} · {{amount}}",
-      "rate": "{{product}}: середня ціна закупки — {{accrued}} ÷ {{kg}} = {{rate}} ₴/кг",
-      "rateTopUps": "{{product}}: середня ціна закупки з доплатами — {{accrued}} ÷ {{kg}} = {{rate}} ₴/кг",
+      "moneyFormula": "<kg>{{kg}}</kg> × <rate>{{rate}}</rate> = <amount>{{amount}}</amount>",
+      "totalValue": "<kg>{{kg}}</kg> · <amount>{{amount}}</amount>",
+      "rate": "{{product}}: середня ціна закупки — <accrued>{{accrued}}</accrued> ÷ <kg>{{kg}}</kg> = <rate>{{rate}}</rate>",
+      "rateTopUps": "{{product}}: середня ціна закупки з доплатами — (квитанції <receipts>{{receipts}}</receipts> + доплати <topUps>{{topUps}}</topUps>) ÷ <kg>{{kg}}</kg> = <rate>{{rate}}</rate>",
+      "trace": {
+        "point": "Колонка «Пункт» · {{product}}",
+        "diff": "Колонка «Різниця» · {{product}}",
+        "rate": "Середня ціна закупки · {{product}}",
+        "accrued": "Нараховано за квитанціями з доплатами · {{product}}",
+        "receipts": "Квитанції за день · {{product}}",
+        "topUps": "Доплати за день · {{product}}",
+        "amount": "Недостача · {{product}}",
+        "totalKg": "Сума недостач у колонці «Різниця»",
+        "totalAmount": "Сума недостач у колонці «Недостача»",
+        "drafted": "«Разом на базі» у введених позиціях"
+      },
       "cratesType": "{{name}} {{point}} → {{base}}",
       "cratesJoin": " · "
     },
@@ -1655,10 +1748,18 @@
     },
     "draftsCleared": "Позиції очищено — вони належали іншому дню або точці",
     "formula": {
-      "net": "{{gross}} − {{terms}} = {{net}}",
+      "net": "<gross>{{gross}}</gross> − <terms></terms> = <net>{{net}}</net>",
       "join": " − ",
-      "tareUnits": "{{units}} × {{weight}}",
-      "tareKg": "{{kg}} тара"
+      "tareUnits": "<units>{{units}}\u00a0шт.</units> × <weight>{{weight}}</weight>",
+      "tareKg": "<kg>{{kg}}</kg>\u00a0тара"
+    },
+    "trace": {
+      "gross": "Вага з ягодою",
+      "pallet": "Піддон",
+      "units": "Кількість ящиків",
+      "weight": "Вага одиниці обраної тари",
+      "tareKg": "Тара разом",
+      "net": "Чиста вага"
     }
   },
   "costOfDay": {
@@ -1688,7 +1789,7 @@
       "removeConfirm": "Прибрати «{{label}}»?",
       "removeYes": "Прибрати",
       "awaiting": "Очікує переважування",
-      "awaitingAmount": "{{amount}} не розподілено",
+      "awaitingAmount": "<amount>{{amount}}</amount> не розподілено",
       "awaitingNote": "Поки партію не зважили на базі, недостачі ще немає — витрати дня нікуди не лягли.",
       "addFailed": "Рядок не додано.",
       "updateFailed": "Рядок не змінено.",
@@ -1698,8 +1799,8 @@
         "labelRequired": "Назва витрати порожня. Напишіть, на що пішли гроші."
       },
       "addLine": "Додати витрату",
-      "total": "= {{amount}} · {{perKg}} ₴/кг",
-      "totalNoRate": "= {{amount}}"
+      "total": "= <amount>{{amount}}</amount> · <rate>{{perKg}} ₴/кг</rate>",
+      "totalNoRate": "= <amount>{{amount}}</amount>"
     },
     "status": {
       "closed": "Зміну закрито",
@@ -1728,24 +1829,42 @@
       "expensesPerKg": "₴/кг",
       "cost": "Собівартість, ₴/кг",
       "total": "Усього",
-      "topUps": "у т.ч. доплати {{amount}}",
-      "unweighed": "Не перезважено, не входить у підсумок: {{kg}} · {{amount}}",
-      "howToRead": "Як читати рядок: <sky>ціна закупки</sky> + <amber>недостача дня на кг</amber> + <plum>витрати дня на кг</plum> = <leaf>собівартість</leaf>. Недостачу й витрати розкладено порівну на кожен кілограм, що доїхав на базу: <amber>{{shortfall}} ÷ {{kg}} = {{shortfallPerKg}}</amber>, <plum>{{expenses}} ÷ {{kg}} = {{expensesPerKg}}</plum>.",
-      "dayFormula": "Середня собівартість кілограма дня: (нараховано {{accrued}} + витрати {{expenses}}) ÷ {{kg}} = <leaf>{{avg}} ₴/кг</leaf>",
-      "dayFormulaWeighed": "Середня собівартість кілограма дня: (нараховано по перезваженому {{accrued}} + витрати {{expenses}}) ÷ {{kg}} = <leaf>{{avg}} ₴/кг</leaf>",
+      "topUps": "у т.ч. доплати <amount>{{amount}}</amount>",
+      "unweighed": "Не перезважено, не входить у підсумок: <kg>{{kg}}</kg> · <amount>{{amount}}</amount>",
+      "howToRead": "Як читати рядок: <sky>ціна закупки</sky> + <amber>недостача дня на кг</amber> + <plum>витрати дня на кг</plum> = <leaf>собівартість</leaf>. Недостачу й витрати розкладено порівну на кожен кілограм, що доїхав на базу:",
+      "howToReadShortfall": "<amber>Недостача дня на кг:</amber> <shortfall>{{shortfall}}</shortfall> ÷ <kg>{{kg}}</kg> = <shortfallPerKg>{{shortfallPerKg}}</shortfallPerKg>",
+      "howToReadExpenses": "<plum>Витрати дня на кг:</plum> <expenses>{{expenses}}</expenses> ÷ <kg>{{kg}}</kg> = <expensesPerKg>{{expensesPerKg}}</expensesPerKg>",
+      "dayFormula": "Середня собівартість кілограма дня: (нараховано <accrued>{{accrued}}</accrued> + витрати <expenses>{{expenses}}</expenses>) ÷ <kg>{{kg}}</kg> = <avg>{{avg}}</avg>",
+      "dayFormulaWeighed": "Середня собівартість кілограма дня: (нараховано по перезваженому <accrued>{{accrued}}</accrued> + витрати <expenses>{{expenses}}</expenses>) ÷ <kg>{{kg}}</kg> = <avg>{{avg}}</avg>",
       "accruedHelpLabel": "Що таке «нараховано»",
       "accruedHelp": "«Нараховано» — сума квитанцій разом із доплатами, а не готівка з каси: борги існують, тому готівка, що вийшла з каси за цей день, — інше число, і воно на собівартість не впливає."
     },
     "chain": {
-      "price": "Ціна закупки: {{accrued}} ÷ {{kg}} = {{price}}",
-      "shortfall": "Недостача: {{kg}} × {{price}} = {{amount}}",
-      "cost": "Собівартість: {{price}} + {{shortfall}} + {{expenses}} = {{cost}}"
+      "price": "Ціна закупки: <accrued>{{accrued}}</accrued> ÷ <kg>{{kg}}</kg> = <price>{{price}}</price>",
+      "shortfall": "Недостача: <kg>{{kg}}</kg> × <price>{{price}}</price> = <amount>{{amount}}</amount>",
+      "cost": "Собівартість: <price>{{price}}</price> + <shortfall>{{shortfall}}</shortfall> + <expenses>{{expenses}}</expenses> = <cost>{{cost}}</cost>"
+    },
+    "trace": {
+      "cell": "Колонка «{{column}}» · {{row}}",
+      "column": "Колонка «{{column}}» — та сама в кожному перезваженому рядку",
+      "expenses": "Витрати дня — підсумок у блоці «Витрати дня»",
+      "topUps": "Доплати дня — значок «Доплати» над таблицею",
+      "unweighed": "Колонка «{{column}}» · рядки «не перезважено»",
+      "dayAvg": "Нараховано рядка «Усього» + витрати дня, ÷ кілограми бази",
+      "share": "Частка «{{row}}»: (недостача дня + витрати) на кг × база",
+      "full": "Повна вартість «{{row}}»: нараховано − своя недостача + частка",
+      "basket": "Недостача рядка «Усього» + витрати дня",
+      "dayFull": "Нараховано рядка «Усього» + витрати дня",
+      "dayAccrued": "Нараховано рядка «Усього» + не перезважено",
+      "pointExpenses": "Витрати точки «{{point}}»",
+      "expensesSpread": "Колонка «{{column}}» · Усього — витрати точок, що перезважили",
+      "expensesTotal": "Витрати всіх точок разом"
     },
     "checks": {
       "title": "Як перевірити, що жодна гривня не загубилась",
-      "shares": "Частки товарів: {{shares}} = {{basket}} = недостача {{shortfall}} + витрати {{expenses}}",
-      "total": "Повна вартість: {{fulls}} = {{full}} = нараховано {{accrued}} + витрати {{expenses}}",
-      "totalUnweighed": "Повна вартість: {{fulls}} = {{full}}; {{full}} + не перезважено {{unweighed}} = нараховано {{accrued}} + витрати {{expenses}}"
+      "shares": "Частки товарів: <shares/> = <basket>{{basket}}</basket> = недостача <shortfall>{{shortfall}}</shortfall> + витрати <expenses>{{expenses}}</expenses>",
+      "total": "Повна вартість: <fulls/> = <full>{{full}}</full> = нараховано <accrued>{{accrued}}</accrued> + витрати <expenses>{{expenses}}</expenses>",
+      "totalUnweighed": "Повна вартість: <fulls/> = <full>{{full}}</full>; <full>{{full}}</full> + не перезважено <unweighed>{{unweighed}}</unweighed> = нараховано <accrued>{{accrued}}</accrued> + витрати <expenses>{{expenses}}</expenses>"
     },
     "network": {
       "allPoints": "Усі точки",
@@ -1757,11 +1876,11 @@
       "partial_few": "перезважено {{n}} з {{count}} точок",
       "partial_many": "перезважено {{n}} з {{count}} точок",
       "partial_other": "перезважено {{n}} з {{count}} точок",
-      "partialWithout": "без {{kg}}",
-      "counted_one": "Враховано {{kg}} з {{count}} точки з {{total}}.",
-      "counted_few": "Враховано {{kg}} з {{count}} точок з {{total}}.",
-      "counted_many": "Враховано {{kg}} з {{count}} точок з {{total}}.",
-      "counted_other": "Враховано {{kg}} з {{count}} точок з {{total}}.",
+      "partialWithout": "без <kg>{{kg}}</kg>",
+      "counted_one": "Враховано <kg>{{kg}}</kg> з {{count}} точки з {{total}}.",
+      "counted_few": "Враховано <kg>{{kg}}</kg> з {{count}} точок з {{total}}.",
+      "counted_many": "Враховано <kg>{{kg}}</kg> з {{count}} точок з {{total}}.",
+      "counted_other": "Враховано <kg>{{kg}}</kg> з {{count}} точок з {{total}}.",
       "rule": "Середня по мережі — сума ÷ вага, ніколи не середнє з середніх цін точок. Під кожним товаром — собівартість кожної точки, як на її сторінці.",
       "status": {
         "open": "Зміна ще відкрита: {{names}}",
@@ -1769,10 +1888,10 @@
         "nothingWeighed": "Нічого не перезважено: {{names}}"
       },
       "expenses": {
-        "list": "Витрати дня: {{list}} · разом {{total}}",
-        "listOne": "Витрати дня: {{list}}",
+        "list": "Витрати дня: <list/> · разом <total>{{total}}</total>",
+        "listOne": "Витрати дня: <list/>",
         "none": "Витрат дня на точках не заводили.",
-        "unspread": "Ще не розкладено — на точці нічого не перезважено: {{list}}",
+        "unspread": "Ще не розкладено — на точці нічого не перезважено: <list/>",
         "where": "Витрати вносять на сторінці точки."
       },
       "table": {
@@ -1781,9 +1900,9 @@
         "cost": "Собівартість, ₴/кг"
       },
       "chain": {
-        "full": "Повна вартість: {{accrued}} − {{shortfall}} + {{shortfallShare}} + {{expensesShare}} = {{full}}",
-        "cost": "Собівартість: {{full}} ÷ {{kg}} = {{cost}} — сума ÷ вага по точках: {{names}}",
-        "unweighed": "Не перезважено, не входить у рядок: {{names}} — {{kg}} · {{amount}}"
+        "full": "Повна вартість: <accrued>{{accrued}}</accrued> − <shortfall>{{shortfall}}</shortfall> + <shortfallShare>{{shortfallShare}}</shortfallShare> + <expensesShare>{{expensesShare}}</expensesShare> = <full>{{full}}</full>",
+        "cost": "Собівартість: <full>{{full}}</full> ÷ <kg>{{kg}}</kg> = <cost>{{cost}}</cost> — сума ÷ вага по точках: <names/>",
+        "unweighed": "Не перезважено, не входить у рядок: <names/> — <kg>{{kg}}</kg> · <amount>{{amount}}</amount>"
       }
     }
   },

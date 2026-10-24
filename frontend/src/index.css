@@ -481,3 +481,44 @@
     color: var(--sky-ink);
   }
 }
+
+/* ─── Traced formulas («звідки це число») ──────────────────────────────────────────
+   `shared/ui/trace.tsx`: hovering or focusing a formula operand (`TraceTerm`) marks
+   every element in its `TraceScope` whose `data-trace` lists the same id with
+   `data-trace-hit="<tone>"` — the table cell the number came from, and every other
+   operand showing it. Unlayered, so it wins over a cell's own tinted background. */
+[data-trace-hit] {
+  --trace: var(--foreground);
+  background-color: color-mix(in oklab, var(--trace) 16%, transparent);
+  outline: 2px solid color-mix(in oklab, var(--trace) 75%, transparent);
+  outline-offset: -2px;
+  transition:
+    background-color 120ms ease,
+    outline-color 120ms ease;
+}
+[data-trace-hit='sky'] {
+  --trace: var(--sky);
+}
+[data-trace-hit='amber'] {
+  --trace: var(--amber);
+}
+[data-trace-hit='plum'] {
+  --trace: var(--plum);
+}
+[data-trace-hit='leaf'] {
+  --trace: var(--leaf);
+}
+[data-trace-hit='berry'] {
+  --trace: var(--brand);
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-trace-hit] {
+    transition: none;
+  }
+}
+@media print {
+  [data-trace-hit] {
+    background-color: transparent;
+    outline: none;
+  }
+}

@@ -1,5 +1,13 @@
 export { add, sub, sum, cmp, div, mul, mulInt, isNegative, isZero } from './decimal';
-export { formatDecimal, formatUah, formatKg, formatCount, toDecimalField } from './format';
+export {
+  formatDecimal,
+  formatUah,
+  formatKg,
+  formatUahPerKg,
+  formatCount,
+  toDecimalField,
+  unbreakable,
+} from './format';
 export {
   CRATES_INPUT,
   parseCrateCount,

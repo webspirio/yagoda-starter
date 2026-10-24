@@ -4,6 +4,7 @@ import { Badge } from '@/shared/ui/badge';
 import { formatDateTime } from '@/shared/lib/date';
 import { formatUah } from '@/shared/lib/money';
 import type { CostOfDay } from '@/entities/cost-of-day';
+import { DAY } from './trace-ids';
 
 /**
  * §4.1 step 2: the day's state as a row of neutral chips. None is amber —
@@ -58,6 +59,8 @@ export function StatusChips({
       {day.top_ups_total !== '0.00' && (
         <Badge
           variant="outline"
+          // The «у т.ч. доплати» figures under «Нараховано» point here.
+          data-trace={DAY.topUps}
           title={
             day.top_ups_latest_at === null
               ? undefined
@@ -77,7 +80,10 @@ export function StatusChips({
       {day.checks === null ? (
         <Badge variant="outline">{t('costOfDay.status.checksPending')}</Badge>
       ) : day.checks.shares_ok && day.checks.total_ok ? (
-        <button type="button" onClick={onChecksClick} aria-controls="cost-checks"
+        <button
+          type="button"
+          onClick={onChecksClick}
+          aria-controls="cost-checks"
           className="rounded-4xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Badge variant="outline" className="border-[var(--leaf)] text-[var(--leaf)]">
@@ -86,7 +92,10 @@ export function StatusChips({
           </Badge>
         </button>
       ) : (
-        <button type="button" onClick={onChecksClick} aria-controls="cost-checks"
+        <button
+          type="button"
+          onClick={onChecksClick}
+          aria-controls="cost-checks"
           className="rounded-4xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <Badge variant="destructive">

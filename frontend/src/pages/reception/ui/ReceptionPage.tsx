@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { Card } from '@/shared/ui/card';
+import { TraceScope } from '@/shared/ui/trace';
 import { HeaderSlot } from '@/shared/ui/header-slot';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { Button } from '@/shared/ui/button';
@@ -528,7 +529,10 @@ export function ReceptionPage() {
             onOpenShift={handleOpenShift}
           />
         ) : stripShift.status === 'error' ? null : (
-          <>
+          // One trace scope for the form (client, 24.10): the draft line's
+          // formula cites its fields and «Нараховано сьогодні», the settlement
+          // card its own rows. `display: contents` — it lays out nothing.
+          <TraceScope>
             {/* Both cards stretch to the taller one (client, 24.10): the lines
               table fills the left card's slack, the button sits at the right
               card's foot. */}
@@ -711,7 +715,7 @@ export function ReceptionPage() {
                 />
               </section>
             </Card>
-          </>
+          </TraceScope>
         )}
       </>
     );

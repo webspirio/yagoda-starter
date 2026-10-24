@@ -166,7 +166,7 @@ describe('DebtsPage — the operator', () => {
     renderDebts();
 
     expect(within(tableRow('Петро Іваненко')).getByText('inactive')).toBeInTheDocument();
-    expect(within(tableRow('Марія Бондар')).getByText('overpaid 500.00')).toBeInTheDocument();
+    expect(within(tableRow('Марія Бондар')).getByText('overpaid 500.00 ₴')).toBeInTheDocument();
   });
 
   it('disables "Pay out without berries" for a supplier who does not actually owe anything', () => {

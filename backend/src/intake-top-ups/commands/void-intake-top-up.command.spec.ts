@@ -26,7 +26,7 @@ const INTAKE = {
 
 describe('VoidIntakeTopUpCommand', () => {
   let command: VoidIntakeTopUpCommand;
-  let manager: { findOne: jest.Mock; save: jest.Mock };
+  let manager: { findOne: jest.Mock; save: jest.Mock; find: jest.Mock };
   let dataSource: { transaction: jest.Mock; manager: unknown };
   let audit: { record: jest.Mock };
   let allocations: {
@@ -52,6 +52,10 @@ describe('VoidIntakeTopUpCommand', () => {
 
   beforeEach(() => {
     manager = {
+      // `loadDisplayNames` — the one batched `users` read behind `*_by_name` (D-8).
+      find: jest
+        .fn()
+        .mockResolvedValue([{ id: OWNER.sub, first_name: 'Олена', last_name: 'Коваль' }]),
       findOne: jest
         .fn()
         .mockImplementation((entity: unknown) => (entity === IntakeTopUp ? live() : INTAKE)),
@@ -88,6 +92,8 @@ describe('VoidIntakeTopUpCommand', () => {
     expect(res.void_reason).toBe('помилка суми');
     expect(res.voided_by_user_id).toBe('owner-1');
     expect(res.voided_at).not.toBeNull();
+    // «Анульовано … · Олена Коваль: …» — the voider's name, off one batched read (D-8).
+    expect(res.voided_by_name).toBe('Олена Коваль');
   });
 
   it('reads the row under a write lock, inside the transaction', async () => {

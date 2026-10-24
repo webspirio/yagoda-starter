@@ -80,6 +80,19 @@ function kgUnitFor(locale: string): string {
 export const formatKg = (value: string, locale = 'uk'): string =>
   `${formatDecimal(value, locale)} ${kgUnitFor(locale)}`;
 
+/** A price per kilogram — «189,42 ₴/кг», «189.42 ₴/kg»: the unit of every
+ *  price operand in a written-out formula. */
+export const formatUahPerKg = (value: string, locale = 'uk'): string =>
+  `${formatDecimal(value, locale)} ₴/${kgUnitFor(locale)}`;
+
+/**
+ * One operand of a written-out formula, held on one line: each plain space
+ * becomes a no-break space, so «113 044,20 ₴ ÷ 596,80 кг = 189,42 ₴/кг» may
+ * wrap between terms but never strands «₴/кг» at the start of the next line.
+ * (The thousands group is already U+202F, which never breaks.)
+ */
+export const unbreakable = (term: string): string => term.replace(/ /g, ' ');
+
 /**
  * A whole count — crates, receipts, positions — grouped like money («1 250», «−14»),
  * never with decimals. `n` is a count, so anything fractional is a caller bug.

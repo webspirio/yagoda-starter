@@ -15,7 +15,7 @@ import { Spinner } from '@/shared/ui/spinner';
 import { decimalKey, useClientSort } from '@/shared/ui/data-table-sort';
 import { StatGrid } from '@/shared/ui/stat-grid';
 import { StatTile } from '@/shared/ui/stat-tile';
-import { sub, cmp, isNegative, formatUah, formatDecimal } from '@/shared/lib/money';
+import { sub, cmp, isNegative, formatUah, formatDecimal, unbreakable } from '@/shared/lib/money';
 import { ageInDays, formatShortDate } from '@/shared/lib/date';
 import { cn } from '@/shared/lib/cn';
 import { usePointScope } from '@/entities/user';
@@ -220,7 +220,8 @@ export function DebtsPage() {
     cell: (row) =>
       isNegative(row.debt) ? (
         <span className="text-[var(--leaf)]">
-          {t('debts.overpaid', { amount: formatDecimal(sub('0', row.debt), locale) })}
+          {/* An inline phrase, not a bare cell figure — so it carries its ₴ (2026-10-24). */}
+          {t('debts.overpaid', { amount: unbreakable(formatUah(sub('0', row.debt), locale)) })}
         </span>
       ) : (
         <span className="text-[var(--amber)]">{formatDecimal(row.debt, locale)}</span>

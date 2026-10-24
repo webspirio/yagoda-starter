@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { i18n } from '@/shared/lib/i18n';
 import type { NetworkCostOfDay, NetworkCostPoint } from '@/entities/cost-of-day';
 import { NetworkCostTable } from './NetworkCostTable';
+import { NetworkCostOfDay as NetworkBody } from './NetworkCostOfDay';
 
 beforeAll(async () => {
   await i18n.changeLanguage('uk');
@@ -41,9 +42,30 @@ const cell = (over: Partial<NetworkCostPoint>): NetworkCostPoint => ({
 const day: NetworkCostOfDay = {
   date: '2026-10-22',
   points: [
-    { point_id: 'pt-shp', point_name: 'Шипинки', shift_id: 's-shp', provisional: false, expenses_amount: '3800.00', weighed: true },
-    { point_id: 'pt-hai', point_name: 'Гайове', shift_id: 's-hai', provisional: false, expenses_amount: '1050.00', weighed: true },
-    { point_id: 'pt-lis', point_name: 'Лісове', shift_id: 's-lis', provisional: false, expenses_amount: '500.00', weighed: false },
+    {
+      point_id: 'pt-shp',
+      point_name: 'Шипинки',
+      shift_id: 's-shp',
+      provisional: false,
+      expenses_amount: '3800.00',
+      weighed: true,
+    },
+    {
+      point_id: 'pt-hai',
+      point_name: 'Гайове',
+      shift_id: 's-hai',
+      provisional: false,
+      expenses_amount: '1050.00',
+      weighed: true,
+    },
+    {
+      point_id: 'pt-lis',
+      point_name: 'Лісове',
+      shift_id: 's-lis',
+      provisional: false,
+      expenses_amount: '500.00',
+      weighed: false,
+    },
   ],
   provisional: false,
   accrued: '175550.00',
@@ -171,12 +193,12 @@ describe('NetworkCostTable', () => {
 
     const chain = norm(container.querySelector('[data-chain]')?.textContent);
     expect(chain).toContain(
-      'Повна вартість: 160 550,00 − 1 600,00 + 1 600,00 + 4 850,00 = 165 400,00',
+      'Повна вартість: 160 550,00 ₴ − 1 600,00 ₴ + 1 600,00 ₴ + 4 850,00 ₴ = 165 400,00 ₴',
     );
     expect(chain).toContain(
-      'Собівартість: 165 400,00 ÷ 1 000,00 = 165,40 — сума ÷ вага по точках: Шипинки, Гайове',
+      'Собівартість: 165 400,00 ₴ ÷ 1 000,00 кг = 165,40 ₴/кг — сума ÷ вага по точках: Шипинки, Гайове',
     );
-    expect(chain).toMatch(/Не перезважено, не входить у рядок: Лісове — 100,00 кг · 15 000,00/);
+    expect(chain).toMatch(/Не перезважено, не входить у рядок: Лісове — 100,00 кг · 15 000,00 ₴/);
 
     expect(texts(rowOf('Шипинки'))[10]).toBe('166,84');
     expect(texts(rowOf('Гайове'))[10]).toBe('160,00');
@@ -197,14 +219,18 @@ describe('NetworkCostTable', () => {
 
     const formula = norm(container.querySelector('[data-day-formula]')?.textContent);
     // Лісове's 15 000,00 is out of the numerator, and the operand says so (E3).
-    expect(formula).toContain('(нараховано по перезваженому 160 550,00 + витрати 4 850,00) ÷ 1 000,00');
+    expect(formula).toContain(
+      '(нараховано по перезваженому 160 550,00 ₴ + витрати 4 850,00 ₴) ÷ 1 000,00 кг',
+    );
     // …and the kilograms say whose they are (E1).
     expect(norm(container.querySelector('[data-counted]')?.textContent)).toBe(
       'Враховано 1 000,00 кг з 2 точок з 3.',
     );
-    expect(formula).toContain('= 165,40');
+    expect(formula).toContain('= 165,40 ₴/кг');
     expect(screen.getByText(/ніколи не середнє з середніх/)).toBeInTheDocument();
-    expect(screen.getByText(/Не перезважено, не входить у підсумок: 100,00/)).toBeInTheDocument();
+    expect(norm(screen.getByText(/Не перезважено, не входить у підсумок/).textContent)).toMatch(
+      /Не перезважено, не входить у підсумок: 100,00 кг/,
+    );
   });
 
   it('dashes a product nobody weighed and waits for a reweigh', () => {
@@ -236,5 +262,57 @@ describe('NetworkCostTable', () => {
     expect(row.slice(6)).toEqual(['—', '—', '—', '—', '—']);
     expect(container.querySelector('[data-awaiting]')).not.toBeNull();
     expect(container.querySelector('[data-day-formula]')).toBeNull();
+  });
+
+  // «Звідки це число» (client, 24.10) — the body owns the trace scope, so the
+  // expenses line above the table is in reach of the formulas under it.
+  describe('traced formulas', () => {
+    const termOf = (root: Element, text: string) =>
+      Array.from(root.querySelectorAll<HTMLElement>('[data-slot="trace-term"]')).find(
+        (el) => norm(el.textContent) === text,
+      ) as HTMLElement;
+
+    it('points the row chain at the product row’s cells', async () => {
+      const user = userEvent.setup();
+      const { container } = render(<NetworkBody day={day} locale="uk" />);
+      const rasp = within(rowOf('Малина')).getAllByRole('cell');
+      await user.click(screen.getByRole('button', { name: 'Показати точки: Малина' }));
+      const chain = container.querySelector('[data-chain]') as HTMLElement;
+
+      fireEvent.pointerEnter(termOf(chain, '4 850,00 ₴'));
+      expect(rasp[8]).toHaveAttribute('data-trace-hit', 'plum');
+      expect(rasp[9]).not.toHaveAttribute('data-trace-hit');
+
+      // The «не перезважено» step points at the sub-row of the point left out.
+      fireEvent.pointerEnter(termOf(chain, '15 000,00 ₴'));
+      expect(within(rowOf('Лісове')).getAllByRole('cell')[4]).toHaveAttribute(
+        'data-trace-hit',
+        'sky',
+      );
+      expect(within(rowOf('Шипинки')).getAllByRole('cell')[4]).not.toHaveAttribute(
+        'data-trace-hit',
+      );
+    });
+
+    it('points the day formula’s витрати at the weighed points’ entries above the table', () => {
+      const { container } = render(<NetworkBody day={day} locale="uk" />);
+      const formula = container.querySelector('[data-day-formula]') as HTMLElement;
+      const line = container.querySelector('[data-network-expenses]') as HTMLElement;
+
+      fireEvent.pointerEnter(termOf(formula, '4 850,00 ₴'));
+      expect(termOf(line, '3 800,00 ₴')).toHaveAttribute('data-trace-hit', 'plum');
+      expect(termOf(line, '1 050,00 ₴')).toHaveAttribute('data-trace-hit', 'plum');
+      // Лісове weighed nothing: its 500,00 is not in the numerator.
+      for (const el of line.querySelectorAll('[data-slot="trace-term"]')) {
+        if (norm(el.textContent) === '500,00 ₴') expect(el).not.toHaveAttribute('data-trace-hit');
+      }
+      const total = within(container.querySelector('[data-total]') as HTMLElement).getAllByRole(
+        'cell',
+      );
+      expect(total[8]).toHaveAttribute('data-trace-hit', 'plum');
+
+      fireEvent.pointerEnter(termOf(container.querySelector('[data-counted]')!, '1 000,00 кг'));
+      expect(total[2]).toHaveAttribute('data-trace-hit', 'neutral');
+    });
   });
 });

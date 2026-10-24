@@ -4,7 +4,8 @@ import { Repository } from 'typeorm';
 import { IntakeTopUp } from '../intake-top-up.entity';
 import { IntakeTopUpResponse } from '../intake-top-up.mapper';
 import { ListIntakeTopUpsQueryDto } from '../dto/list-intake-top-ups.query';
-import { RawTopUpRow, toTopUpResponse, topUpRows } from './intake-top-up-rows';
+import { RawTopUpRow, rawTopUpUserIds, toTopUpResponse, topUpRows } from './intake-top-up-rows';
+import { loadDisplayNames } from '../../users/display-names';
 import { resolvePointFilter } from '../../auth/access/point-scope';
 import { Paginated } from '../../common/dto/paginated';
 import { skipOf } from '../../common/dto/pagination-query.dto';
@@ -32,6 +33,13 @@ export class ListIntakeTopUpsQuery {
       .offset(skipOf(query))
       .getRawMany<RawTopUpRow>();
 
-    return { data: rows.map(toTopUpResponse), total, page: query.page, limit: query.limit };
+    // ONE map for the whole page (D-8) — never one name read per row.
+    const names = await loadDisplayNames(this.repo.manager, rawTopUpUserIds(rows));
+    return {
+      data: rows.map((r) => toTopUpResponse(r, names)),
+      total,
+      page: query.page,
+      limit: query.limit,
+    };
   }
 }

@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { isTruncated } from '@/shared/api';
 import { ListPage } from '@/shared/ui/templates/list-page';
 import { StatGrid } from '@/shared/ui/stat-grid';
 import { StatTile } from '@/shared/ui/stat-tile';
 import { Spinner } from '@/shared/ui/spinner';
+import { TraceScope, TraceTerm } from '@/shared/ui/trace';
 import { sum, cmp, isZero, formatUah } from '@/shared/lib/money';
 import { usePointCashQuery } from '@/entities/point-cash';
 import { usePointOptionsQuery } from '@/entities/collection-point';
@@ -151,10 +152,7 @@ export function TransfersPage() {
   // own `useMemo` (also keyed in part on this prop) actually memoizes rather
   // than recomputing its columns on every render off a fresh arrow-function
   // identity.
-  const lookupPointName = useCallback(
-    (id: string) => pointName.get(id) ?? id,
-    [pointName],
-  );
+  const lookupPointName = useCallback((id: string) => pointName.get(id) ?? id, [pointName]);
   // Finding 3 — `useTransfersQuery({})` is unscoped across the WHOLE
   // network at its default `limit: 100`, so the HISTORY can be a partial
   // page; it says so rather than read as the whole log. Open disputes no
@@ -192,61 +190,84 @@ export function TransfersPage() {
 
   return (
     <>
-      <ListPage
-        eyebrow={t('transfers.eyebrow')}
-        title={t('transfers.title')}
-        description={t('transfers.description')}
-        stats={
-          <StatGrid columns={2}>
-            <StatTile
-              label={t('transfers.tiles.totalOwed')}
-              value={formatUah(totalOwed, locale)}
-              tone="amber"
-              // Same truncation-honesty convention as `DebtsPage`'s own
-              // equivalent tile: `rows` is `pointCash.data.data`, capped at
-              // `limit: 100` with no paging (`usePointCash.ts`). A network
-              // with more than 100 points would otherwise sum only the first
-              // page and print that as if it were the whole network's total.
-              hint={
-                isTruncated(pointCash.data)
-                  ? t('transfers.tiles.totalOwedHint', { count: rows.length })
-                  : !isZero(totalOnTheRoad)
-                    ? t('transfers.tiles.onTheRoad', { uah: formatUah(totalOnTheRoad, locale) })
-                    : undefined
-              }
-            />
-          </StatGrid>
-        }
-      >
-        {isPending ? (
-          <div className="flex justify-center py-12">
-            <Spinner />
-          </div>
-        ) : isError ? (
-          <p role="alert" className="py-6 text-center text-destructive">
-            {t('common.somethingWentWrong')}
-          </p>
-        ) : (
-          <div className="flex flex-col gap-5">
-            {transfersTruncated ? (
-              <p className="text-xs text-muted-foreground">{t('transfers.truncatedHint')}</p>
-            ) : null}
-            <PointDebtTable
-              rows={rows}
-              unresolvedDisputes={unresolvedDisputes}
-              inTransit={inTransit}
-              onSend={openSend}
-              onResolve={openResolve}
-            />
-            <TransferHistory
-              transfers={allTransfers}
-              pointName={lookupPointName}
-              onVoid={openVoid}
-              onResolve={openResolve}
-            />
-          </div>
-        )}
-      </ListPage>
+      {/* One trace scope: the tile's figures light the table rows they sum. */}
+      <TraceScope>
+        <ListPage
+          eyebrow={t('transfers.eyebrow')}
+          title={t('transfers.title')}
+          description={t('transfers.description')}
+          stats={
+            <StatGrid columns={2}>
+              <StatTile
+                label={t('transfers.tiles.totalOwed')}
+                // Σ of the owed rows' «Не вистачає» — pointing at it lights them
+                // (`debt:owed`, `PointDebtTable`), as the «з них» figure lights
+                // their «у дорозі» lines.
+                value={
+                  <TraceTerm refs="debt:owed" tone="amber" hint={t('transfers.tiles.traceOwed')}>
+                    {formatUah(totalOwed, locale)}
+                  </TraceTerm>
+                }
+                tone="amber"
+                // Same truncation-honesty convention as `DebtsPage`'s own
+                // equivalent tile: `rows` is `pointCash.data.data`, capped at
+                // `limit: 100` with no paging (`usePointCash.ts`). A network
+                // with more than 100 points would otherwise sum only the first
+                // page and print that as if it were the whole network's total.
+                hint={
+                  isTruncated(pointCash.data) ? (
+                    t('transfers.tiles.totalOwedHint', { count: rows.length })
+                  ) : !isZero(totalOnTheRoad) ? (
+                    <Trans
+                      t={t}
+                      i18nKey="transfers.tiles.onTheRoad"
+                      values={{ uah: formatUah(totalOnTheRoad, locale) }}
+                      components={{
+                        road: (
+                          <TraceTerm
+                            refs="debt:road"
+                            tone="amber"
+                            hint={t('transfers.tiles.traceRoad')}
+                          />
+                        ),
+                      }}
+                    />
+                  ) : undefined
+                }
+              />
+            </StatGrid>
+          }
+        >
+          {isPending ? (
+            <div className="flex justify-center py-12">
+              <Spinner />
+            </div>
+          ) : isError ? (
+            <p role="alert" className="py-6 text-center text-destructive">
+              {t('common.somethingWentWrong')}
+            </p>
+          ) : (
+            <div className="flex flex-col gap-5">
+              {transfersTruncated ? (
+                <p className="text-xs text-muted-foreground">{t('transfers.truncatedHint')}</p>
+              ) : null}
+              <PointDebtTable
+                rows={rows}
+                unresolvedDisputes={unresolvedDisputes}
+                inTransit={inTransit}
+                onSend={openSend}
+                onResolve={openResolve}
+              />
+              <TransferHistory
+                transfers={allTransfers}
+                pointName={lookupPointName}
+                onVoid={openVoid}
+                onResolve={openResolve}
+              />
+            </div>
+          )}
+        </ListPage>
+      </TraceScope>
 
       {dialogTarget?.kind === 'send' ? (
         <SendTransferDialog
@@ -258,11 +279,7 @@ export function TransfersPage() {
       ) : null}
 
       {dialogTarget?.kind === 'resolve' ? (
-        <ResolveTransferDialog
-          transfer={dialogTarget.transfer}
-          open
-          onClose={closeDialog}
-        />
+        <ResolveTransferDialog transfer={dialogTarget.transfer} open onClose={closeDialog} />
       ) : null}
 
       {dialogTarget?.kind === 'void' ? (

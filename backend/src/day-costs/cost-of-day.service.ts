@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { ShiftsService } from '../shifts/shifts.service';
 import { productCostRows, ProductCostGrade, ProductCostRow } from './product-cost-rows';
 import { add, allocate, cmp, div, isZero, sub, sum } from '../common/money';
@@ -215,13 +215,31 @@ export class CostOfDayService {
     private readonly shifts: ShiftsService,
   ) {}
 
+  /**
+   * ONE SNAPSHOT (audit 2026-10-24 M5). The day is five reads — the shift,
+   * the grade totals, the receipts its top-ups split over, the expenses and
+   * the latest top-up's time — and a top-up, a void or an expense landing
+   * between two of them used to print a day no single moment ever had: a
+   * «Нараховано» without the expense the per-kg column already spread, or a
+   * «last top-up» time for a доплата the column does not hold yet. One REPEATABLE READ
+   * transaction makes every figure on the screen the same instant's, as
+   * `SupplierSettlementQuery.settlementFor` does for a supplier's balance.
+   */
   async forShift(_actor: AuthenticatedUser, shiftId: string): Promise<CostOfDayResponse> {
-    const shift = await this.shifts.findOneRaw(shiftId);
+    return this.dataSource.transaction('REPEATABLE READ', (manager) =>
+      this.forShiftIn(manager, shiftId),
+    );
+  }
+
+  /** `forShift`'s reads through a caller's own transaction — the network day
+   *  reads every point's day inside ONE snapshot, not one per point. */
+  async forShiftIn(manager: EntityManager, shiftId: string): Promise<CostOfDayResponse> {
+    const shift = await this.shifts.findOneRaw(shiftId, manager);
     if (!shift) throw new NotFoundException('Shift not found');
 
-    const rows = await productCostRows(this.dataSource, shiftId);
+    const rows = await productCostRows(manager, shiftId);
 
-    const expensesRows = (await this.dataSource.query(
+    const expensesRows = (await manager.query(
       `SELECT COALESCE(SUM(amount)::text, '0.00') AS total FROM day_expenses WHERE shift_id = $1`,
       [shiftId],
     )) as { total: string }[];
@@ -237,7 +255,7 @@ export class CostOfDayService {
     // from that Note, not an oversight. (The allocation itself now lives in
     // `productCostRows`, which both this service and `NetworkCostOfDayService` (through `forShift`)
     // call.)
-    const latestRows = (await this.dataSource.query(
+    const latestRows = (await manager.query(
       `SELECT MAX(ti.created_at) AS latest
          FROM intake_top_ups ti
          JOIN intakes i ON i.id = ti.intake_id

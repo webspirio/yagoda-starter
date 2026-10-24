@@ -14,10 +14,13 @@ import { canVoidIntake, useIntakeQuery } from '@/entities/intake';
 import { useSupplierQuery, useSupplierSettlementQuery, supplierName } from '@/entities/supplier';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import { useMeQuery } from '@/entities/user';
+import { useIntakeTopUpsQuery } from '@/entities/intake-top-up';
+import { add, isZero, sum } from '@/shared/lib/money';
 import { useNetworkSettingsQuery } from '@/entities/network-settings';
 import { VoidDocumentDialog, reopenedCodes } from '@/features/void-document';
 import { buildIntakeReceipt } from '../model/buildIntakeReceipt';
 import { RECEIPT_DIALOG_CLASS, RECEIPT_SCROLL_CLASS } from './receiptDialogLayout';
+import { ReceiptTopUps } from './ReceiptTopUps';
 
 /**
  * The receipt for one intake — `GET /intakes/:id` composed with the names a
@@ -72,6 +75,13 @@ export function ReceiptDialog({
   const meQuery = useMeQuery();
   const me = meQuery.data;
 
+  // The receipt's top-ups (#61), read for BOTH roles: voiding the receipt takes its live
+  // top-ups off the balance with it, so the void's «зменшиться на …» must count them
+  // (review 2026-10-24 #2). Only the owner is TOLD about them — the screen-only block and
+  // the void's own box — while the client decides whether operators see top-ups at all.
+  const topUpsQuery = useIntakeTopUpsQuery({ intakeId: intakeId ?? undefined });
+  const topUps = topUpsQuery.data?.data;
+
   // Not part of `isError`: a missing note must never stop a supplier's receipt.
   const settingsQuery = useNetworkSettingsQuery();
   const { refetch: refetchSettings } = settingsQuery;
@@ -94,7 +104,11 @@ export function ReceiptDialog({
   );
 
   const isError =
-    intakeQuery.isError || supplierQuery.isError || tareTypesQuery.isError || meQuery.isError;
+    intakeQuery.isError ||
+    supplierQuery.isError ||
+    tareTypesQuery.isError ||
+    meQuery.isError ||
+    topUpsQuery.isError;
 
   // VoidDocumentDialog keeps its form state for its lifetime (react-hook-form's
   // `defaultValues` only apply on mount, and it stays mounted here so `open`
@@ -134,8 +148,11 @@ export function ReceiptDialog({
         {t('common.somethingWentWrong')}
       </p>
     );
-  } else if (intake && supplier && tareTypes && me) {
+  } else if (intake && supplier && tareTypes && me && topUps) {
     const showVoid = canVoidIntake(me, intake);
+    const isOwner = me.role === 'network_owner';
+    // Live = `counts_toward_balance`: neither the top-up nor (a voidable) receipt voided.
+    const liveTopUps = sum(topUps.filter((u) => u.counts_toward_balance).map((u) => u.amount));
     // The line count rides under the code on every receipt, the single line
     // too (M4); the void hint only where «Анулювати» is actually there (A4).
     subtitle = t(showVoid ? 'receipt.subtitleVoidable' : 'receipt.subtitle', {
@@ -157,6 +174,7 @@ export function ReceiptDialog({
         {settingsQuery.isError && !settingsQuery.data ? (
           <p className="print-hide text-sm text-muted-foreground">{t('receipt.noteLoadFailed')}</p>
         ) : null}
+        {isOwner ? <ReceiptTopUps topUps={topUps} /> : null}
       </>
     );
 
@@ -197,7 +215,8 @@ export function ReceiptDialog({
               }
             : undefined
         }
-        intakeAmount={intake.amount}
+        intakeAmount={add(intake.amount, liveTopUps)}
+        intakeTopUps={isOwner && !isZero(liveTopUps) ? liveTopUps : undefined}
       />
     );
   }

@@ -6,7 +6,7 @@ import { SectionCard } from '@/shared/ui/section-card';
 import { Spinner } from '@/shared/ui/spinner';
 import { Chip } from '@/shared/ui/chip';
 import { DateBound } from '@/shared/ui/date-bound';
-import { formatDecimal, formatUah } from '@/shared/lib/money';
+import { formatUahPerKg, unbreakable } from '@/shared/lib/money';
 import { formatLongDate, todayIso } from '@/shared/lib/date';
 import { useUrlPatch } from '@/shared/lib/url-state';
 import { apiErrorToBanner } from '@/shared/lib/api-error';
@@ -85,7 +85,8 @@ export function PriceChanges() {
   // ONE `Intl.DateTimeFormat` over `new Date(created_at)`: the viewer's wall
   // clock, as `PriceHistoryDialog` reads the same column.
   const time = new Intl.DateTimeFormat(i18n.language, { hour: '2-digit', minute: '2-digit' });
-  const money = (value: string) => formatDecimal(value, i18n.language);
+  // A grade's price is per kilogram: both sides of «було → стало» say so.
+  const perKg = (value: string) => unbreakable(formatUahPerKg(value, i18n.language));
 
   const renderRow = (c: PriceChange) => (
     <li key={c.id} className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-sm">
@@ -101,8 +102,8 @@ export function PriceChanges() {
         {c.product_name} · {c.grade_name}
       </span>
       <span className="font-mono text-xs tabular-nums">
-        {c.previous_base_price !== null ? `${money(c.previous_base_price)} → ` : null}
-        <b>{formatUah(c.base_price, i18n.language)}</b>
+        {c.previous_base_price !== null ? `${perKg(c.previous_base_price)} → ` : null}
+        <b>{perKg(c.base_price)}</b>
       </span>
       {c.reason ? (
         <span className="min-w-0 truncate text-xs italic text-muted-foreground">«{c.reason}»</span>

@@ -90,10 +90,8 @@ export function PointDebtTable({
   const disputesOf = (row: PointCashRow): Transfer[] =>
     disputesByPoint.get(row.collection_point_id) ?? [];
   const isExpandable = (row: PointCashRow) => disputesOf(row).length >= 2;
-  const isExpanded = (row: PointCashRow) =>
-    openId === row.collection_point_id && isExpandable(row);
-  const toggle = (row: PointCashRow) =>
-    setOpenId(isExpanded(row) ? null : row.collection_point_id);
+  const isExpanded = (row: PointCashRow) => openId === row.collection_point_id && isExpandable(row);
+  const toggle = (row: PointCashRow) => setOpenId(isExpanded(row) ? null : row.collection_point_id);
 
   const plain = (v: string | null) => (v == null ? '—' : formatDecimal(v, locale));
 
@@ -129,22 +127,34 @@ export function PointDebtTable({
       cell: (row) => {
         const tone = shortfallTone(row.shortfall);
         const over = row.shortfall != null && cmp(row.shortfall, '0') === -1;
+        // Owed (> 0): the rows the page tile «Винні точкам» sums — the `data-trace`
+        // sources its terms light (`debt:owed`, `debt:road`).
+        const owed = row.shortfall != null && cmp(row.shortfall, '0') === 1;
+        // «понад 500,00 ₴» is a phrase, not a bare cell figure: it carries its unit.
         const text =
           row.shortfall == null
             ? '—'
             : over
-              ? t('transfers.overTarget', { amount: formatDecimal(sub('0', row.shortfall), locale) })
+              ? t('transfers.overTarget', { amount: formatUah(sub('0', row.shortfall), locale) })
               : formatDecimal(row.shortfall, locale);
         const road = inTransit.get(row.collection_point_id);
         return (
           <div className="flex flex-col items-end">
             {tone ? (
-              <span className={cn(tone === 'amber' ? 'text-amber' : 'text-leaf')}>{text}</span>
+              <span
+                data-trace={owed ? 'debt:owed' : undefined}
+                className={cn(tone === 'amber' ? 'text-amber' : 'text-leaf')}
+              >
+                {text}
+              </span>
             ) : (
               text
             )}
             {road ? (
-              <span className="text-xs font-normal text-muted-foreground">
+              <span
+                data-trace={owed ? 'debt:road' : undefined}
+                className="text-xs font-normal text-muted-foreground"
+              >
                 {t('transfers.onTheRoad', { uah: formatUah(road, locale) })}
               </span>
             ) : null}

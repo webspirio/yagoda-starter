@@ -7,6 +7,7 @@ import { HeaderSlot } from '@/shared/ui/header-slot';
 import { DateStepper } from '@/shared/ui/date-stepper';
 import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
+import { TraceScope } from '@/shared/ui/trace';
 import { useUrlParam } from '@/shared/lib/url-state';
 import {
   todayIso,
@@ -52,22 +53,26 @@ function CostOfDayBody({
     day.checks !== null && !(day.checks.shares_ok && day.checks.total_ok),
   );
 
+  // ONE trace scope over the chips, the expenses strip, the table with its
+  // formula lines and the звірка: a formula's operand may point at any of them
+  // (`shared/ui/trace`). `display: contents`, so the column's gap is untouched.
   return (
     <div className="flex flex-col gap-4">
-      <StatusChips
-        day={day}
-        locale={locale}
-        onChecksClick={() => {
-          setChecksOpen(true);
-          document.getElementById('cost-checks')?.scrollIntoView({ block: 'nearest' });
-        }}
-      />
-      {/* The strip is the ONLY write path to `day_expenses`, and the server
+      <TraceScope>
+        <StatusChips
+          day={day}
+          locale={locale}
+          onChecksClick={() => {
+            setChecksOpen(true);
+            document.getElementById('cost-checks')?.scrollIntoView({ block: 'nearest' });
+          }}
+        />
+        {/* The strip is the ONLY write path to `day_expenses`, and the server
           keeps counting its lines in expenses_amount/basket/per_kg even when
           every intake on the day is voided — so it stays reachable whenever a
           shift exists, not just when there are products. The table alone falls
           back to the empty-day message. */}
-      {/* KEYED ON THE SHIFT, and that key is load-bearing. The strip holds the
+        {/* KEYED ON THE SHIFT, and that key is load-bearing. The strip holds the
           half-typed expense — label, amount, and which line is open for
           editing — in its own state, and stepping to another date only
           RE-RENDERS this tree: the queries for a day already visited come back
@@ -77,19 +82,27 @@ function CostOfDayBody({
           writes them to the wrong business day. A draft belongs to its shift
           and should die with it — the same rule `pages/reweigh` applies by
           clearing its drafts when (date, point) changes. */}
-      <ExpensesStrip
-        key={day.shift_id}
-        day={day}
-        expenses={expenses}
-        shiftId={day.shift_id}
-        locale={locale}
-      />
-      {day.products.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">{t('costOfDay.noIntake')}</p>
-      ) : (
-        <CostTable day={day} locale={locale} />
-      )}
-      <ChecksDisclosure day={day} locale={locale} open={checksOpen} onOpenChange={setChecksOpen} />
+        <ExpensesStrip
+          key={day.shift_id}
+          day={day}
+          expenses={expenses}
+          shiftId={day.shift_id}
+          locale={locale}
+        />
+        {day.products.length === 0 ? (
+          <p className="py-8 text-center text-sm text-muted-foreground">
+            {t('costOfDay.noIntake')}
+          </p>
+        ) : (
+          <CostTable day={day} locale={locale} />
+        )}
+        <ChecksDisclosure
+          day={day}
+          locale={locale}
+          open={checksOpen}
+          onOpenChange={setChecksOpen}
+        />
+      </TraceScope>
     </div>
   );
 }

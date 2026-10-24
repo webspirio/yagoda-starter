@@ -1,6 +1,6 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
-import uk from './locales/uk.json';
+import ukCore from 'virtual:uk-core';
 import { getStoredLanguage } from './language-preference';
 
 /**
@@ -32,7 +32,8 @@ function syncHtmlLang(): void {
  * after (−42.1 raw / −13.3 gzip), still one JS + one CSS file with no
  * `modulepreload` in index.html — the en chunk (13.6 KiB gzip) is fetched
  * only by a user who picks English, or in the background as the fallback.
- * `uk` stays static: it is the default and must paint without a round trip.
+ * `uk` stays static: it is the default and must paint without a round trip — all of it
+ * but the owner-only namespaces, which ride in the owner chunk (`owner.ts`).
  * English is still the fallback, but the `locales` verify row keeps the key
  * sets equal, so uk never needs it before it arrives.
  */
@@ -57,7 +58,8 @@ export async function switchLanguage(code: string): Promise<void> {
  */
 export function initI18n(): Promise<void> {
   void i18n.use(initReactI18next).init({
-    resources: { uk: { translation: uk } },
+    // A copy: `addOwnerTranslations` deep-merges into the store, never into the module.
+    resources: { uk: { translation: { ...ukCore } } },
     lng: 'uk',
     fallbackLng: 'en',
     defaultNS: 'translation',

@@ -464,7 +464,7 @@
       "received": "Berry received",
       "receipts_one": "{{count}} receipt",
       "receipts_other": "{{count}} receipts",
-      "accrued": "Accrued",
+      "accrued": "Accrued on receipts",
       "accruedHint": "value of the berry taken in",
       "cashOut": "Cash out",
       "cashOutHint": "all cash paid out — for this day's berry and for old balances; voided ones until the cash is back",
@@ -477,7 +477,7 @@
     },
     "ledger": {
       "title": "Cash reconciliation",
-      "accrued": "Accrued for this day's berry",
+      "accrued": "Accrued on this day's receipts",
       "debtCreated": "Left on balance for us",
       "debtPaidDown": "Paid out beyond accrued",
       "debtPaidDownHint": "old balances paid down",
@@ -490,7 +490,17 @@
       "voidedReturned": "returned later — the cash came in on the day of the return",
       "voidedNotReturned": "{{notReturned}} of it still waiting to come back to the drawer",
       "voidedNoneReturned": "still waiting to come back to the drawer",
-      "note": "The owner's top-ups are not included — they carry no date. Nor is cash returned on this day for another day's voided payout: that shows in «Where this number comes from».",
+      "note": "Not included: cash returned on this day for another day's voided payout — that shows in «Where this number comes from».",
+      "topUps": "The owner's top-ups to this day's receipts ({{amount}}) move no cash, so they are not here; in «Cost of day» they are part of «Accrued».",
+      "trace": {
+        "accrued": "The “Accrued on receipts” tile · receipts in the day feed",
+        "debtCreated": "The “Balances created” tile",
+        "debtPaidDown": "The “Paid beyond accrued” tile",
+        "voided": "Voided payouts in the day feed",
+        "cashOut": "The “Cash out” tile",
+        "atReception": "Payouts with a receipt in the day feed",
+        "withoutBerry": "Payouts without berry in the day feed"
+      },
       "truncated": "Showing only the first documents — totals are partial"
     },
     "feed": {
@@ -606,14 +616,19 @@
   },
   "void": {
     "title": "Void {{code}}?",
+    "topUpTitle": "Void the {{amount}} top-up on {{code}}?",
     "description": "A document is never edited — void it and write a new one. The reason stays in the journal.",
+    "topUpDescription": "Receipt {{code}} stays as it is. No cash moves.",
     "reason": "Reason",
     "submit": "Void",
     "toast": {
-      "voided": "Document voided"
+      "voided": "Document voided",
+      "topUpVoided": "Top-up voided"
     },
     "ack": {
       "legend": "Confirm each consequence",
+      "topUpDebt": "{{supplier}}'s balance drops by {{amount}}",
+      "topUps": "The {{topUps}} top-up goes too — after the new receipt it has to be added again",
       "cash": "Client returned or never took {{amount}} — it is in the drawer",
       "payout": "Payout {{code}} will be voided",
       "reopens": "Receipts {{codes}} will reopen",
@@ -698,7 +713,8 @@
       "over": "Over target",
       "shortfallUnset": "no target to compare against",
       "shortfallOwed": "the base has not transferred it yet",
-      "shortfallOnTheRoad": "{{uah}} of it already on the road",
+      "shortfallOnTheRoad": "<road>{{uah}}</road> of it already on the road",
+      "traceOnTheRoad": "Transfers on the road — the cards below",
       "shortfallOver": "there is more in the drawer than the target",
       "shortfallSettled": "the target is covered"
     },
@@ -729,7 +745,8 @@
       "total": "Berry cash",
       "negative": "Berry cash has gone negative: the target does not cover this day. This is not a data-entry mistake — it means more was paid out than the point had in berry cash.",
       "closedOn": "Counted at close on {{date}}",
-      "totalAtClose": "Berry cash — counted at close"
+      "totalAtClose": "Berry cash — counted at close",
+      "traceTotal": "The “Berry cash” row and the tile above"
     },
     "crates": {
       "title": "Crate cash",
@@ -912,6 +929,10 @@
     "print": "Print",
     "void": "Void",
     "voidRow": "Void {{code}}",
+    "topUps": {
+      "title": "Top-ups on this receipt (not printed)",
+      "voided": "voided: {{reason}}"
+    },
     "docTitle": "RECEIPT",
     "thanks": "Thank you for working with us!",
     "notFiscal": "Not a fiscal receipt",
@@ -975,14 +996,22 @@
       "price": "Price, ₴/kg",
       "priceDown": "Price down",
       "priceUp": "Price up",
-      "priceDelta": "{{delta}} vs the grade price"
+      "priceDelta": "{{delta}} ₴/kg vs the grade price"
     },
     "line": {
-      "formula": "{{gross}}{{pallet}}{{tare}} = {{net}} kg × {{price}} = {{amount}}",
-      "palletPart": " − {{kg}} pallet",
-      "tarePart": " − {{kg}} tare",
-      "amountWhole": "{{amount}} ₴",
-      "amountRounded": "{{exact}} → {{amount}} ₴",
+      "formula": "<gross>{{gross}}</gross><pallet></pallet> − <tare>{{tare}}</tare>\u00a0tare = <net>{{net}}</net> × <price>{{price}}</price> = <amount></amount>",
+      "palletPart": " − <kg>{{kg}}</kg>\u00a0pallet",
+      "amountWhole": "<amount>{{amount}}\u00a0₴</amount>",
+      "amountRounded": "<exact>{{exact}}</exact> → <amount>{{amount}}\u00a0₴</amount>",
+      "trace": {
+        "gross": "“Gross” field",
+        "pallet": "“Pallet” field",
+        "tare": "Tare — the tare rows added up",
+        "net": "This line’s net weight",
+        "price": "“Price” field",
+        "exact": "Net weight × price, before rounding",
+        "amount": "The line’s amount — part of “Accrued today”"
+      },
       "pending": "…",
       "tareMissing": "Enter the tare quantity — without it the gross weight would count entirely as net.",
       "gradeMissing": "Choose a grade for this line — otherwise it won't make it into the receipt.",
@@ -1053,7 +1082,15 @@
       "paysOld": "Paid off the earlier balance",
       "balanceAfter": "Owed by us after this",
       "supplierOwes": "Supplier owes us",
-      "debtFailed": "couldn't be read"
+      "debtFailed": "couldn't be read",
+      "trace": {
+        "total": "“Accrued today” + “Previous balance”",
+        "totalAccrued": "“Accrued today”",
+        "newDebt": "“Accrued today” − “Paid in cash”",
+        "newDebtOwed": "“Accrued today” − “Paid in cash” − what the supplier owed us",
+        "paysOld": "“Paid in cash” beyond “Accrued today”",
+        "remainder": "“Total to pay out” − “Paid in cash”"
+      }
     },
     "submit": "Accept",
     "submitPay": "Accept · pay out {{uah}}",
@@ -1061,18 +1098,27 @@
     "state": {
       "shiftOpen": "Shift open since {{time}}",
       "cashTitle": "Berry cash",
-      "paidOut": "− paid out {{uah}}",
-      "openingCash": "this morning {{uah}}",
-      "cashIn": "+ cash in {{uah}}",
-      "returned": "+ returned {{uah}}",
+      "paidOut": "− paid out <n>{{uah}}</n>",
+      "openingCash": "this morning <n>{{uah}}</n>",
+      "cashIn": "+ cash in <n>{{uah}}</n>",
+      "returned": "+ returned <n>{{uah}}</n>",
       "cashBar": "{{cash}} in the drawer, {{paid}} paid out",
       "crates": "Crates",
-      "cratesValue": "{{total}} of {{target}}",
-      "cratesSplit": "at the point {{onHand}} · with people {{inField}} · with berries {{withBerry}}",
-      "cratesOnHand": "at the point {{count}}",
-      "cratesInField": "with people {{count}}",
-      "cratesWithBerry": "with berries {{count}}",
-      "truncatedCaption": "first 100 documents"
+      "cratesValue": "{{total}}\u00a0cr. of {{target}}",
+      "cratesSplit": "at the point {{onHand}}\u00a0cr. · with people {{inField}}\u00a0cr. · with berries {{withBerry}}\u00a0cr.",
+      "cratesOnHand": "at the point <n>{{count}}\u00a0cr.</n>",
+      "cratesInField": "with people <n>{{count}}\u00a0cr.</n>",
+      "cratesWithBerry": "with berries <n>{{count}}\u00a0cr.</n>",
+      "truncatedCaption": "first 100 documents",
+      "trace": {
+        "opening": "The morning drawer count",
+        "cashIn": "Transfers that reached the point today",
+        "paidOut": "Paid out of the berry drawer today",
+        "returned": "Returned to the drawer by voided payouts",
+        "onHand": "The “at the point” part of the crates bar",
+        "inField": "The “with people” part of the crates bar",
+        "withBerry": "The “with berries” part of the crates bar"
+      }
     },
     "today": {
       "title": "Today's receipts",
@@ -1159,18 +1205,26 @@
       "kgTotal": "Berries handed over",
       "accrued": "Accrued",
       "balance": "Balance",
-      "balanceHint": "fully settled"
+      "balanceHint": "fully settled",
+      "accruedTopUps": "incl. top-ups <topUps>{{uah}}</topUps>"
+    },
+    "trace": {
+      "intakes": "Receipts in the history · «Accrued» tile",
+      "topUps": "Top-ups in the history · «Accrued» tile",
+      "payouts": "Payouts in the history",
+      "debt": "«Balance» tile · open balances"
     },
     "line": {
       "what": "{{product}} “{{grade}}”",
-      "weights": "{{gross}} gross − {{tare}} tare · {{price}} ₴/kg",
-      "weightsWithPallet": "{{gross}} gross − {{pallet}} pallet − {{tare}} tare · {{price}} ₴/kg"
+      "weights": "{{gross}}\u00a0gross − {{tare}}\u00a0tare · {{price}}",
+      "weightsWithPallet": "{{gross}}\u00a0gross − {{pallet}}\u00a0pallet − {{tare}}\u00a0tare · {{price}}"
     },
-    "breakdown": "receipts {{intakes}} + top-ups {{topUps}} − paid out {{payouts}} = {{debt}}",
-    "breakdownNoTopUps": "receipts {{intakes}} − paid out {{payouts}} = {{debt}}",
+    "breakdown": "receipts <intakes>{{intakes}}</intakes> + top-ups <topUps>{{topUps}}</topUps> − paid out <payouts>{{payouts}}</payouts> = <debt>{{debt}}</debt>",
+    "breakdownNoTopUps": "receipts <intakes>{{intakes}}</intakes> − paid out <payouts>{{payouts}}</payouts> = <debt>{{debt}}</debt>",
     "open": {
       "title": "Open balances — what exactly is owed",
       "topUp": "Top-up on {{code}}",
+      "topUpReason": "Top-up · {{reason}}",
       "unallocated": "Overpayment — not allocated",
       "openReceipt": "Open receipt {{code}}",
       "ofAmount": "of {{uah}}",
@@ -1179,7 +1233,7 @@
       "oldest_other": "oldest from {{date}} — {{count}} days"
     },
     "timeline": {
-      "title": "History — receipts and payouts",
+      "title": "History — receipts, top-ups and payouts",
       "empty": "No receipts yet — this will be the first.",
       "intake": "Receipt",
       "payout": "Payout",
@@ -1190,7 +1244,9 @@
       "addTopUp": "Add a top-up",
       "againstReceipt": "against {{code}}",
       "parentVoided": "the receipt was voided — counts for nothing",
-      "openLeft": "{{uah}} still open",
+      "addedBy": "Added by: {{name}}",
+      "topUpVoided": "Voided {{date}} · {{name}}: {{reason}}",
+      "openLeft": "{{uah}} not paid out",
       "closed": "closed berries of {{dates}}",
       "unallocated": "{{uah}} not allocated"
     }
@@ -1317,7 +1373,9 @@
     "tiles": {
       "totalOwed": "Owed to points",
       "totalOwedHint": "Showing the first {{count}} points — the total is partial",
-      "onTheRoad": "{{uah}} of it already on the road"
+      "onTheRoad": "<road>{{uah}}</road> of it already on the road",
+      "traceOwed": "The “Short” column — the points owed",
+      "traceRoad": "The “on the road” lines in the “Short” column"
     },
     "col": {
       "point": "Point",
@@ -1343,7 +1401,7 @@
       "sentCash": "Sent",
       "reportedCash": "Counted at the point",
       "discrepancy": "Difference",
-      "crates": "Crates: sent {{sent}} · counted {{reported}} · difference {{diff}}",
+      "crates": "Crates: sent {{sent}}\u00a0cr. · counted {{reported}}\u00a0cr. · difference {{diff}}\u00a0cr.",
       "note": "The point wrote: “{{note}}”",
       "resolved": "Resolved: {{cash}} · {{crates}} cr. · {{date}}"
     },
@@ -1367,9 +1425,26 @@
   },
   "topUp": {
     "title": "Add a top-up",
-    "description": "Receipt {{code}} · {{supplier}}. The debt goes up by this amount; no cash moves until a payout.",
+    "description": "{{supplier}}. The balance goes up by this amount.",
+    "note": "No cash moves until a payout. It is not printed on the receipt; it adds to «Accrued» and the purchase price in «Cost of day» for {{date}}. It cannot be reduced — only voided.",
+    "facts": {
+      "receipt": "Receipt",
+      "date": "Date",
+      "products": "Berries",
+      "net": "Net",
+      "amount": "Amount"
+    },
+    "balance": "Balance: <before>{{before}}</before> → <after>{{after}}</after>",
+    "balanceNow": "Balance: <before>{{before}}</before>",
+    "tooBig": "The top-up is bigger than the receipt itself (<amount>{{amount}}</amount>) — check the amount.",
+    "trace": {
+      "before": "The supplier's balance now",
+      "after": "Balance now + the top-up",
+      "receipt": "The receipt's total above"
+    },
     "amount": "Amount, UAH",
     "reason": "Why (required)",
+    "reasonPlaceholder": "E.g.: agreed on 48 ₴/kg instead of 45 ₴/kg",
     "submit": "Add",
     "toast": {
       "created": "Top-up added"
@@ -1397,9 +1472,11 @@
       "onHand": "Empty at the point",
       "inField": "Out with people",
       "withBerry": "With us, with berries",
-      "received": "Received by transfer: {{received}}",
-      "inTransit": "On the road: {{in_transit}} — the transfer is not accepted yet",
-      "total": "Total for the point",
+      "received": "Received by transfer: {{received}}\u00a0cr.",
+      "inTransit": "On the road: {{in_transit}}\u00a0cr. — the transfer is not accepted yet",
+      "identity": "Total for the point <total>{{total}}\u00a0cr.</total> = <onHand>{{onHand}}\u00a0cr.</onHand> + <inField>{{inField}}\u00a0cr.</inField> + <withBerry>{{withBerry}}\u00a0cr.</withBerry>",
+      "identityTotal": "Empty at the point + out with people + with us, with berries",
+      "value": "{{n}}\u00a0cr.",
       "shortfall": "Short of the allotment:",
       "shortfallNone": "—",
       "complete": "Allotment complete",
@@ -1425,10 +1502,13 @@
       "submit": "Issue",
       "toast": "Crates issued",
       "toastDeposit": "Crates issued, deposit {{amount}} — in the crates cash",
-      "depositLine": "Deposit: {{units}} × {{price}} = {{total}}",
+      "depositLine": "Deposit: <units>{{units}}\u00a0cr.</units> × <price>{{price}}</price> = <total>{{total}}</total>",
+      "traceUnits": "The “Crates” field",
+      "tracePrice": "Deposit per crate — from the tare catalogue",
+      "traceTotal": "Crates × deposit per crate",
       "onHandHint": "{{on_hand}} empty crates at the point.",
-      "inTransitHint": "{{in_transit}} in transit — accept the transfer first.",
-      "goesNegativeHint": "After this issue the point will have {{after}} — it owes people crates; note who in the notebook."
+      "inTransitHint": "{{in_transit}}\u00a0cr. in transit — accept the transfer first.",
+      "goesNegativeHint": "After this issue the point will have {{after}}\u00a0cr. — it owes people crates; note who in the notebook."
     },
     "return": {
       "noHolders": "Nobody at this point is holding crates.",
@@ -1440,6 +1520,7 @@
       "splitTitle": "How the refund is made up",
       "splitIdle": "Choose a person and a number to see the split.",
       "splitFailed": "Could not work out the split. Reload the page.",
+      "units": "{{units}}\u00a0cr.",
       "byDeposit": "at {{price}}",
       "byReceipt": "on a receipt, no money",
       "refund": "Refund",
@@ -1481,7 +1562,7 @@
       "truncated": "Showing the latest 100 of each kind.",
       "blockedByReturn": "a return rests on this issuance — void the return first",
       "void": "Void",
-      "returnLabel": "return of {{units}} · {{date}}",
+      "returnLabel": "return of {{units}}\u00a0cr. · {{date}}",
       "withBerriesPrefix": "with berries · ",
       "linkedToIntake": "recorded with receipt {{code}} — void the receipt"
     },
@@ -1554,13 +1635,25 @@
       "shortfallTotal": "Total shortfall",
       "shiftOpen": "The shift is still open — the shortfall is counted once it closes.",
       "notWeighed": "Not reweighed: {{count}} — no shortfall is counted for them.",
-      "drafted": "Not recorded yet: +{{kg}} — “Base” does not include them.",
+      "drafted": "Not recorded yet: +<kg>{{kg}}</kg> — “Base” does not include them.",
       "shortfallKg": "−{{kg}}",
       "surplusKg": "+{{kg}}",
-      "moneyFormula": "{{kg}} × {{rate}} = {{amount}}",
-      "totalValue": "{{kg}} · {{amount}}",
-      "rate": "{{product}}: average purchase price — {{accrued}} ÷ {{kg}} = {{rate}} ₴/kg",
-      "rateTopUps": "{{product}}: average purchase price incl. top-ups — {{accrued}} ÷ {{kg}} = {{rate}} ₴/kg",
+      "moneyFormula": "<kg>{{kg}}</kg> × <rate>{{rate}}</rate> = <amount>{{amount}}</amount>",
+      "totalValue": "<kg>{{kg}}</kg> · <amount>{{amount}}</amount>",
+      "rate": "{{product}}: average purchase price — <accrued>{{accrued}}</accrued> ÷ <kg>{{kg}}</kg> = <rate>{{rate}}</rate>",
+      "rateTopUps": "{{product}}: average purchase price incl. top-ups — (receipts <receipts>{{receipts}}</receipts> + top-ups <topUps>{{topUps}}</topUps>) ÷ <kg>{{kg}}</kg> = <rate>{{rate}}</rate>",
+      "trace": {
+        "point": "“Point” column · {{product}}",
+        "diff": "“Difference” column · {{product}}",
+        "rate": "Average purchase price · {{product}}",
+        "accrued": "Accrued on receipts incl. top-ups · {{product}}",
+        "receipts": "The day’s receipts · {{product}}",
+        "topUps": "The day’s top-ups · {{product}}",
+        "amount": "Shortfall · {{product}}",
+        "totalKg": "The shortfalls in the “Difference” column, added up",
+        "totalAmount": "The shortfalls in the “Shortfall” column, added up",
+        "drafted": "“Total at the base” of the entered positions"
+      },
       "cratesType": "{{name}} {{point}} → {{base}}",
       "cratesJoin": " · "
     },
@@ -1599,10 +1692,18 @@
     },
     "draftsCleared": "Positions cleared — they belonged to a different day or point",
     "formula": {
-      "net": "{{gross}} − {{terms}} = {{net}}",
+      "net": "<gross>{{gross}}</gross> − <terms></terms> = <net>{{net}}</net>",
       "join": " − ",
-      "tareUnits": "{{units}} × {{weight}}",
-      "tareKg": "{{kg}} tare"
+      "tareUnits": "<units>{{units}}\u00a0pcs</units> × <weight>{{weight}}</weight>",
+      "tareKg": "<kg>{{kg}}</kg>\u00a0tare"
+    },
+    "trace": {
+      "gross": "Weight with berries",
+      "pallet": "Pallet",
+      "units": "Number of crates",
+      "weight": "Unit weight of the chosen tare",
+      "tareKg": "Tare in all",
+      "net": "Net weight"
     }
   },
   "costOfDay": {
@@ -1632,7 +1733,7 @@
       "removeConfirm": "Remove «{{label}}»?",
       "removeYes": "Remove",
       "awaiting": "Awaiting re-weighing",
-      "awaitingAmount": "{{amount}} not spread",
+      "awaitingAmount": "<amount>{{amount}}</amount> not spread",
       "awaitingNote": "Until the load is weighed at the base there is no shortfall yet — the day's expenses have landed nowhere.",
       "addFailed": "The line wasn't added.",
       "updateFailed": "The line wasn't changed.",
@@ -1642,8 +1743,8 @@
         "labelRequired": "The expense has no name. Say what the money went on."
       },
       "addLine": "Add an expense",
-      "total": "= {{amount}} · {{perKg}} ₴/kg",
-      "totalNoRate": "= {{amount}}"
+      "total": "= <amount>{{amount}}</amount> · <rate>{{perKg}} ₴/kg</rate>",
+      "totalNoRate": "= <amount>{{amount}}</amount>"
     },
     "status": {
       "closed": "Shift closed",
@@ -1672,24 +1773,42 @@
       "expensesPerKg": "₴/kg",
       "cost": "Cost price, ₴/kg",
       "total": "Total",
-      "topUps": "incl. top-ups {{amount}}",
-      "unweighed": "Not reweighed, left out of the total: {{kg}} · {{amount}}",
-      "howToRead": "How to read a row: <sky>purchase price</sky> + <amber>day shortfall per kg</amber> + <plum>day expenses per kg</plum> = <leaf>cost price</leaf>. The shortfall and expenses are spread evenly over every kilogram that reached the base: <amber>{{shortfall}} ÷ {{kg}} = {{shortfallPerKg}}</amber>, <plum>{{expenses}} ÷ {{kg}} = {{expensesPerKg}}</plum>.",
-      "dayFormula": "Average cost of a kilogram for the day: (accrued {{accrued}} + expenses {{expenses}}) ÷ {{kg}} = <leaf>{{avg}} ₴/kg</leaf>",
-      "dayFormulaWeighed": "Average cost of a kilogram for the day: (accrued on what was reweighed {{accrued}} + expenses {{expenses}}) ÷ {{kg}} = <leaf>{{avg}} ₴/kg</leaf>",
+      "topUps": "incl. top-ups <amount>{{amount}}</amount>",
+      "unweighed": "Not reweighed, left out of the total: <kg>{{kg}}</kg> · <amount>{{amount}}</amount>",
+      "howToRead": "How to read a row: <sky>purchase price</sky> + <amber>day shortfall per kg</amber> + <plum>day expenses per kg</plum> = <leaf>cost price</leaf>. The shortfall and expenses are spread evenly over every kilogram that reached the base:",
+      "howToReadShortfall": "<amber>Day shortfall per kg:</amber> <shortfall>{{shortfall}}</shortfall> ÷ <kg>{{kg}}</kg> = <shortfallPerKg>{{shortfallPerKg}}</shortfallPerKg>",
+      "howToReadExpenses": "<plum>Day expenses per kg:</plum> <expenses>{{expenses}}</expenses> ÷ <kg>{{kg}}</kg> = <expensesPerKg>{{expensesPerKg}}</expensesPerKg>",
+      "dayFormula": "Average cost of a kilogram for the day: (accrued <accrued>{{accrued}}</accrued> + expenses <expenses>{{expenses}}</expenses>) ÷ <kg>{{kg}}</kg> = <avg>{{avg}}</avg>",
+      "dayFormulaWeighed": "Average cost of a kilogram for the day: (accrued on what was reweighed <accrued>{{accrued}}</accrued> + expenses <expenses>{{expenses}}</expenses>) ÷ <kg>{{kg}}</kg> = <avg>{{avg}}</avg>",
       "accruedHelpLabel": "What «accrued» means",
       "accruedHelp": "«Accrued» is the receipts together with their top-ups, not cash out of the drawer: debts exist, so the cash that left the drawer that day is a different number and does not affect the cost of day."
     },
     "chain": {
-      "price": "Purchase price: {{accrued}} ÷ {{kg}} = {{price}}",
-      "shortfall": "Shortfall: {{kg}} × {{price}} = {{amount}}",
-      "cost": "Cost price: {{price}} + {{shortfall}} + {{expenses}} = {{cost}}"
+      "price": "Purchase price: <accrued>{{accrued}}</accrued> ÷ <kg>{{kg}}</kg> = <price>{{price}}</price>",
+      "shortfall": "Shortfall: <kg>{{kg}}</kg> × <price>{{price}}</price> = <amount>{{amount}}</amount>",
+      "cost": "Cost price: <price>{{price}}</price> + <shortfall>{{shortfall}}</shortfall> + <expenses>{{expenses}}</expenses> = <cost>{{cost}}</cost>"
+    },
+    "trace": {
+      "cell": "“{{column}}” column · {{row}}",
+      "column": "“{{column}}” column — the same on every reweighed row",
+      "expenses": "Day expenses — the total in the “Day expenses” block",
+      "topUps": "The day’s top-ups — the “Top-ups” chip above the table",
+      "unweighed": "“{{column}}” column · the “not re-weighed” rows",
+      "dayAvg": "Accrued on the “Total” row + day expenses, ÷ the base’s kilograms",
+      "share": "Share of “{{row}}”: (day shortfall + expenses) per kg × base",
+      "full": "Full cost of “{{row}}”: accrued − own shortfall + share",
+      "basket": "Shortfall on the “Total” row + day expenses",
+      "dayFull": "Accrued on the “Total” row + day expenses",
+      "dayAccrued": "Accrued on the “Total” row + not reweighed",
+      "pointExpenses": "Expenses of point “{{point}}”",
+      "expensesSpread": "“{{column}}” column · Total — expenses of the points that reweighed",
+      "expensesTotal": "All points’ expenses together"
     },
     "checks": {
       "title": "How to check that not a single hryvnia got lost",
-      "shares": "Product shares: {{shares}} = {{basket}} = shortfall {{shortfall}} + expenses {{expenses}}",
-      "total": "Full cost: {{fulls}} = {{full}} = accrued {{accrued}} + expenses {{expenses}}",
-      "totalUnweighed": "Full cost: {{fulls}} = {{full}}; {{full}} + not reweighed {{unweighed}} = accrued {{accrued}} + expenses {{expenses}}"
+      "shares": "Product shares: <shares/> = <basket>{{basket}}</basket> = shortfall <shortfall>{{shortfall}}</shortfall> + expenses <expenses>{{expenses}}</expenses>",
+      "total": "Full cost: <fulls/> = <full>{{full}}</full> = accrued <accrued>{{accrued}}</accrued> + expenses <expenses>{{expenses}}</expenses>",
+      "totalUnweighed": "Full cost: <fulls/> = <full>{{full}}</full>; <full>{{full}}</full> + not reweighed <unweighed>{{unweighed}}</unweighed> = accrued <accrued>{{accrued}}</accrued> + expenses <expenses>{{expenses}}</expenses>"
     },
     "network": {
       "allPoints": "All points",
@@ -1699,9 +1818,9 @@
       "hidePoints": "Hide points: {{product}}",
       "partial_one": "reweighed at {{n}} of {{count}} point",
       "partial_other": "reweighed at {{n}} of {{count}} points",
-      "partialWithout": "without {{kg}}",
-      "counted_one": "Counted {{kg}} from {{count}} point of {{total}}.",
-      "counted_other": "Counted {{kg}} from {{count}} points of {{total}}.",
+      "partialWithout": "without <kg>{{kg}}</kg>",
+      "counted_one": "Counted <kg>{{kg}}</kg> from {{count}} point of {{total}}.",
+      "counted_other": "Counted <kg>{{kg}}</kg> from {{count}} points of {{total}}.",
       "rule": "The network average is total ÷ weight, never an average of the points' prices. Under each product, each point's cost as on its own page.",
       "status": {
         "open": "Shift still open: {{names}}",
@@ -1709,10 +1828,10 @@
         "nothingWeighed": "Nothing reweighed: {{names}}"
       },
       "expenses": {
-        "list": "Day expenses: {{list}} · total {{total}}",
-        "listOne": "Day expenses: {{list}}",
+        "list": "Day expenses: <list/> · total <total>{{total}}</total>",
+        "listOne": "Day expenses: <list/>",
         "none": "No day expenses entered at any point.",
-        "unspread": "Not spread yet — nothing reweighed at the point: {{list}}",
+        "unspread": "Not spread yet — nothing reweighed at the point: <list/>",
         "where": "Expenses are entered on the point's page."
       },
       "table": {
@@ -1721,9 +1840,9 @@
         "cost": "Cost, ₴/kg"
       },
       "chain": {
-        "full": "Full cost: {{accrued}} − {{shortfall}} + {{shortfallShare}} + {{expensesShare}} = {{full}}",
-        "cost": "Cost: {{full}} ÷ {{kg}} = {{cost}} — total ÷ weight over points: {{names}}",
-        "unweighed": "Not reweighed, left out of the row: {{names}} — {{kg}} · {{amount}}"
+        "full": "Full cost: <accrued>{{accrued}}</accrued> − <shortfall>{{shortfall}}</shortfall> + <shortfallShare>{{shortfallShare}}</shortfallShare> + <expensesShare>{{expensesShare}}</expensesShare> = <full>{{full}}</full>",
+        "cost": "Cost: <full>{{full}}</full> ÷ <kg>{{kg}}</kg> = <cost>{{cost}}</cost> — total ÷ weight over points: <names/>",
+        "unweighed": "Not reweighed, left out of the row: <names/> — <kg>{{kg}}</kg> · <amount>{{amount}}</amount>"
       }
     }
   },

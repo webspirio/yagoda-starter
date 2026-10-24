@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, RouterProvider } from 'react-router';
 import { ApiError } from '@/shared/api';
@@ -51,8 +51,7 @@ vi.mock('@/entities/supplier', () => ({
   useSupplierQuery: (id: string | null) => supplierMock(id),
   useSupplierBalanceQuery: (id: string | null) => balanceMock(id),
   useSupplierSettlementQuery: (id: string | null) => settlementMock(id),
-  supplierName: (s: { first_name: string; last_name: string }) =>
-    `${s.first_name} ${s.last_name}`,
+  supplierName: (s: { first_name: string; last_name: string }) => `${s.first_name} ${s.last_name}`,
 }));
 
 vi.mock('@/entities/intake', async (importOriginal) => ({
@@ -190,14 +189,15 @@ const payout = (
  * counts, because the PARENT receipt's void makes it worthless too.
  */
 const topUp = (
-  over: Partial<IntakeTopUp> &
-    Pick<IntakeTopUp, 'id' | 'amount' | 'reason' | 'created_at'>,
+  over: Partial<IntakeTopUp> & Pick<IntakeTopUp, 'id' | 'amount' | 'reason' | 'created_at'>,
 ): IntakeTopUp => ({
   counts_toward_balance: true,
   intake: { id: 'i1', code: 'KV-0001', voided_at: null },
   created_by_user_id: 'u9',
+  created_by_name: 'Олена Коваль',
   voided_at: null,
   voided_by_user_id: null,
+  voided_by_name: null,
   void_reason: null,
   ...over,
 });
@@ -303,6 +303,13 @@ function renderCard(opts?: {
   return render(<RouterProvider router={router} />);
 }
 
+/** The breakdown line under the tiles — its terms are boxed `TraceTerm`s, so match on the whole `<p>`. */
+function breakdown(): HTMLElement {
+  return screen.getByText(
+    (_, el) => el?.tagName === 'P' && /^receipts /.test(el.textContent ?? ''),
+  );
+}
+
 function tile(label: string): HTMLElement {
   const el = screen.getByText(label).closest('[data-slot="stat-tile"]');
   if (!el) throw new Error(`No stat tile labelled "${label}"`);
@@ -311,13 +318,11 @@ function tile(label: string): HTMLElement {
 
 beforeEach(() => {
   supplierMock.mockReset().mockReturnValue({ data: SUPPLIER, isPending: false, isError: false });
-  balanceMock
-    .mockReset()
-    .mockReturnValue({
-      data: BALANCE_DEFAULT,
-      isPending: false,
-      isError: false,
-    });
+  balanceMock.mockReset().mockReturnValue({
+    data: BALANCE_DEFAULT,
+    isPending: false,
+    isError: false,
+  });
   settlementMock.mockReset().mockReturnValue({
     data: SETTLEMENT_DEFAULT,
     isPending: false,
@@ -444,11 +449,9 @@ describe('SupplierCardPage', () => {
     });
 
     expect(tile('Balance')).toHaveTextContent('4,000.00 ₴');
-    expect(
-      screen.getByText(
-        'receipts 9,000.00 ₴ + top-ups 1,000.00 ₴ − paid out 6,000.00 ₴ = 4,000.00 ₴',
-      ),
-    ).toBeInTheDocument();
+    expect(breakdown()).toHaveTextContent(
+      'receipts 9,000.00 ₴ + top-ups 1,000.00 ₴ − paid out 6,000.00 ₴ = 4,000.00 ₴',
+    );
   });
 
   it('strikes the voided row through and shows the reason', () => {
@@ -493,7 +496,12 @@ describe('SupplierCardPage', () => {
   it('opens the receipt when an intake row is clicked', async () => {
     intakesMock.mockReturnValue(
       page<Intake>([
-        intake({ id: 'i1', code: 'KV-0001', amount: '1000.00', created_at: '2026-09-08T07:10:00Z' }),
+        intake({
+          id: 'i1',
+          code: 'KV-0001',
+          amount: '1000.00',
+          created_at: '2026-09-08T07:10:00Z',
+        }),
       ]),
     );
 
@@ -609,7 +617,13 @@ describe('SupplierCardPage', () => {
   it('voids a payout with its amount, shift state and the receipts it reopens', async () => {
     payoutsMock.mockReturnValue(
       page<Payout>([
-        payout({ id: 'y1', code: 'VD-0001', amount: '300.00', created_at: '2026-09-08T09:20:00Z', shift_closed: true }),
+        payout({
+          id: 'y1',
+          code: 'VD-0001',
+          amount: '300.00',
+          created_at: '2026-09-08T09:20:00Z',
+          shift_closed: true,
+        }),
       ]),
     );
     meMock.mockReturnValue({ data: OWNER, isPending: false, isError: false });
@@ -617,7 +631,11 @@ describe('SupplierCardPage', () => {
     renderCard();
     await userEvent.click(screen.getByRole('button', { name: 'Void' }));
 
-    expect(reopenedCodesMock).toHaveBeenCalledWith(settlementMock.mock.results[0].value.data, 'y1', null);
+    expect(reopenedCodesMock).toHaveBeenCalledWith(
+      settlementMock.mock.results[0].value.data,
+      'y1',
+      null,
+    );
     expect(voidDialogMock).toHaveBeenLastCalledWith(
       expect.objectContaining({
         kind: 'payout',
@@ -677,7 +695,14 @@ describe('SupplierCardPage', () => {
   it('keeps the tiles unaffected by a truncated timeline page', () => {
     intakesMock.mockReturnValue(
       page<Intake>(
-        [intake({ id: 'i1', code: 'KV-0001', amount: '1000.00', created_at: '2026-09-08T07:10:00Z' })],
+        [
+          intake({
+            id: 'i1',
+            code: 'KV-0001',
+            amount: '1000.00',
+            created_at: '2026-09-08T07:10:00Z',
+          }),
+        ],
         150,
       ),
     );
@@ -716,8 +741,18 @@ describe('SupplierCardPage', () => {
     intakesMock.mockReturnValue(
       page<Intake>(
         [
-          intake({ id: 'i1', code: 'KV-0009', amount: '100.00', created_at: '2026-09-08T07:10:00Z' }),
-          intake({ id: 'i2', code: 'KV-0005', amount: '100.00', created_at: '2026-09-05T07:10:00Z' }),
+          intake({
+            id: 'i1',
+            code: 'KV-0009',
+            amount: '100.00',
+            created_at: '2026-09-08T07:10:00Z',
+          }),
+          intake({
+            id: 'i2',
+            code: 'KV-0005',
+            amount: '100.00',
+            created_at: '2026-09-05T07:10:00Z',
+          }),
         ],
         150,
       ),
@@ -743,7 +778,14 @@ describe('SupplierCardPage', () => {
     meMock.mockReturnValue({ data: OWNER, isPending: false, isError: false });
     payoutsMock.mockReturnValue(
       page<Payout>(
-        [payout({ id: 'y1', code: 'VD-0001', amount: '50.00', created_at: '2026-09-05T09:00:00Z' })],
+        [
+          payout({
+            id: 'y1',
+            code: 'VD-0001',
+            amount: '50.00',
+            created_at: '2026-09-05T09:00:00Z',
+          }),
+        ],
         150,
       ),
     );
@@ -808,7 +850,12 @@ describe('SupplierCardPage', () => {
       });
       intakesMock.mockReturnValue(
         page<Intake>([
-          intake({ id: 'i1', code: 'KV-0001', amount: '500.00', created_at: '2026-09-01T07:10:00Z' }),
+          intake({
+            id: 'i1',
+            code: 'KV-0001',
+            amount: '500.00',
+            created_at: '2026-09-01T07:10:00Z',
+          }),
         ]),
       );
 
@@ -841,7 +888,12 @@ describe('SupplierCardPage', () => {
       });
       intakesMock.mockReturnValue(
         page<Intake>([
-          intake({ id: 'i1', code: 'KV-0001', amount: '500.00', created_at: '2026-09-10T07:10:00Z' }),
+          intake({
+            id: 'i1',
+            code: 'KV-0001',
+            amount: '500.00',
+            created_at: '2026-09-10T07:10:00Z',
+          }),
         ]),
       );
 
@@ -860,13 +912,28 @@ describe('SupplierCardPage', () => {
         debt: '200.00',
         unallocated: '0.00',
         lines: [
-          settlementLine({ id: 'i1', open: '0.00', amount: '300.00', paid: '300.00', business_date: '2026-09-01' }),
-          settlementLine({ id: 'i2', open: '200.00', amount: '200.00', business_date: '2026-09-08' }),
+          settlementLine({
+            id: 'i1',
+            open: '0.00',
+            amount: '300.00',
+            paid: '300.00',
+            business_date: '2026-09-01',
+          }),
+          settlementLine({
+            id: 'i2',
+            open: '200.00',
+            amount: '200.00',
+            business_date: '2026-09-08',
+          }),
         ],
         payouts: [
           {
-            id: 'y1', code: 'VD-0001', business_date: '2026-09-08', created_at: '2026-09-08T09:20:00Z',
-            amount: '300.00', intake_id: null,
+            id: 'y1',
+            code: 'VD-0001',
+            business_date: '2026-09-08',
+            created_at: '2026-09-08T09:20:00Z',
+            amount: '300.00',
+            intake_id: null,
             covers: [{ line_id: 'i1', kind: 'intake', amount: '300.00' }],
             unallocated: '0.00',
           },
@@ -877,7 +944,13 @@ describe('SupplierCardPage', () => {
     });
     intakesMock.mockReturnValue(
       page<Intake>([
-        intake({ id: 'i1', code: 'KV-0001', amount: '300.00', created_at: '2026-09-01T07:10:00Z', business_date: '2026-09-01' }),
+        intake({
+          id: 'i1',
+          code: 'KV-0001',
+          amount: '300.00',
+          created_at: '2026-09-01T07:10:00Z',
+          business_date: '2026-09-01',
+        }),
         intake({ id: 'i2', code: 'KV-0002', amount: '200.00', created_at: '2026-09-08T07:10:00Z' }),
       ]),
     );
@@ -894,13 +967,19 @@ describe('SupplierCardPage', () => {
     // eyebrow's own one-line div rather than the card. `.rounded-xl` is the
     // outer SectionCard shell's own class, and no ancestor between the title
     // text and that shell carries it, so it scopes to the whole history card.
-    const history = screen.getByText('History — receipts and payouts').closest('.rounded-xl')!;
-    expect(within(history as HTMLElement).getByText('KV-0002').closest('li')).toHaveTextContent(
-      '200.00 ₴ still open',
-    );
-    expect(within(history as HTMLElement).getByText('KV-0001').closest('li')).not.toHaveTextContent(
-      'still open',
-    );
+    const history = screen
+      .getByText('History — receipts, top-ups and payouts')
+      .closest('.rounded-xl')!;
+    expect(
+      within(history as HTMLElement)
+        .getByText('KV-0002')
+        .closest('li'),
+    ).toHaveTextContent('200.00 ₴ not paid out');
+    expect(
+      within(history as HTMLElement)
+        .getByText('KV-0001')
+        .closest('li'),
+    ).not.toHaveTextContent('not paid out');
     expect(screen.getByText('VD-0001').closest('li')).toHaveTextContent(/closed berries of .*01/);
   });
 
@@ -913,8 +992,14 @@ describe('SupplierCardPage', () => {
         lines: [],
         payouts: [
           {
-            id: 'y1', code: 'VD-0001', business_date: '2026-09-08', created_at: '2026-09-08T09:20:00Z',
-            amount: '50.00', intake_id: null, covers: [], unallocated: '50.00',
+            id: 'y1',
+            code: 'VD-0001',
+            business_date: '2026-09-08',
+            created_at: '2026-09-08T09:20:00Z',
+            amount: '50.00',
+            intake_id: null,
+            covers: [],
+            unallocated: '50.00',
           },
         ],
       },
@@ -997,15 +1082,13 @@ describe('SupplierCardPage — receipt lines (uk locale)', () => {
     });
 
     expect(await screen.findByText(/Полуниця «Альба»/)).toBeInTheDocument();
-    expect(screen.getByText(/86,50 брутто − 2,50 тара · 120,00 ₴\/кг/)).toBeInTheDocument();
+    expect(screen.getByText(/86,50 кг брутто − 2,50 кг тара · 120,00 ₴\/кг/)).toBeInTheDocument();
     expect(screen.getByText(/Малина «Полка»/)).toBeInTheDocument();
   });
 
   it('adds the bonus into the price it prints', async () => {
     renderCard({
-      intakes: [
-        { ...intakeFixture, items: [{ ...itemFixture, price: '120.00', bonus: '5.00' }] },
-      ],
+      intakes: [{ ...intakeFixture, items: [{ ...itemFixture, price: '120.00', bonus: '5.00' }] }],
     });
 
     expect(await screen.findByText(/125,00 ₴\/кг/)).toBeInTheDocument();
@@ -1044,7 +1127,7 @@ describe('SupplierCardPage — receipt lines (uk locale)', () => {
 
     expect(await screen.findByText(/Малина «1 сорт» · 36,90 кг/)).toBeInTheDocument();
     expect(
-      screen.getByText(/42,00 брутто − 1,50 піддон − 3,60 тара · 100,00 ₴\/кг/),
+      screen.getByText(/42,00 кг брутто − 1,50 кг піддон − 3,60 кг тара · 100,00 ₴\/кг/),
     ).toBeInTheDocument();
   });
 
@@ -1073,7 +1156,7 @@ describe('SupplierCardPage — receipt lines (uk locale)', () => {
     });
 
     expect(
-      await screen.findByText(/86,50 брутто − 2,50 тара · 120,00 ₴\/кг/),
+      await screen.findByText(/86,50 кг брутто − 2,50 кг тара · 120,00 ₴\/кг/),
     ).toBeInTheDocument();
     // Not the three-term form — «піддон» must not appear anywhere on this row.
     expect(screen.queryByText(/піддон/)).not.toBeInTheDocument();
@@ -1185,7 +1268,12 @@ describe('SupplierCardPage — top-ups', () => {
     meMock.mockReturnValue({ data: OWNER, isPending: false, isError: false });
     intakesMock.mockReturnValue(
       page<Intake>([
-        intake({ id: 'i1', code: 'KV-0001', amount: '1000.00', created_at: '2026-09-08T07:10:00Z' }),
+        intake({
+          id: 'i1',
+          code: 'KV-0001',
+          amount: '1000.00',
+          created_at: '2026-09-08T07:10:00Z',
+        }),
       ]),
     );
   });
@@ -1235,13 +1323,18 @@ describe('SupplierCardPage — top-ups', () => {
     });
     topUpsMock.mockReturnValue(
       page<IntakeTopUp>([
-        topUp({ id: 't1', amount: '750.00', reason: 'Доплата', created_at: '2026-09-09T10:00:00Z' }),
+        topUp({
+          id: 't1',
+          amount: '750.00',
+          reason: 'Доплата',
+          created_at: '2026-09-09T10:00:00Z',
+        }),
       ]),
     );
 
     renderCard();
 
-    expect(screen.getByText('Доплата').closest('li')).toHaveTextContent('750.00 ₴ still open');
+    expect(screen.getByText('Доплата').closest('li')).toHaveTextContent('750.00 ₴ not paid out');
   });
 
   /**
@@ -1279,6 +1372,7 @@ describe('SupplierCardPage — top-ups', () => {
           created_at: '2026-09-09T10:00:00Z',
           counts_toward_balance: false,
           voided_at: '2026-09-11T09:00:00Z',
+          voided_by_name: 'Іван Мельник',
           void_reason: 'Помилка в сумі',
         }),
       ]),
@@ -1286,7 +1380,8 @@ describe('SupplierCardPage — top-ups', () => {
 
     renderCard();
 
-    expect(screen.getByText('Помилка в сумі')).toBeInTheDocument();
+    // Review 2026-10-24 #7: when, by whom, and why — «Voided 09/11 · Name: reason».
+    expect(screen.getByText('Voided 09/11 · Іван Мельник: Помилка в сумі')).toBeInTheDocument();
     expect(screen.queryByText(/the receipt was voided/i)).not.toBeInTheDocument();
   });
 
@@ -1308,9 +1403,10 @@ describe('SupplierCardPage — top-ups', () => {
     });
 
     expect(tile('Accrued')).toHaveTextContent('1,750.00 ₴');
-    expect(
-      screen.getByText('receipts 1,000.00 ₴ + top-ups 750.00 ₴ − paid out 250.00 ₴ = 1,500.00 ₴'),
-    ).toBeInTheDocument();
+    expect(breakdown()).toHaveTextContent(
+      'receipts 1,000.00 ₴ + top-ups 750.00 ₴ − paid out 250.00 ₴ = 1,500.00 ₴',
+    );
+    expect(tile('Accrued')).toHaveTextContent('incl. top-ups 750.00 ₴');
   });
 
   it('drops the top-up term from the breakdown line when there are none', () => {
@@ -1323,10 +1419,10 @@ describe('SupplierCardPage — top-ups', () => {
       },
     });
 
-    expect(
-      screen.getByText('receipts 1,000.00 ₴ − paid out 250.00 ₴ = 750.00 ₴'),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/top-ups/)).toBeNull();
+    expect(breakdown()).toHaveTextContent('receipts 1,000.00 ₴ − paid out 250.00 ₴ = 750.00 ₴');
+    expect(breakdown()).not.toHaveTextContent(/top-ups/);
+    // …and «Accrued» carries no «incl. top-ups» hint either.
+    expect(tile('Accrued')).not.toHaveTextContent(/top-ups/);
   });
 
   it('opens the top-up dialog for the receipt the owner clicked', async () => {
@@ -1337,7 +1433,12 @@ describe('SupplierCardPage — top-ups', () => {
 
     expect(screen.getByTestId('top-up-dialog-mock')).toBeInTheDocument();
     expect(topUpDialogMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({ intake: { id: 'i1', code: 'KV-0001' }, supplierName: 'Ivan Koval' }),
+      expect.objectContaining({
+        intake: expect.objectContaining({ id: 'i1', code: 'KV-0001' }),
+        supplierName: 'Ivan Koval',
+        // «Залишок: X → Y» starts from the card's own settlement debt.
+        balanceBefore: expect.any(String),
+      }),
     );
   });
 
@@ -1373,7 +1474,12 @@ describe('SupplierCardPage — top-ups', () => {
   it('badges a top-up «Top-up» and dates it from when it was written (audit D5, D6)', () => {
     topUpsMock.mockReturnValue(
       page<IntakeTopUp>([
-        topUp({ id: 't1', amount: '750.00', reason: 'Домовились', created_at: '2026-09-09T10:00:00Z' }),
+        topUp({
+          id: 't1',
+          amount: '750.00',
+          reason: 'Домовились',
+          created_at: '2026-09-09T10:00:00Z',
+        }),
       ]),
     );
 
@@ -1388,7 +1494,12 @@ describe('SupplierCardPage — top-ups', () => {
     const user = userEvent.setup();
     topUpsMock.mockReturnValue(
       page<IntakeTopUp>([
-        topUp({ id: 't1', amount: '750.00', reason: 'Доплата', created_at: '2026-09-09T10:00:00Z' }),
+        topUp({
+          id: 't1',
+          amount: '750.00',
+          reason: 'Доплата',
+          created_at: '2026-09-09T10:00:00Z',
+        }),
       ]),
     );
 
@@ -1397,8 +1508,14 @@ describe('SupplierCardPage — top-ups', () => {
     const row = screen.getByText('Доплата').closest('li')!;
     await user.click(within(row).getByRole('button', { name: /void/i }));
 
+    // Review 2026-10-24 #1: the dialog names the amount and whose balance drops.
     expect(voidDialogMock).toHaveBeenLastCalledWith(
-      expect.objectContaining({ kind: 'topUp', id: 't1', code: 'KV-0001' }),
+      expect.objectContaining({
+        kind: 'topUp',
+        id: 't1',
+        code: 'KV-0001',
+        topUp: { amount: '750.00', supplierName: 'Ivan Koval', countsTowardBalance: true },
+      }),
     );
   });
 
@@ -1406,7 +1523,12 @@ describe('SupplierCardPage — top-ups', () => {
     meMock.mockReturnValue({ data: OPERATOR, isPending: false, isError: false });
     topUpsMock.mockReturnValue(
       page<IntakeTopUp>([
-        topUp({ id: 't1', amount: '750.00', reason: 'Доплата', created_at: '2026-09-09T10:00:00Z' }),
+        topUp({
+          id: 't1',
+          amount: '750.00',
+          reason: 'Доплата',
+          created_at: '2026-09-09T10:00:00Z',
+        }),
       ]),
     );
 
@@ -1474,5 +1596,133 @@ describe('SupplierCardPage — back link keeps the list view (#228)', () => {
   ])('falls back to the plain list for %s', (_name, state) => {
     renderCard({ state });
     expect(back()).toHaveAttribute('href', '/suppliers');
+  });
+});
+
+describe('SupplierCardPage — traced breakdown and top-up captions (2026-10-24)', () => {
+  const withHistory = () => {
+    intakesMock.mockReturnValue(
+      page<Intake>([
+        intake({
+          id: 'i1',
+          code: 'KV-0001',
+          amount: '1000.00',
+          created_at: '2026-09-08T07:10:00Z',
+        }),
+      ]),
+    );
+    payoutsMock.mockReturnValue(
+      page<Payout>([
+        payout({ id: 'p1', code: 'PO-1', amount: '250.00', created_at: '2026-09-10T07:10:00Z' }),
+      ]),
+    );
+    topUpsMock.mockReturnValue(
+      page<IntakeTopUp>([
+        topUp({
+          id: 't1',
+          amount: '750.00',
+          reason: 'домовились про 48 замість 45',
+          created_at: '2026-09-12T10:00:00Z',
+        }),
+      ]),
+    );
+    renderCard({
+      settlement: {
+        intakes_total: '1000.00',
+        top_ups_total: '750.00',
+        payouts_total: '250.00',
+        debt: '1500.00',
+        lines: [
+          settlementLine({ id: 'i1', open: '750.00', amount: '1000.00', paid: '250.00' }),
+          settlementLine({
+            id: 't1',
+            kind: 'top_up',
+            code: 'KV-0001',
+            intake_id: 'i1',
+            open: '750.00',
+            created_at: '2026-09-12 10:00:00+00',
+          }),
+        ],
+      },
+    });
+  };
+  const term = (text: string) =>
+    within(breakdown())
+      .getAllByText(text)
+      .find((el) => el.getAttribute('data-slot') === 'trace-term')!;
+
+  it('the result lights the «Balance» tile and every open balance it adds up from', () => {
+    withHistory();
+    fireEvent.pointerEnter(term('1,500.00 ₴'));
+    expect(within(tile('Balance')).getByText('1,500.00 ₴')).toHaveAttribute(
+      'data-trace-hit',
+      'amber',
+    );
+    const open = screen.getByText('Open balances — what exactly is owed').closest('.rounded-xl')!;
+    const hits = (open as HTMLElement).querySelectorAll('[data-trace-hit]');
+    expect(hits).toHaveLength(2);
+  });
+
+  it('«receipts» lights «Accrued» and the receipt rows; «top-ups» the top-up rows; «paid out» the payouts', () => {
+    withHistory();
+    const history = screen
+      .getByText('History — receipts, top-ups and payouts')
+      .closest('.rounded-xl')!;
+    const amountIn = (code: string, amount: string) =>
+      within(
+        within(history as HTMLElement)
+          .getAllByText(code)[0]
+          .closest('li')!,
+      ).getByText(amount);
+
+    fireEvent.pointerEnter(term('1,000.00 ₴'));
+    expect(within(tile('Accrued')).getByText('1,750.00 ₴')).toHaveAttribute(
+      'data-trace-hit',
+      'neutral',
+    );
+    expect(amountIn('KV-0001', '1,000.00 ₴')).toHaveAttribute('data-trace-hit', 'neutral');
+
+    fireEvent.pointerEnter(term('750.00 ₴'));
+    const topUpRow = within(history as HTMLElement)
+      .getByText('домовились про 48 замість 45')
+      .closest('li')!;
+    expect(within(topUpRow).getByText('750.00 ₴')).toHaveAttribute('data-trace-hit', 'neutral');
+
+    fireEvent.pointerEnter(term('250.00 ₴'));
+    expect(amountIn('PO-1', '250.00 ₴')).toHaveAttribute('data-trace-hit', 'leaf');
+  });
+
+  it('names who added a top-up, neutrally — to the owner only', () => {
+    meMock.mockReturnValue({ data: OWNER, isPending: false, isError: false });
+    withHistory();
+    expect(screen.getByText('Added by: Олена Коваль')).toBeInTheDocument();
+  });
+
+  it('shows an operator only what they saw before — no author', () => {
+    withHistory();
+    expect(screen.queryByText(/Added by/)).not.toBeInTheDocument();
+  });
+
+  it('captions an open top-up by its reason, on the day it was written, the receipt code kept', () => {
+    withHistory();
+    const open = screen.getByText('Open balances — what exactly is owed').closest('.rounded-xl')!;
+    const row = within(open as HTMLElement)
+      .getByText('Top-up · домовились про 48 замість 45')
+      .closest('button')!;
+    expect(row).toHaveTextContent('KV-0001');
+    expect(row).toHaveTextContent('09/12');
+  });
+
+  it('hands the top-up dialog the whole receipt and the balance it starts from', async () => {
+    const user = userEvent.setup();
+    meMock.mockReturnValue({ data: OWNER, isPending: false, isError: false });
+    withHistory();
+    await user.click(screen.getByRole('button', { name: /add a top-up/i }));
+    expect(topUpDialogMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        intake: expect.objectContaining({ id: 'i1', amount: '1000.00' }),
+        balanceBefore: '1500.00',
+      }),
+    );
   });
 });

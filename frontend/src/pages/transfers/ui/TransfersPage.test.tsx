@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { PointCashRow } from '@/entities/point-cash';
@@ -56,7 +56,12 @@ vi.mock('@/features/send-transfer', () => ({
     pointId: string;
     pointName: string;
     open: boolean;
-  }) => (open ? <div role="dialog">Send dialog — {pointId} — {pointName}</div> : null),
+  }) =>
+    open ? (
+      <div role="dialog">
+        Send dialog — {pointId} — {pointName}
+      </div>
+    ) : null,
 }));
 
 vi.mock('@/features/resolve-transfer', () => ({
@@ -65,7 +70,17 @@ vi.mock('@/features/resolve-transfer', () => ({
 }));
 
 vi.mock('@/features/void-document', () => ({
-  VoidDocumentDialog: ({ kind, id, code, open }: { kind: string; id: string; code: string; open: boolean }) =>
+  VoidDocumentDialog: ({
+    kind,
+    id,
+    code,
+    open,
+  }: {
+    kind: string;
+    id: string;
+    code: string;
+    open: boolean;
+  }) =>
     open ? (
       <div role="dialog">
         Void dialog — {kind} — {id} — {code}
@@ -128,7 +143,9 @@ const list = <T,>(data: T[]) => ({ data, total: data.length, page: 1, limit: 100
 beforeEach(() => {
   pointCashMock.mockReset().mockReturnValue(single(points([pointRow()])));
   transfersMock.mockReset().mockReturnValue(single(list([])));
-  pointOptionsMock.mockReset().mockReturnValue({ data: undefined, isPending: true, isError: false });
+  pointOptionsMock
+    .mockReset()
+    .mockReturnValue({ data: undefined, isPending: true, isError: false });
 });
 
 describe('TransfersPage — loading and error states', () => {
@@ -194,7 +211,9 @@ describe('TransfersPage — finding 3: the transfers read can be truncated', () 
     render(<TransfersPage />);
 
     expect(
-      screen.getByText(/The history shows recent transfers only\. Every open dispute is in the table above\./),
+      screen.getByText(
+        /The history shows recent transfers only\. Every open dispute is in the table above\./,
+      ),
     ).toBeInTheDocument();
   });
 
@@ -213,7 +232,12 @@ describe('TransfersPage — honesty rule 1: a point with no target is absent fro
       single(
         points([
           pointRow({ collection_point_id: 'p1', name: 'Shypynky', shortfall: '4000.00' }),
-          pointRow({ collection_point_id: 'p2', name: 'Haiove', target_cash: null, shortfall: null }),
+          pointRow({
+            collection_point_id: 'p2',
+            name: 'Haiove',
+            target_cash: null,
+            shortfall: null,
+          }),
         ]),
       ),
     );
@@ -226,9 +250,7 @@ describe('TransfersPage — honesty rule 1: a point with no target is absent fro
   });
 
   it('never counts a settled point (shortfall ≤ 0) toward what the network owes', () => {
-    pointCashMock.mockReturnValue(
-      single(points([pointRow({ shortfall: '-100.00' })])),
-    );
+    pointCashMock.mockReturnValue(single(points([pointRow({ shortfall: '-100.00' })])));
 
     render(<TransfersPage />);
 
@@ -278,7 +300,11 @@ describe('TransfersPage — reads of their own for disputes and money on the roa
 
   it('offers «Resolve» for an open dispute the newest-100 history page does not carry', async () => {
     const user = userEvent.setup();
-    const old = transfer({ id: 'old-dispute', status: 'disputed', sent_at: '2026-08-01T08:00:00.000Z' });
+    const old = transfer({
+      id: 'old-dispute',
+      status: 'disputed',
+      sent_at: '2026-08-01T08:00:00.000Z',
+    });
     byStatus([], [old], []);
     render(<TransfersPage />);
 
@@ -304,13 +330,40 @@ describe('TransfersPage — reads of their own for disputes and money on the roa
     expect(tile('Owed to points')).toHaveTextContent('24,000.00 ₴ of it already on the road');
   });
 
+  // 24.10 — «звідки це число»: the tile's figures light the rows they sum.
+  it('traces the tile to the table: the total to «Short», «of it» to the on-the-road lines', () => {
+    pointCashMock.mockReturnValue(single(points([pointRow({ shortfall: '49500.00' })])));
+    byStatus([], [], [transfer({ id: 's1', status: 'sent', cash: '20000.00' })]);
+    render(<TransfersPage />);
+
+    const owedTerm = within(tile('Owed to points')).getByText('49,500.00 ₴');
+    fireEvent.pointerEnter(owedTerm);
+    expect(screen.getByText('49,500.00')).toHaveAttribute('data-trace-hit', 'amber');
+    fireEvent.pointerLeave(owedTerm);
+
+    const roadTerm = within(tile('Owed to points')).getByText('20,000.00 ₴');
+    fireEvent.pointerEnter(roadTerm);
+    expect(screen.getByText('on the road 20,000.00 ₴')).toHaveAttribute('data-trace-hit', 'amber');
+    expect(screen.getByText('49,500.00')).not.toHaveAttribute('data-trace-hit');
+  });
+
   it('hides a retired point with nothing left to say, keeps one still holding money', () => {
-    pointOptionsMock.mockReturnValue({ data: [{ id: 'p1', name: 'Shypynky' }], isPending: false, isError: false });
+    pointOptionsMock.mockReturnValue({
+      data: [{ id: 'p1', name: 'Shypynky' }],
+      isPending: false,
+      isError: false,
+    });
     pointCashMock.mockReturnValue(
       single(
         points([
           pointRow(),
-          pointRow({ collection_point_id: 'p8', name: 'Retired empty', cash: '0.00', target_cash: null, shortfall: null }),
+          pointRow({
+            collection_point_id: 'p8',
+            name: 'Retired empty',
+            cash: '0.00',
+            target_cash: null,
+            shortfall: null,
+          }),
           pointRow({ collection_point_id: 'p9', name: 'Retired with cash', cash: '300.00' }),
         ]),
       ),
@@ -326,11 +379,21 @@ describe('TransfersPage — reads of their own for disputes and money on the roa
 describe('TransfersPage — wiring the table to the resolve dialog', () => {
   it('resolves the full disputed transfer matched from the network-wide read', async () => {
     const user = userEvent.setup();
-    const disputed = transfer({ id: 't9', status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z' });
+    const disputed = transfer({
+      id: 't9',
+      status: 'disputed',
+      sent_at: '2026-09-10T08:00:00.000Z',
+    });
     pointCashMock.mockReturnValue(
       single(
         points([
-          pointRow({ latest_transfer: { status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z', resolved_at: null } }),
+          pointRow({
+            latest_transfer: {
+              status: 'disputed',
+              sent_at: '2026-09-10T08:00:00.000Z',
+              resolved_at: null,
+            },
+          }),
         ]),
       ),
     );
@@ -380,7 +443,11 @@ describe('TransfersPage — wiring the table to the resolve dialog', () => {
 describe('TransfersPage — wiring the history to the resolve dialog (#76)', () => {
   it('resolves an open dispute from its expanded history row', async () => {
     const user = userEvent.setup();
-    const disputed = transfer({ id: 't11', status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z' });
+    const disputed = transfer({
+      id: 't11',
+      status: 'disputed',
+      sent_at: '2026-09-10T08:00:00.000Z',
+    });
     transfersMock.mockReturnValue(single(list([disputed])));
 
     render(<TransfersPage />);

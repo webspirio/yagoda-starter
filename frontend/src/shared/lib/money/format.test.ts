@@ -1,5 +1,13 @@
 import { describe, it, expect, vi } from 'vitest';
-import { formatUah, formatKg, formatDecimal, formatCount, toDecimalField } from './format';
+import {
+  formatUah,
+  formatKg,
+  formatUahPerKg,
+  formatDecimal,
+  formatCount,
+  toDecimalField,
+  unbreakable,
+} from './format';
 import { maskDecimalInput, parseDecimal } from './input';
 
 describe('money/weight formatting (strings in, strings out)', () => {
@@ -15,6 +23,22 @@ describe('money/weight formatting (strings in, strings out)', () => {
   });
   it('formats en with a comma group and a dot decimal', () => {
     expect(formatUah('12658.50', 'en')).toBe('12,658.50 ₴');
+  });
+});
+
+// «Завжди показуй одиниці вимірювання до цифр» (2026-10-24): a formula's price
+// operand carries ₴/кг like its money and weight operands carry ₴ and кг.
+describe('formatUahPerKg', () => {
+  it('prints a price per kilogram with the locale’s kilogram unit', () => {
+    expect(formatUahPerKg('189.42', 'uk')).toBe('189,42 ₴/кг');
+    expect(formatUahPerKg('1189.42', 'en')).toBe('1,189.42 ₴/kg');
+  });
+});
+
+describe('unbreakable', () => {
+  it('joins a figure to its unit with a no-break space, so a wrapped formula never strands the unit', () => {
+    expect(unbreakable(formatUahPerKg('189.42', 'uk'))).toBe('189,42\u00a0₴/кг');
+    expect(unbreakable('1,20 кг тара')).toBe('1,20\u00a0кг\u00a0тара');
   });
 });
 

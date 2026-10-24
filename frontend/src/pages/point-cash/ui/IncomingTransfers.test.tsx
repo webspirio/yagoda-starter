@@ -151,7 +151,8 @@ describe('IncomingTransfers', () => {
     await user.click(screen.getByRole('button', { name: 'Accept' }));
     await waitFor(() =>
       expect(toastSuccessMock).toHaveBeenCalledWith('Transfer accepted', {
-        description: '50,000.00 ₴ and 120 crates joined the cash; the shortfall to target went down.',
+        description:
+          '50,000.00 ₴ and 120 crates joined the cash; the shortfall to target went down.',
       }),
     );
   });

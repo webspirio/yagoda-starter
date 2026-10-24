@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import type { ComponentProps } from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { TraceScope } from '@/shared/ui/trace';
 import { TotalsSection } from './TotalsSection';
 
 /**
@@ -187,7 +188,9 @@ describe('TotalsSection — the remainder panel', () => {
     expect(screen.getByText(/Only 1,616.10 ₴ is in the berry drawer/)).toBeInTheDocument();
     // 5460.00 accrued − 1616.10 paid: this delivery's own new debt…
     expect(screen.getByText('Debt from this delivery')).toBeInTheDocument();
-    expect(screen.getByText('+ 3,843.90 ₴')).toBeInTheDocument();
+    expect(screen.getByText('Debt from this delivery').parentElement).toHaveTextContent(
+      '+ 3,843.90 ₴',
+    );
     // …and the balance it all comes to, the earlier 37.37 included.
     const row = screen.getByTestId('remainder-row');
     expect(row).toHaveTextContent('Owed by us after this');
@@ -198,7 +201,9 @@ describe('TotalsSection — the remainder panel', () => {
   it('shows what the cash pays off the earlier balance when it is more than today accrues', () => {
     render(<Harness paid="5497.37" cash="9000.00" />);
     expect(screen.getByText('Paid off the earlier balance')).toBeInTheDocument();
-    expect(screen.getByText('− 37.37 ₴')).toBeInTheDocument();
+    expect(screen.getByText('Paid off the earlier balance').parentElement).toHaveTextContent(
+      '− 37.37 ₴',
+    );
     expect(screen.queryByText('Debt from this delivery')).toBeNull();
   });
 
@@ -445,5 +450,37 @@ describe('TotalsSection — refusal and hints', () => {
 
     rerender(<Harness isSubmitting />);
     expect(screen.getByRole('button', { name: /Accept/ })).toBeDisabled();
+  });
+});
+
+// «Звідки це число» (client, 24.10): every figure the card derives points at its rows.
+describe('TotalsSection — traced figures', () => {
+  it('«Разом» lights the accrual and the carried-in balance; the remainder «Разом» and the cash', () => {
+    render(
+      <TraceScope>
+        <Harness paid="1616.10" />
+      </TraceScope>,
+    );
+    const accrued = screen.getByText('5,460.00 ₴');
+    const debt = screen.getByText('+ 37.37 ₴');
+    const paid = screen.getByLabelText('Paid in cash');
+    const total = screen.getByText('Total to pay out').parentElement!.querySelector('[data-trace]')!;
+
+    fireEvent.pointerEnter(screen.getByText('5,497.37 ₴'));
+    expect(accrued).toHaveAttribute('data-trace-hit', 'neutral');
+    expect(debt).toHaveAttribute('data-trace-hit', 'neutral');
+    expect(paid).not.toHaveAttribute('data-trace-hit');
+
+    fireEvent.pointerEnter(screen.getByText('3,881.27 ₴'));
+    expect(total).toHaveAttribute('data-trace-hit', 'amber');
+    expect(paid).toHaveAttribute('data-trace-hit', 'amber');
+    expect(accrued).not.toHaveAttribute('data-trace-hit');
+    // A result that shares an operand is not lit with it.
+    expect(screen.getByText('3,843.90 ₴')).not.toHaveAttribute('data-trace-hit');
+
+    fireEvent.pointerEnter(screen.getByText('3,843.90 ₴'));
+    expect(accrued).toHaveAttribute('data-trace-hit', 'amber');
+    expect(paid).toHaveAttribute('data-trace-hit', 'amber');
+    expect(debt).not.toHaveAttribute('data-trace-hit');
   });
 });

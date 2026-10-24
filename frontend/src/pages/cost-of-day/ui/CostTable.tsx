@@ -3,8 +3,16 @@ import { Trans, useTranslation } from 'react-i18next';
 import { Info } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/shared/ui/tooltip';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
-import { formatDecimal, formatKg, formatUah } from '@/shared/lib/money';
+import {
+  formatDecimal,
+  formatKg,
+  formatUah,
+  formatUahPerKg,
+  unbreakable,
+} from '@/shared/lib/money';
 import type { CostOfDay } from '@/entities/cost-of-day';
+import { DAY, TOTAL, UNWEIGHED } from './trace-ids';
+import { Term } from './terms';
 import {
   AMBER,
   COLUMNS,
@@ -53,6 +61,15 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
   const dash = (v: string | null | undefined, f: (s: string) => string = dec) =>
     v === null || v === undefined ? '—' : f(v);
   const anyUnweighed = day.products.some((p) => !p.complete);
+  // A formula's operands carry their units and never break inside one.
+  const uah = (s: string) => unbreakable(formatUah(s, locale));
+  const kg = (s: string) => unbreakable(formatKg(s, locale));
+  const perKg = (s: string) => unbreakable(formatUahPerKg(s, locale));
+  // Hints naming where a traced operand is shown (`shared/ui/trace`).
+  const totalCell = (columnKey: string) =>
+    t('costOfDay.trace.cell', { column: t(columnKey), row: t('costOfDay.table.total') });
+  const column = (column: string) => t('costOfDay.trace.column', { column });
+  const expensesHint = t('costOfDay.trace.expenses');
 
   const group = (label: string, span: number, tone: string, extra: Record<string, string> = {}) => (
     <TableHead
@@ -151,14 +168,24 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
                 empty — sums only (review C2). */}
             <TableRow className="border-t-2 border-border font-semibold">
               <TableCell className={STICKY}>{t('costOfDay.table.total')}</TableCell>
-              <TableCell className={NUM}>{dash(w?.intake_kg)}</TableCell>
-              <TableCell className={NUM}>{w === null ? '—' : dec(day.reweighed_kg)}</TableCell>
-              <TableCell className={NUM} data-group="shortfall-kg">
+              <TableCell className={NUM} data-trace={TOTAL.intakeKg}>
+                {dash(w?.intake_kg)}
+              </TableCell>
+              <TableCell className={NUM} data-trace={DAY.baseKg}>
+                {w === null ? '—' : dec(day.reweighed_kg)}
+              </TableCell>
+              <TableCell className={NUM} data-group="shortfall-kg" data-trace={TOTAL.shortKg}>
                 <ShortfallValue value={w?.shortfall_kg ?? null} minus locale={locale} />
               </TableCell>
-              <TableCell className={`${NUM} ${SKY}`}>{dash(w?.accrued)}</TableCell>
+              <TableCell className={`${NUM} ${SKY}`} data-trace={TOTAL.accrued}>
+                {dash(w?.accrued)}
+              </TableCell>
               <TableCell className={SKY} />
-              <TableCell className={`${NUM} ${AMBER}`} data-group="shortfall">
+              <TableCell
+                className={`${NUM} ${AMBER}`}
+                data-group="shortfall"
+                data-trace={TOTAL.shortfall}
+              >
                 <ShortfallValue value={w?.shortfall ?? null} minus locale={locale} />
               </TableCell>
               <TableCell className={AMBER} data-group="shortfall" />
@@ -169,10 +196,33 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
             {anyUnweighed ? (
               <TableRow className="text-muted-foreground hover:bg-transparent">
                 <TableCell colSpan={COLUMNS} className="text-xs whitespace-normal">
-                  {t('costOfDay.table.unweighed', {
-                    kg: formatKg(day.unweighed.intake_kg, locale),
-                    amount: formatUah(day.unweighed.accrued, locale),
-                  })}
+                  <Trans
+                    t={t}
+                    i18nKey="costOfDay.table.unweighed"
+                    values={{
+                      kg: kg(day.unweighed.intake_kg),
+                      amount: uah(day.unweighed.accrued),
+                    }}
+                    components={{
+                      kg: (
+                        <Term
+                          refs={UNWEIGHED.intakeKg}
+                          hint={t('costOfDay.trace.unweighed', {
+                            column: t('costOfDay.table.point'),
+                          })}
+                        />
+                      ),
+                      amount: (
+                        <Term
+                          refs={UNWEIGHED.accrued}
+                          tone="sky"
+                          hint={t('costOfDay.trace.unweighed', {
+                            column: t('costOfDay.table.accrued'),
+                          })}
+                        />
+                      ),
+                    }}
+                  />
                 </TableCell>
               </TableRow>
             ) : null}
@@ -199,13 +249,32 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
                 anyUnweighed ? 'costOfDay.table.dayFormulaWeighed' : 'costOfDay.table.dayFormula'
               }
               values={{
-                accrued: dec(w.accrued),
-                expenses: dec(day.expenses_amount),
-                kg: formatKg(day.reweighed_kg, locale),
-                avg: dec(day.price_cost_avg),
+                accrued: uah(w.accrued),
+                expenses: uah(day.expenses_amount),
+                kg: kg(day.reweighed_kg),
+                avg: perKg(day.price_cost_avg),
               }}
               components={{
-                leaf: <span className="font-mono font-semibold text-[var(--leaf)]" />,
+                // Each operand points at where it is shown: the total row's
+                // «Нараховано» and «База», the expenses strip's total; the
+                // average is shown nowhere else, so it points at all three.
+                accrued: (
+                  <Term
+                    refs={TOTAL.accrued}
+                    tone="sky"
+                    hint={totalCell('costOfDay.table.accrued')}
+                  />
+                ),
+                expenses: <Term refs={DAY.expenses} tone="plum" hint={expensesHint} />,
+                kg: <Term refs={DAY.baseKg} hint={totalCell('costOfDay.table.base')} />,
+                avg: (
+                  <Term
+                    refs={[TOTAL.accrued, DAY.expenses, DAY.baseKg]}
+                    tone="leaf"
+                    hint={t('costOfDay.trace.dayAvg')}
+                    className="font-semibold"
+                  />
+                ),
               }}
             />
           </p>
@@ -213,23 +282,72 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
             <Trans
               t={t}
               i18nKey="costOfDay.table.howToRead"
-              values={{
-                kg: formatKg(day.reweighed_kg, locale),
-                shortfall: dec(day.shortfall_amount),
-                shortfallPerKg: dec(day.shortfall_per_kg),
-                expenses: dec(day.expenses_amount),
-                expensesPerKg: dec(day.expenses_per_kg),
-              }}
               components={{
                 sky: <span className="font-medium text-[var(--sky)]" />,
-                amber: (
-                  <span data-group="shortfall" className="font-medium text-[var(--amber)]" />
-                ),
+                amber: <span data-group="shortfall" className="font-medium text-[var(--amber)]" />,
                 plum: <span className="font-medium text-[var(--plum)]" />,
                 leaf: <span className="font-medium text-[var(--leaf)]" />,
               }}
             />
           </p>
+          {/* The two spreads are two formulas — one per line (client, 24.10), each in
+              its column group's colour, so neither reads as part of the other. */}
+          <ul data-how-to-read className="space-y-0.5">
+            <li data-group="shortfall">
+              <Trans
+                t={t}
+                i18nKey="costOfDay.table.howToReadShortfall"
+                values={{
+                  kg: kg(day.reweighed_kg),
+                  shortfall: uah(day.shortfall_amount),
+                  shortfallPerKg: perKg(day.shortfall_per_kg),
+                }}
+                components={{
+                  amber: <span className="font-medium text-[var(--amber)]" />,
+                  shortfall: (
+                    <Term
+                      refs={TOTAL.shortfall}
+                      tone="amber"
+                      hint={totalCell('costOfDay.table.ownShortfall')}
+                    />
+                  ),
+                  kg: <Term refs={DAY.baseKg} hint={totalCell('costOfDay.table.base')} />,
+                  shortfallPerKg: (
+                    <Term
+                      refs={DAY.shortfallPerKg}
+                      tone="amber"
+                      hint={column(t('costOfDay.table.dayShortfall'))}
+                    />
+                  ),
+                }}
+              />
+            </li>
+            <li>
+              <Trans
+                t={t}
+                i18nKey="costOfDay.table.howToReadExpenses"
+                values={{
+                  kg: kg(day.reweighed_kg),
+                  expenses: uah(day.expenses_amount),
+                  expensesPerKg: perKg(day.expenses_per_kg),
+                }}
+                components={{
+                  plum: <span className="font-medium text-[var(--plum)]" />,
+                  expenses: <Term refs={DAY.expenses} tone="plum" hint={expensesHint} />,
+                  kg: <Term refs={DAY.baseKg} hint={totalCell('costOfDay.table.base')} />,
+                  expensesPerKg: (
+                    <Term
+                      refs={DAY.expensesPerKg}
+                      tone="plum"
+                      hint={column(
+                        `${t('costOfDay.table.groupExpenses')} · ${t('costOfDay.table.expensesPerKg')}`,
+                      )}
+                    />
+                  ),
+                }}
+              />
+            </li>
+          </ul>
         </div>
       ) : (
         // Nothing weighed yet: the expenses have landed nowhere. Muted, not
@@ -239,9 +357,14 @@ export function CostTable({ day, locale }: { day: CostOfDay; locale: string }) {
           {/* «0,00 ₴ не розподілено» says nothing — only a real sum waits. */}
           {day.expenses_amount === '0.00' ? null : (
             <p>
-              {t('costOfDay.expenses.awaitingAmount', {
-                amount: formatUah(day.expenses_amount, locale),
-              })}
+              <Trans
+                t={t}
+                i18nKey="costOfDay.expenses.awaitingAmount"
+                values={{ amount: uah(day.expenses_amount) }}
+                components={{
+                  amount: <Term refs={DAY.expenses} tone="plum" hint={expensesHint} />,
+                }}
+              />
             </p>
           )}
           <p className="text-xs">{t('costOfDay.expenses.awaitingNote')}</p>

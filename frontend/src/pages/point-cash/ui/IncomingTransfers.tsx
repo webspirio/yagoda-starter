@@ -75,6 +75,8 @@ export function IncomingTransfers({ pointId, canAct }: { pointId: string; canAct
       {pending.map((transfer) => (
         <div
           key={transfer.id}
+          // The source the shortfall tile's «з них … уже в дорозі» lights.
+          data-trace="incoming:sent"
           className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl bg-amber/10 px-4 py-3 ring-1 ring-amber/30"
         >
           <Truck className="size-5 shrink-0 text-amber" aria-hidden="true" />

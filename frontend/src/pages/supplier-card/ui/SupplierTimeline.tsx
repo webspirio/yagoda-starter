@@ -5,7 +5,15 @@ import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { cn } from '@/shared/lib/cn';
 import { formatShortDate, formatTime, toLocalIsoDate } from '@/shared/lib/date';
-import { formatUah, formatKg, formatDecimal, add, cmp, isZero } from '@/shared/lib/money';
+import {
+  formatUah,
+  formatKg,
+  formatUahPerKg,
+  add,
+  cmp,
+  isZero,
+  unbreakable,
+} from '@/shared/lib/money';
 import { canVoidIntake, type Intake } from '@/entities/intake';
 import { canVoidPayout, type Payout } from '@/entities/payout';
 import type { IntakeTopUp } from '@/entities/intake-top-up';
@@ -85,6 +93,8 @@ export function SupplierTimeline({
 }) {
   const { t, i18n } = useTranslation();
   const locale = i18n.language;
+  const kg = (v: string) => unbreakable(formatKg(v, locale));
+  const perKg = (v: string) => unbreakable(formatUahPerKg(v, locale));
 
   // Both top-up writes are `@Auth(UserRole.NetworkOwner)` — the operator never
   // writes one, so §9.4's «своя квитанція» has no meaning here.
@@ -93,48 +103,42 @@ export function SupplierTimeline({
   const rows: TimelineRow[] = useMemo(
     () =>
       [
-        ...intakes.map(
-          (i): TimelineRow => ({
-            kind: 'intake',
-            intake: i,
-            id: i.id,
-            code: i.code,
-            amount: i.amount,
-            businessDate: i.business_date,
-            createdAt: i.created_at,
-            voided: i.voided_at !== null,
-            reason: i.void_reason,
-          }),
-        ),
-        ...payouts.map(
-          (p): TimelineRow => ({
-            kind: 'payout',
-            payout: p,
-            id: p.id,
-            code: p.code,
-            amount: p.amount,
-            businessDate: p.business_date,
-            createdAt: p.created_at,
-            voided: p.voided_at !== null,
-            reason: p.void_reason,
-          }),
-        ),
-        ...topUps.map(
-          (u): TimelineRow => ({
-            kind: 'topUp',
-            topUp: u,
-            id: u.id,
-            // The PARENT's code — see `TimelineRowBase`.
-            code: u.intake.code,
-            amount: u.amount,
-            businessDate: '',
-            createdAt: u.created_at,
-            // STRUCK THROUGH WHEN IT COUNTS FOR NOTHING, whichever of the two
-            // was voided — but never hidden. The caption below says which.
-            voided: !u.counts_toward_balance,
-            reason: u.voided_at !== null ? u.void_reason : null,
-          }),
-        ),
+        ...intakes.map((i): TimelineRow => ({
+          kind: 'intake',
+          intake: i,
+          id: i.id,
+          code: i.code,
+          amount: i.amount,
+          businessDate: i.business_date,
+          createdAt: i.created_at,
+          voided: i.voided_at !== null,
+          reason: i.void_reason,
+        })),
+        ...payouts.map((p): TimelineRow => ({
+          kind: 'payout',
+          payout: p,
+          id: p.id,
+          code: p.code,
+          amount: p.amount,
+          businessDate: p.business_date,
+          createdAt: p.created_at,
+          voided: p.voided_at !== null,
+          reason: p.void_reason,
+        })),
+        ...topUps.map((u): TimelineRow => ({
+          kind: 'topUp',
+          topUp: u,
+          id: u.id,
+          // The PARENT's code — see `TimelineRowBase`.
+          code: u.intake.code,
+          amount: u.amount,
+          businessDate: '',
+          createdAt: u.created_at,
+          // STRUCK THROUGH WHEN IT COUNTS FOR NOTHING, whichever of the two
+          // was voided — but never hidden. The caption below says which.
+          voided: !u.counts_toward_balance,
+          reason: u.voided_at !== null ? u.void_reason : null,
+        })),
       ].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0)),
     [intakes, payouts, topUps],
   );
@@ -164,6 +168,7 @@ export function SupplierTimeline({
       {row.voided ? <span className="text-xs">{row.reason}</span> : null}
       <span className="ml-auto text-right">
         <span
+          data-trace={row.voided ? undefined : 'card:payouts'}
           className={cn('block font-mono tabular-nums', !row.voided && 'text-[var(--leaf)]')}
         >
           {formatUah(row.amount, locale)}
@@ -218,7 +223,10 @@ export function SupplierTimeline({
                   <Badge variant="secondary">{t('supplierCard.timeline.intake')}</Badge>
                   {row.voided ? <span className="text-xs">{row.reason}</span> : null}
                   <span className="ml-auto text-right">
-                    <span className="block font-mono tabular-nums">
+                    <span
+                      data-trace={row.voided ? undefined : 'card:intakes'}
+                      className="block font-mono tabular-nums"
+                    >
                       {formatUah(row.amount, locale)}
                     </span>
                     {!row.voided &&
@@ -250,28 +258,27 @@ export function SupplierTimeline({
                         {' · '}
                         {formatKg(item.net_kg, locale)}
                       </span>
-                      {/* `formatDecimal`, NOT `formatKg`, for gross/pallet/tare
-                          — the key already supplies «брутто»/«піддон»/«тара»;
-                          `formatKg` here would double the unit («86,50 кг
-                          брутто»). Review round 1 (#148): net_kg is
+                      {/* Every weight with its кг and the price with its ₴/кг
+                          (2026-10-24: «Завжди показуй одиниці»), each held to
+                          its unit and qualifier so a wrap never splits one.
+                          Review round 1 (#148): net_kg is
                           `(gross − pallet) − tare` (`intake-lines.ts:149`),
                           so a line that dropped the pallet term did not
                           reconcile with the кг printed just above it — the
                           pallet term is conditional, same check
-                          `ReceiptDialog.tsx` already uses, and the common
-                          zero-pallet row stays byte-identical. */}
+                          `ReceiptDialog.tsx` already uses. */}
                       <span className="block text-xs text-muted-foreground">
                         {cmp(item.pallet_kg, '0') !== 0
                           ? t('supplierCard.line.weightsWithPallet', {
-                              gross: formatDecimal(item.gross_kg, locale),
-                              pallet: formatDecimal(item.pallet_kg, locale),
-                              tare: formatDecimal(item.tare_weight_kg, locale),
-                              price: formatDecimal(add(item.price, item.bonus), locale),
+                              gross: kg(item.gross_kg),
+                              pallet: kg(item.pallet_kg),
+                              tare: kg(item.tare_weight_kg),
+                              price: perKg(add(item.price, item.bonus)),
                             })
                           : t('supplierCard.line.weights', {
-                              gross: formatDecimal(item.gross_kg, locale),
-                              tare: formatDecimal(item.tare_weight_kg, locale),
-                              price: formatDecimal(add(item.price, item.bonus), locale),
+                              gross: kg(item.gross_kg),
+                              tare: kg(item.tare_weight_kg),
+                              price: perKg(add(item.price, item.bonus)),
                             })}
                       </span>
                     </span>
@@ -305,6 +312,14 @@ export function SupplierTimeline({
                 {t('supplierCard.timeline.againstReceipt', { code: row.code })}
               </span>
               <span className="truncate text-xs text-muted-foreground">{row.topUp.reason}</span>
+              {/* Who wrote it (review 2026-10-24 #7) — neutral «Додано:», no gendered verb. The
+                  OWNER's alone while the client decides what operators see of top-ups: they
+                  keep exactly what they saw before (amount, reason, void reason). */}
+              {isOwner && row.topUp.created_by_name ? (
+                <span className="text-xs whitespace-nowrap text-muted-foreground">
+                  {t('supplierCard.timeline.addedBy', { name: row.topUp.created_by_name })}
+                </span>
+              ) : null}
               {/*
                 WHICH OF THE TWO WAS VOIDED, said out loud. A top-up the owner
                 voided and a top-up whose PARENT RECEIPT was voided look
@@ -316,12 +331,23 @@ export function SupplierTimeline({
               {row.voided ? (
                 <span className="text-xs">
                   {row.topUp.voided_at !== null
-                    ? row.topUp.void_reason
+                    ? !isOwner
+                      ? row.topUp.void_reason
+                      : t('supplierCard.timeline.topUpVoided', {
+                          date: formatShortDate(toLocalIsoDate(row.topUp.voided_at), locale),
+                          name: row.topUp.voided_by_name ?? '—',
+                          reason: row.topUp.void_reason ?? '',
+                        })
                     : t('supplierCard.timeline.parentVoided')}
                 </span>
               ) : null}
               <span className="ml-auto text-right">
-                <span className="block font-mono tabular-nums">{formatUah(row.amount, locale)}</span>
+                <span
+                  data-trace={row.voided ? undefined : 'card:topUps'}
+                  className="block font-mono tabular-nums"
+                >
+                  {formatUah(row.amount, locale)}
+                </span>
                 {!row.voided && openByLineId?.get(row.id) && !isZero(openByLineId.get(row.id)!) ? (
                   <span className="block font-mono text-[11px] text-[var(--amber)]">
                     {t('supplierCard.timeline.openLeft', {

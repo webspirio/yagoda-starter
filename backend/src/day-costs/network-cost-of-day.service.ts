@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { CostOfDayService, CostOfDayProduct, CostOfDayResponse } from './cost-of-day.service';
 import { add, cmp, div, sub, sum } from '../common/money';
 import type { AuthenticatedUser } from '../auth/jwt.strategy';
@@ -146,8 +146,18 @@ export class NetworkCostOfDayService {
     private readonly costOfDay: CostOfDayService,
   ) {}
 
-  async forDate(actor: AuthenticatedUser, date: string): Promise<NetworkCostOfDayResponse> {
-    const shiftRows = (await this.dataSource.query(
+  /** Every point's day read inside ONE REPEATABLE READ snapshot (audit
+   *  2026-10-24 M5), the shift list included — the network row is a sum of
+   *  the point rows, and a sum over figures read at different instants need
+   *  not equal any of them. */
+  async forDate(_actor: AuthenticatedUser, date: string): Promise<NetworkCostOfDayResponse> {
+    return this.dataSource.transaction('REPEATABLE READ', (manager) =>
+      this.forDateIn(manager, date),
+    );
+  }
+
+  private async forDateIn(manager: EntityManager, date: string): Promise<NetworkCostOfDayResponse> {
+    const shiftRows = (await manager.query(
       `SELECT s.id AS shift_id, s.collection_point_id AS point_id, cp.name AS point_name
          FROM shifts s
          JOIN collection_points cp ON cp.id = s.collection_point_id
@@ -158,7 +168,7 @@ export class NetworkCostOfDayService {
 
     const days: { shift: ShiftRow; day: CostOfDayResponse }[] = [];
     for (const shift of shiftRows) {
-      days.push({ shift, day: await this.costOfDay.forShift(actor, shift.shift_id) });
+      days.push({ shift, day: await this.costOfDay.forShiftIn(manager, shift.shift_id) });
     }
 
     const byProduct = new Map<string, { product_name: string; points: NetworkCostPoint[] }>();

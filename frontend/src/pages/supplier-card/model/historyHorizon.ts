@@ -14,6 +14,19 @@ interface HistoryList {
  * NEWEST of those «oldest loaded» instants: everything from there on is
  * complete in all three lists. `null` when nothing was cut. `created_at` is
  * the server's ISO instant, the same key the timeline already sorts on.
+ *
+ * THE ASSUMPTION THIS RESTS ON (review 2026-10-24): `/intakes` and `/payouts`
+ * page by `business_date DESC, created_at DESC`, not by `created_at` — so a
+ * page is «the newest 100 by `created_at`» only while the two orders agree.
+ * They do, for one supplier: all of a supplier's documents sit at the
+ * supplier's own point (a payout is refused at any other, `create-payout`),
+ * and at a point only the NEWEST shift can be reopened, and only while no
+ * other is open there — so a document written later never carries an earlier
+ * business date than one written before it. (`/intake-top-ups` pages by
+ * `created_at` itself.) If either rule ever loosens — a reopen of an older
+ * day, or a supplier's receipts at two points — re-key this on the business
+ * date, or a late-written old-day document can fall off a cut page while
+ * still being newer than the horizon.
  */
 export function historyHorizon(lists: readonly HistoryList[]): string | null {
   let horizon: string | null = null;

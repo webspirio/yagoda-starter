@@ -61,7 +61,7 @@ describe('PriceChanges', () => {
     expect(item).toHaveTextContent(clock('2026-09-23T07:54:00.000Z'));
     expect(item).toHaveTextContent('Шипинки');
     expect(item).toHaveTextContent('Малина · 2 сорт');
-    expect(item).toHaveTextContent('115.00 → 184.00 ₴');
+    expect(item).toHaveTextContent('115.00 ₴/kg → 184.00 ₴/kg');
     expect(item).toHaveTextContent('Керівник');
   });
 
@@ -70,7 +70,7 @@ describe('PriceChanges', () => {
     renderAt();
 
     const item = screen.getByRole('listitem');
-    expect(item).toHaveTextContent('184.00 ₴');
+    expect(item).toHaveTextContent('184.00 ₴/kg');
     expect(item).not.toHaveTextContent('→');
   });
 

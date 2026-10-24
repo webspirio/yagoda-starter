@@ -1,4 +1,4 @@
-import { DataSource } from 'typeorm';
+import type { DataSource, EntityManager } from 'typeorm';
 import {
   gradeTotals,
   productShortfall,
@@ -68,13 +68,13 @@ export interface ProductCostGrade {
  * task-10 brief's reuse note.
  */
 export async function productCostRows(
-  dataSource: DataSource,
+  runner: DataSource | EntityManager,
   shiftId: string,
 ): Promise<ProductCostRow[]> {
-  const grades = await gradeTotals(dataSource, shiftId);
+  const grades = await gradeTotals(runner, shiftId);
   if (grades.length === 0) return [];
 
-  const topUpsByGrade = await topUpsByGradeForShift(dataSource, shiftId);
+  const topUpsByGrade = await topUpsByGradeForShift(runner, shiftId);
 
   const gradeCosts = grades.map((g) => {
     const topUps = topUpsByGrade.get(g.product_grade_id) ?? '0.00';

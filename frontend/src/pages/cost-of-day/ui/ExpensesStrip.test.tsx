@@ -347,13 +347,25 @@ describe('ExpensesStrip', () => {
   it("sums the day's expenses and their rate in plum", () => {
     renderPanel({ expenses_amount: '1700.00', expenses_per_kg: '2.78' });
 
-    expect(screen.getByText('= 1 700,00 ₴ · 2,78 ₴/кг')).toBeInTheDocument();
+    const total = screen.getByText(
+      (_, el) =>
+        el?.tagName === 'SPAN' &&
+        el.textContent?.replace(/\s+/g, ' ') === '= 1 700,00 ₴ · 2,78 ₴/кг',
+    );
+    // The two figures the table's formulas point at (`shared/ui/trace`).
+    expect(total.querySelector('[data-trace="day:expenses"]')).toHaveTextContent('1 700,00 ₴');
+    expect(total.querySelector('[data-trace="day:expensesPerKg"]')).toHaveTextContent('2,78 ₴/кг');
   });
 
   it('drops the rate when nothing was weighed', () => {
     renderPanel({ expenses_amount: '1700.00', expenses_per_kg: null });
 
-    expect(screen.getByText('= 1 700,00 ₴')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        (_, el) =>
+          el?.tagName === 'SPAN' && el.textContent?.replace(/\s+/g, ' ') === '= 1 700,00 ₴',
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/₴\/кг/)).not.toBeInTheDocument();
   });
 

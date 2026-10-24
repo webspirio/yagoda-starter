@@ -92,7 +92,7 @@ describe('PointDebtTable — honesty rule: null target/shortfall render «—»,
         onResolve={noop}
       />,
     );
-    expect(screen.getByText('over by 2,800.00')).toHaveClass('text-leaf');
+    expect(screen.getByText('over by 2,800.00 ₴')).toHaveClass('text-leaf');
     expect(screen.queryByText(/−2,800/)).toBeNull();
   });
 
@@ -113,7 +113,9 @@ describe('PointDebtTable — honesty rule: null target/shortfall render «—»,
 
 describe('PointDebtTable — no placeholder crates column (C10)', () => {
   it('has no «Crates» column and a quiet, outline «Send»', () => {
-    render(<PointDebtTable rows={[row()]} unresolvedDisputes={[]} onSend={noop} onResolve={noop} />);
+    render(
+      <PointDebtTable rows={[row()]} unresolvedDisputes={[]} onSend={noop} onResolve={noop} />,
+    );
 
     expect(screen.queryByRole('columnheader', { name: /Crates/ })).toBeNull();
     expect(screen.queryByRole('note')).toBeNull();
@@ -126,7 +128,14 @@ describe('PointDebtTable — the status column', () => {
     render(
       <PointDebtTable
         rows={[
-          row({ collection_point_id: 'p1', latest_transfer: { status: 'sent', sent_at: '2026-09-10T08:00:00.000Z', resolved_at: null } }),
+          row({
+            collection_point_id: 'p1',
+            latest_transfer: {
+              status: 'sent',
+              sent_at: '2026-09-10T08:00:00.000Z',
+              resolved_at: null,
+            },
+          }),
           row({ collection_point_id: 'p2', name: 'Haiove', latest_transfer: null }),
         ]}
         unresolvedDisputes={[]}
@@ -187,7 +196,11 @@ describe('PointDebtTable — the status column', () => {
         rows={[
           row({
             collection_point_id: 'p1',
-            latest_transfer: { status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z', resolved_at: null },
+            latest_transfer: {
+              status: 'disputed',
+              sent_at: '2026-09-10T08:00:00.000Z',
+              resolved_at: null,
+            },
           }),
         ]}
         unresolvedDisputes={[]}
@@ -206,14 +219,22 @@ describe('PointDebtTable — the status column', () => {
     // `sent_at` deliberately does NOT match the row's `latest_transfer.sent_at`
     // — proves the match is by `collection_point_id` only, not a cross-endpoint
     // timestamp comparison.
-    const disputed = transfer({ id: 't9', collection_point_id: 'p1', sent_at: '2026-01-01T00:00:00.000Z' });
+    const disputed = transfer({
+      id: 't9',
+      collection_point_id: 'p1',
+      sent_at: '2026-01-01T00:00:00.000Z',
+    });
 
     render(
       <PointDebtTable
         rows={[
           row({
             collection_point_id: 'p1',
-            latest_transfer: { status: 'accepted', sent_at: '2026-09-10T08:00:00.000Z', resolved_at: null },
+            latest_transfer: {
+              status: 'accepted',
+              sent_at: '2026-09-10T08:00:00.000Z',
+              resolved_at: null,
+            },
           }),
         ]}
         unresolvedDisputes={[disputed]}
@@ -244,12 +265,16 @@ describe('PointDebtTable — the status column', () => {
 });
 
 describe('PointDebtTable — the point badge (#76)', () => {
-  it('reads «Doesn\'t match» for a point with one open dispute, beside its newer latest transfer', () => {
+  it("reads «Doesn't match» for a point with one open dispute, beside its newer latest transfer", () => {
     render(
       <PointDebtTable
         rows={[
           row({
-            latest_transfer: { status: 'accepted', sent_at: '2026-09-12T08:00:00.000Z', resolved_at: null },
+            latest_transfer: {
+              status: 'accepted',
+              sent_at: '2026-09-12T08:00:00.000Z',
+              resolved_at: null,
+            },
           }),
         ]}
         unresolvedDisputes={[transfer()]}
@@ -266,7 +291,15 @@ describe('PointDebtTable — the point badge (#76)', () => {
   it('keeps a newer transfer «In transit» beside one open dispute', () => {
     render(
       <PointDebtTable
-        rows={[row({ latest_transfer: { status: 'sent', sent_at: '2026-09-12T08:00:00.000Z', resolved_at: null } })]}
+        rows={[
+          row({
+            latest_transfer: {
+              status: 'sent',
+              sent_at: '2026-09-12T08:00:00.000Z',
+              resolved_at: null,
+            },
+          }),
+        ]}
         unresolvedDisputes={[transfer()]}
         onSend={noop}
         onResolve={noop}
@@ -280,7 +313,15 @@ describe('PointDebtTable — the point badge (#76)', () => {
   it('keeps a newer transfer «In transit» beside several open disputes', () => {
     render(
       <PointDebtTable
-        rows={[row({ latest_transfer: { status: 'sent', sent_at: '2026-09-12T08:00:00.000Z', resolved_at: null } })]}
+        rows={[
+          row({
+            latest_transfer: {
+              status: 'sent',
+              sent_at: '2026-09-12T08:00:00.000Z',
+              resolved_at: null,
+            },
+          }),
+        ]}
         unresolvedDisputes={[transfer({ id: 'a' }), transfer({ id: 'b' })]}
         onSend={noop}
         onResolve={noop}
@@ -316,7 +357,15 @@ describe('PointDebtTable — the point badge (#76)', () => {
   it('does not repeat the disputed badge when the latest transfer IS the open dispute', () => {
     render(
       <PointDebtTable
-        rows={[row({ latest_transfer: { status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z', resolved_at: null } })]}
+        rows={[
+          row({
+            latest_transfer: {
+              status: 'disputed',
+              sent_at: '2026-09-10T08:00:00.000Z',
+              resolved_at: null,
+            },
+          }),
+        ]}
         unresolvedDisputes={[transfer()]}
         onSend={noop}
         onResolve={noop}
@@ -352,7 +401,12 @@ describe('PointDebtTable — the point badge (#76)', () => {
 describe('PointDebtTable — a point with one open dispute (#76)', () => {
   it('keeps the inline «Resolve» and is not expandable', () => {
     render(
-      <PointDebtTable rows={[row()]} unresolvedDisputes={[transfer()]} onSend={noop} onResolve={noop} />,
+      <PointDebtTable
+        rows={[row()]}
+        unresolvedDisputes={[transfer()]}
+        onSend={noop}
+        onResolve={noop}
+      />,
     );
 
     expect(screen.getByRole('button', { name: 'Resolve' })).toBeInTheDocument();
@@ -362,13 +416,33 @@ describe('PointDebtTable — a point with one open dispute (#76)', () => {
 
 describe('PointDebtTable — a point with several open disputes (#76)', () => {
   const three = [
-    transfer({ id: 'old', sent_at: '2026-09-08T08:00:00.000Z', cash: '100.00', reported_cash: '90.00', cash_discrepancy: '10.00' }),
-    transfer({ id: 'new', sent_at: '2026-09-12T08:00:00.000Z', cash: '300.00', reported_cash: '270.00', cash_discrepancy: '30.00' }),
-    transfer({ id: 'mid', sent_at: '2026-09-10T08:00:00.000Z', cash: '200.00', reported_cash: '180.00', cash_discrepancy: '20.00' }),
+    transfer({
+      id: 'old',
+      sent_at: '2026-09-08T08:00:00.000Z',
+      cash: '100.00',
+      reported_cash: '90.00',
+      cash_discrepancy: '10.00',
+    }),
+    transfer({
+      id: 'new',
+      sent_at: '2026-09-12T08:00:00.000Z',
+      cash: '300.00',
+      reported_cash: '270.00',
+      cash_discrepancy: '30.00',
+    }),
+    transfer({
+      id: 'mid',
+      sent_at: '2026-09-10T08:00:00.000Z',
+      cash: '200.00',
+      reported_cash: '180.00',
+      cash_discrepancy: '20.00',
+    }),
   ];
 
   it('shows the count on a collapsed toggle badge instead of an inline «Resolve»', () => {
-    render(<PointDebtTable rows={[row()]} unresolvedDisputes={three} onSend={noop} onResolve={noop} />);
+    render(
+      <PointDebtTable rows={[row()]} unresolvedDisputes={three} onSend={noop} onResolve={noop} />,
+    );
 
     const toggle = screen.getByRole('button', { name: "Doesn't match (3)" });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
@@ -378,10 +452,20 @@ describe('PointDebtTable — a point with several open disputes (#76)', () => {
   it('expands to every dispute, newest first, each with its own «Resolve»', async () => {
     const user = userEvent.setup();
     const onResolve = vi.fn();
-    render(<PointDebtTable rows={[row()]} unresolvedDisputes={three} onSend={noop} onResolve={onResolve} />);
+    render(
+      <PointDebtTable
+        rows={[row()]}
+        unresolvedDisputes={three}
+        onSend={noop}
+        onResolve={onResolve}
+      />,
+    );
 
     await user.click(screen.getByRole('button', { name: "Doesn't match (3)" }));
-    expect(screen.getByRole('button', { name: "Doesn't match (3)" })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: "Doesn't match (3)" })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
 
     const items = within(screen.getByRole('list')).getAllByRole('listitem');
     expect(items).toHaveLength(3);
@@ -395,7 +479,9 @@ describe('PointDebtTable — a point with several open disputes (#76)', () => {
 
   it('collapses again on a second click', async () => {
     const user = userEvent.setup();
-    render(<PointDebtTable rows={[row()]} unresolvedDisputes={three} onSend={noop} onResolve={noop} />);
+    render(
+      <PointDebtTable rows={[row()]} unresolvedDisputes={three} onSend={noop} onResolve={noop} />,
+    );
 
     const toggle = screen.getByRole('button', { name: "Doesn't match (3)" });
     await user.click(toggle);
@@ -407,7 +493,9 @@ describe('PointDebtTable — a point with several open disputes (#76)', () => {
   it('toggles on a click anywhere in the row, but not on «Send»', async () => {
     const user = userEvent.setup();
     const onSend = vi.fn();
-    render(<PointDebtTable rows={[row()]} unresolvedDisputes={three} onSend={onSend} onResolve={noop} />);
+    render(
+      <PointDebtTable rows={[row()]} unresolvedDisputes={three} onSend={onSend} onResolve={noop} />,
+    );
 
     await user.click(screen.getByText('Shypynky'));
     expect(screen.getByRole('list')).toBeInTheDocument();
@@ -417,23 +505,40 @@ describe('PointDebtTable — a point with several open disputes (#76)', () => {
     expect(screen.getByRole('list')).toBeInTheDocument();
   });
 
-  it('does not collapse when a dispute\'s own «Resolve» is clicked', async () => {
+  it("does not collapse when a dispute's own «Resolve» is clicked", async () => {
     const user = userEvent.setup();
-    render(<PointDebtTable rows={[row()]} unresolvedDisputes={three} onSend={noop} onResolve={noop} />);
+    render(
+      <PointDebtTable rows={[row()]} unresolvedDisputes={three} onSend={noop} onResolve={noop} />,
+    );
 
     await user.click(screen.getByRole('button', { name: "Doesn't match (3)" }));
     await user.click(screen.getAllByRole('button', { name: 'Resolve' })[0]);
     expect(screen.getByRole('list')).toBeInTheDocument();
   });
 
-  it('shows a dispute\'s reported cash, the difference, the crates and the point\'s note', async () => {
+  it("shows a dispute's reported cash, the difference, the crates and the point's note", async () => {
     const user = userEvent.setup();
     render(
       <PointDebtTable
         rows={[row()]}
         unresolvedDisputes={[
-          transfer({ id: 'a', cash: '500.00', reported_cash: '450.00', cash_discrepancy: '50.00', crates: 20, reported_crates: 18, crates_discrepancy: 2, dispute_note: 'Порахували менше' }),
-          transfer({ id: 'b', sent_at: '2026-09-01T08:00:00.000Z', cash_discrepancy: '0.00', crates_discrepancy: 0, dispute_note: null }),
+          transfer({
+            id: 'a',
+            cash: '500.00',
+            reported_cash: '450.00',
+            cash_discrepancy: '50.00',
+            crates: 20,
+            reported_crates: 18,
+            crates_discrepancy: 2,
+            dispute_note: 'Порахували менше',
+          }),
+          transfer({
+            id: 'b',
+            sent_at: '2026-09-01T08:00:00.000Z',
+            cash_discrepancy: '0.00',
+            crates_discrepancy: 0,
+            dispute_note: null,
+          }),
         ]}
         onSend={noop}
         onResolve={noop}
@@ -445,7 +550,7 @@ describe('PointDebtTable — a point with several open disputes (#76)', () => {
     expect(first).toHaveTextContent('450.00 ₴');
     // C7 — named: 50 less arrived than was sent.
     expect(within(first).getByText('Short 50.00 ₴')).toHaveClass('text-destructive');
-    expect(first).toHaveTextContent('Crates: sent 20 · counted 18 · difference 2');
+    expect(first).toHaveTextContent('Crates: sent 20 cr. · counted 18 cr. · difference 2 cr.');
     expect(first).toHaveTextContent('Порахували менше');
     expect(within(second).getByText('Matched')).not.toHaveClass('text-destructive');
     expect(second).not.toHaveTextContent('Crates:');
@@ -455,7 +560,10 @@ describe('PointDebtTable — a point with several open disputes (#76)', () => {
     const user = userEvent.setup();
     render(
       <PointDebtTable
-        rows={[row({ collection_point_id: 'p1' }), row({ collection_point_id: 'p2', name: 'Haiove' })]}
+        rows={[
+          row({ collection_point_id: 'p1' }),
+          row({ collection_point_id: 'p2', name: 'Haiove' }),
+        ]}
         unresolvedDisputes={[
           transfer({ id: 'a1', collection_point_id: 'p1' }),
           transfer({ id: 'a2', collection_point_id: 'p1' }),
@@ -478,11 +586,23 @@ describe('PointDebtTable — a point with several open disputes (#76)', () => {
   it('falls back to the one-dispute layout once a refetch leaves a single dispute', async () => {
     const user = userEvent.setup();
     const { rerender } = render(
-      <PointDebtTable rows={[row()]} unresolvedDisputes={three.slice(0, 2)} onSend={noop} onResolve={noop} />,
+      <PointDebtTable
+        rows={[row()]}
+        unresolvedDisputes={three.slice(0, 2)}
+        onSend={noop}
+        onResolve={noop}
+      />,
     );
     await user.click(screen.getByRole('button', { name: "Doesn't match (2)" }));
 
-    rerender(<PointDebtTable rows={[row()]} unresolvedDisputes={three.slice(0, 1)} onSend={noop} onResolve={noop} />);
+    rerender(
+      <PointDebtTable
+        rows={[row()]}
+        unresolvedDisputes={three.slice(0, 1)}
+        onSend={noop}
+        onResolve={noop}
+      />,
+    );
     expect(screen.queryByRole('list')).toBeNull();
     expect(document.querySelector('[aria-expanded]')).toBeNull();
     expect(screen.getByRole('button', { name: 'Resolve' })).toBeInTheDocument();
@@ -496,10 +616,27 @@ describe('PointDebtTable — a point with several open disputes (#76)', () => {
     await user.click(screen.getByRole('button', { name: "Doesn't match (3)" }));
     expect(screen.getByRole('list')).toBeInTheDocument();
 
-    rerender(<PointDebtTable rows={[row()]} unresolvedDisputes={three.slice(0, 1)} onSend={noop} onResolve={noop} />);
-    rerender(<PointDebtTable rows={[row()]} unresolvedDisputes={three.slice(0, 2)} onSend={noop} onResolve={noop} />);
+    rerender(
+      <PointDebtTable
+        rows={[row()]}
+        unresolvedDisputes={three.slice(0, 1)}
+        onSend={noop}
+        onResolve={noop}
+      />,
+    );
+    rerender(
+      <PointDebtTable
+        rows={[row()]}
+        unresolvedDisputes={three.slice(0, 2)}
+        onSend={noop}
+        onResolve={noop}
+      />,
+    );
 
-    expect(screen.getByRole('button', { name: "Doesn't match (2)" })).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByRole('button', { name: "Doesn't match (2)" })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
     expect(screen.queryByRole('list')).toBeNull();
   });
 
@@ -518,7 +655,13 @@ describe('PointDebtTable — accessibility', () => {
     const { container } = render(
       <PointDebtTable
         rows={[
-          row({ latest_transfer: { status: 'disputed', sent_at: '2026-09-10T08:00:00.000Z', resolved_at: null } }),
+          row({
+            latest_transfer: {
+              status: 'disputed',
+              sent_at: '2026-09-10T08:00:00.000Z',
+              resolved_at: null,
+            },
+          }),
         ]}
         unresolvedDisputes={[transfer({ sent_at: '2026-09-10T08:00:00.000Z' })]}
         onSend={noop}

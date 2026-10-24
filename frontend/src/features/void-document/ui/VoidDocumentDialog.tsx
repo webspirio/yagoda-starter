@@ -52,8 +52,16 @@ interface VoidDocumentDialogProps {
   onVoided?: () => void;
   /** Intake only: its live payout, if any. */
   linkedPayout?: LinkedPayout;
-  /** Intake without a live payout: the debt the void takes off. */
+  /** Intake without a live payout: the debt the void takes off — the receipt's amount PLUS
+   *  its live top-ups (review 2026-10-24 #2), since a voided receipt's top-ups stop counting. */
   intakeAmount?: string;
+  /** Intake, OWNER only: Σ the receipt's live top-ups, when > 0 — their own required box,
+   *  because nobody re-adds a top-up they were never told went away. An operator never
+   *  gets it (pending client call on hiding top-ups); they see only the corrected total. */
+  intakeTopUps?: string;
+  /** Top-up only: what it is worth and whose balance drops. `countsTowardBalance` false (the
+   *  parent receipt is already voided) means the void moves no balance, so no box. */
+  topUp?: { amount: string; supplierName: string; countsTowardBalance: boolean };
   /** Payout only: the amount going back to the drawer, and the receipts that reopen. */
   payoutAmount?: string;
   reopens?: string[] | null;
@@ -84,6 +92,8 @@ export function VoidDocumentDialog({
   linkedPayout,
   shiftClosed,
   intakeAmount,
+  intakeTopUps,
+  topUp,
   payoutAmount,
   reopens,
   reopensFailed: payoutReopensFailed,
@@ -110,22 +120,43 @@ export function VoidDocumentDialog({
     codes?.length
       ? [{ id: 'reopens', text: t('void.ack.reopens', { codes: codes.join(', ') }) }]
       : [];
-  const consequences = shiftClosed
-    ? null
-    : kind === 'payout' && payoutAmount
+  const topUpsBox =
+    kind === 'intake' && intakeTopUps
+      ? [{ id: 'topUps', text: t('void.ack.topUps', { topUps: money(intakeTopUps) }) }]
+      : [];
+  const topUpTarget = kind === 'topUp' ? topUp : undefined;
+  const consequences = topUpTarget
+    ? topUpTarget.countsTowardBalance
       ? [
-          { id: 'payoutCash', text: t('void.ack.payoutCash', { amount: money(payoutAmount) }) },
-          ...(reopensFailed ? [reopensUnknownBox] : reopen(reopens)),
+          {
+            id: 'topUpDebt',
+            text: t('void.ack.topUpDebt', {
+              supplier: topUpTarget.supplierName,
+              amount: money(topUpTarget.amount),
+            }),
+          },
         ]
-      : openLinkedPayout
+      : null
+    : shiftClosed
+      ? null
+      : kind === 'payout' && payoutAmount
         ? [
-            { id: 'cash', text: t('void.ack.cash', { amount: money(openLinkedPayout.amount) }) },
-            { id: 'payout', text: t('void.ack.payout', { code: openLinkedPayout.code }) },
-            ...(reopensFailed ? [reopensUnknownBox] : reopen(openLinkedPayout.reopens)),
+            { id: 'payoutCash', text: t('void.ack.payoutCash', { amount: money(payoutAmount) }) },
+            ...(reopensFailed ? [reopensUnknownBox] : reopen(reopens)),
           ]
-        : kind === 'intake' && intakeAmount
-          ? [{ id: 'debt', text: t('void.ack.debt', { amount: money(intakeAmount) }) }]
-          : null;
+        : openLinkedPayout
+          ? [
+              { id: 'cash', text: t('void.ack.cash', { amount: money(openLinkedPayout.amount) }) },
+              { id: 'payout', text: t('void.ack.payout', { code: openLinkedPayout.code }) },
+              ...(reopensFailed ? [reopensUnknownBox] : reopen(openLinkedPayout.reopens)),
+              ...topUpsBox,
+            ]
+          : kind === 'intake' && intakeAmount
+            ? [
+                { id: 'debt', text: t('void.ack.debt', { amount: money(intakeAmount) }) },
+                ...topUpsBox,
+              ]
+            : null;
 
   const {
     register,
@@ -143,7 +174,7 @@ export function VoidDocumentDialog({
         id,
         reason: values.reason.trim(),
       });
-      toast.success(t('void.toast.voided'));
+      toast.success(t(topUpTarget ? 'void.toast.topUpVoided' : 'void.toast.voided'));
       onVoided?.();
       onClose();
     } catch (error) {
@@ -155,8 +186,16 @@ export function VoidDocumentDialog({
     <Dialog open={open} onOpenChange={(next) => !next && !isSubmitting && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{t('void.title', { code })}</DialogTitle>
-          <DialogDescription>{t('void.description')}</DialogDescription>
+          {/* A top-up is titled by its amount AND its parent's code: «Анулювати SHP-IN-…?»
+              alone read as voiding the receipt itself (review 2026-10-24 #1). */}
+          <DialogTitle>
+            {topUpTarget
+              ? t('void.topUpTitle', { amount: money(topUpTarget.amount), code })
+              : t('void.title', { code })}
+          </DialogTitle>
+          <DialogDescription>
+            {topUpTarget ? t('void.topUpDescription', { code }) : t('void.description')}
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>

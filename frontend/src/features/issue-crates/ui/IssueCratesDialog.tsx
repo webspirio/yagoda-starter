@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   Dialog,
   DialogContent,
@@ -13,8 +13,16 @@ import { Field } from '@/shared/ui/field';
 import { TextInput } from '@/shared/ui/text-input';
 import { SelectField } from '@/shared/ui/select-field';
 import { Button } from '@/shared/ui/button';
+import { TraceScope, TraceTerm } from '@/shared/ui/trace';
 import { toast } from '@/shared/ui/toast';
-import { cratesRules, formatCount, formatUah, isZero, mulInt } from '@/shared/lib/money';
+import {
+  cratesRules,
+  formatCount,
+  formatUah,
+  isZero,
+  mulInt,
+  unbreakable,
+} from '@/shared/lib/money';
 import { cn } from '@/shared/lib/cn';
 import { toBannerError, type BannerError } from '@/shared/lib/api-error';
 import { useSuppliersQuery, supplierName } from '@/entities/supplier';
@@ -92,14 +100,29 @@ export function IssueCratesDialog({
   const unitsOk = cratesRules('crates.errors.unitsFormat').validate(unitsText) === true;
   const units = unitsOk ? Number.parseInt(unitsText.trim(), 10) : undefined;
   const after = onHand !== undefined && units !== undefined ? onHand - units : undefined;
+  // «Завдаток: 6 ящ. × 25,00 ₴ = 150,00 ₴», traced (client, 24.10): the count
+  // lights the «Ящиків» field it was typed in; the price is the catalogue's and
+  // shown nowhere else in the dialog, so its own term is its source; the total
+  // lights both.
   const depositLine =
-    mode === 'deposit' && units !== undefined && depositPrice !== undefined
-      ? t('crates.issue.depositLine', {
+    mode === 'deposit' && units !== undefined && depositPrice !== undefined ? (
+      <Trans
+        t={t}
+        i18nKey="crates.issue.depositLine"
+        values={{
           units: n(units),
-          price: formatUah(depositPrice, lang),
-          total: formatUah(mulInt(depositPrice, units), lang),
-        })
-      : null;
+          price: unbreakable(formatUah(depositPrice, lang)),
+          total: unbreakable(formatUah(mulInt(depositPrice, units), lang)),
+        }}
+        components={{
+          units: <TraceTerm refs="issue:units" hint={t('crates.issue.traceUnits')} />,
+          price: <TraceTerm refs="issue:price" hint={t('crates.issue.tracePrice')} />,
+          total: (
+            <TraceTerm refs={['issue:units', 'issue:price']} hint={t('crates.issue.traceTotal')} />
+          ),
+        }}
+      />
+    ) : null;
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
@@ -138,94 +161,101 @@ export function IssueCratesDialog({
           <DialogDescription>{t('crates.issue.description')}</DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-          <Field
-            name="supplier_id"
-            label={t('crates.field.supplier')}
-            required
-            error={errors.supplier_id?.message}
-          >
-            {(a11y) => (
-              <SelectField
-                {...a11y}
-                {...register('supplier_id', { required: 'crates.errors.supplierRequired' })}
-              >
-                <option value="">{t('crates.field.supplierPlaceholder')}</option>
-                {rows.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {supplierName(s)}
-                  </option>
-                ))}
-              </SelectField>
-            )}
-          </Field>
+        <TraceScope>
+          <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
+            <Field
+              name="supplier_id"
+              label={t('crates.field.supplier')}
+              required
+              error={errors.supplier_id?.message}
+            >
+              {(a11y) => (
+                <SelectField
+                  {...a11y}
+                  {...register('supplier_id', { required: 'crates.errors.supplierRequired' })}
+                >
+                  <option value="">{t('crates.field.supplierPlaceholder')}</option>
+                  {rows.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {supplierName(s)}
+                    </option>
+                  ))}
+                </SelectField>
+              )}
+            </Field>
 
-          <Field
-            name="units"
-            label={t('crates.field.units')}
-            required
-            error={errors.units?.message}
-          >
-            {(a11y) => (
-              <TextInput
-                {...a11y}
-                inputMode="numeric"
-                className="font-mono"
-                {...register('units', cratesRules('crates.errors.unitsFormat'))}
-              />
-            )}
-          </Field>
-          {onHand !== undefined ? (
-            <p className={cn('text-sm', onHand < 0 ? 'text-amber' : 'text-muted-foreground')}>
-              {t('crates.issue.onHandHint', { on_hand: n(onHand) })}
-              {inTransit > 0
-                ? ` ${t('crates.issue.inTransitHint', { in_transit: n(inTransit) })}`
-                : null}
-            </p>
-          ) : null}
-          {after !== undefined && after < 0 ? (
-            <p className="text-sm font-medium text-amber">
-              {t('crates.issue.goesNegativeHint', { after: n(after) })}
-            </p>
-          ) : null}
-
-          <Field name="mode" label={t('crates.field.mode')} required error={errors.mode?.message}>
-            {(a11y) => (
-              <SelectField {...a11y} {...register('mode', { required: true })}>
-                <option value="deposit">{t('crates.mode.deposit')}</option>
-                <option value="receipt">{t('crates.mode.receipt')}</option>
-              </SelectField>
-            )}
-          </Field>
-
-          {/* The consequence of the choice, in words, next to the choice — and for a
-              deposit, the money itself. */}
-          <div className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
-            <p>
-              {mode === 'receipt' ? t('crates.mode.receiptHint') : t('crates.mode.depositHint')}
-            </p>
-            {depositLine ? (
-              <p className="mt-1 font-mono font-medium whitespace-nowrap text-foreground tabular-nums">
-                {depositLine}
+            <Field
+              name="units"
+              label={t('crates.field.units')}
+              required
+              error={errors.units?.message}
+            >
+              {(a11y) => (
+                <TextInput
+                  {...a11y}
+                  inputMode="numeric"
+                  // The source the deposit line's count lights.
+                  data-trace="issue:units"
+                  className="font-mono"
+                  {...register('units', cratesRules('crates.errors.unitsFormat'))}
+                />
+              )}
+            </Field>
+            {onHand !== undefined ? (
+              <p className={cn('text-sm', onHand < 0 ? 'text-amber' : 'text-muted-foreground')}>
+                {t('crates.issue.onHandHint', { on_hand: n(onHand) })}
+                {inTransit > 0
+                  ? ` ${t('crates.issue.inTransitHint', { in_transit: n(inTransit) })}`
+                  : null}
               </p>
             ) : null}
-          </div>
+            {after !== undefined && after < 0 ? (
+              <p className="text-sm font-medium text-amber">
+                {t('crates.issue.goesNegativeHint', { after: n(after) })}
+              </p>
+            ) : null}
 
-          {formError ? (
-            <p role="alert" className="text-sm text-destructive">
-              {t(formError.key, formError.params)}
-            </p>
-          ) : null}
+            <Field name="mode" label={t('crates.field.mode')} required error={errors.mode?.message}>
+              {(a11y) => (
+                <SelectField {...a11y} {...register('mode', { required: true })}>
+                  <option value="deposit">{t('crates.mode.deposit')}</option>
+                  <option value="receipt">{t('crates.mode.receipt')}</option>
+                </SelectField>
+              )}
+            </Field>
 
-          <DialogFooter>
-            <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
-              {t('common.cancel')}
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {t('crates.issue.submit')}
-            </Button>
-          </DialogFooter>
-        </form>
+            {/* The consequence of the choice, in words, next to the choice — and for a
+              deposit, the money itself. */}
+            <div className="rounded-md bg-muted/60 px-3 py-2 text-sm text-muted-foreground">
+              <p>
+                {mode === 'receipt' ? t('crates.mode.receiptHint') : t('crates.mode.depositHint')}
+              </p>
+              {depositLine ? (
+                <p
+                  data-deposit-line
+                  className="mt-1 font-medium whitespace-nowrap text-foreground tabular-nums"
+                >
+                  {depositLine}
+                </p>
+              ) : null}
+            </div>
+
+            {formError ? (
+              <p role="alert" className="text-sm text-destructive">
+                {t(formError.key, formError.params)}
+              </p>
+            ) : null}
+
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={onClose} disabled={isSubmitting}>
+                {t('common.cancel')}
+              </Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {t('crates.issue.submit')}
+              </Button>
+            </DialogFooter>
+          </form>
+        </TraceScope>
       </DialogContent>
     </Dialog>
   );

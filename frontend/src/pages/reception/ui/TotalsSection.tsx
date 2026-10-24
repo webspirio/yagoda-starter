@@ -14,7 +14,10 @@ import {
   parseDecimal,
   sub,
 } from '@/shared/lib/money';
+import { TraceTerm } from '@/shared/ui/trace';
 import { suggestedPaid, totalToPay } from '../lib/suggestedPaid';
+import { ENTRY_FIELD } from '../lib/entryFields';
+import { TOTALS_SOURCE, TOTALS_TRACE } from '../lib/traceIds';
 
 /**
  * Where the supplier's balance read stands. `none` — no supplier picked;
@@ -24,7 +27,6 @@ import { suggestedPaid, totalToPay } from '../lib/suggestedPaid';
  * carried-in balance is a wrong total, not a partial one.
  */
 export type DebtStatus = 'none' | 'pending' | 'error' | 'ready';
-import { ENTRY_FIELD } from '../lib/entryFields';
 
 /**
  * «Розрахунок» — the SAME action as «Прийняти» now also hands over cash
@@ -41,6 +43,11 @@ import { ENTRY_FIELD } from '../lib/entryFields';
  * operator's back (R1, spec 2026-10-23): the field keeps what was typed, the
  * amber hint names the most that may go out, and the button stays disabled
  * until the figure fits. The page refuses Enter on the same condition.
+ *
+ * Traced (client, 24.10): the ledger IS a calculation — «Разом» = нараховано +
+ * попередній залишок, the remainder = «Разом» − видано — so every figure the card
+ * derives is a `TraceTerm` that lights up the rows it is made of (inside the
+ * page's `TraceScope`); the rows it reads are sources (`data-trace`).
  */
 export function TotalsSection({
   accrued,
@@ -166,6 +173,14 @@ export function TotalsSection({
       ? sub(paidValue, accrued)
       : null;
   const settle = (v: string) => onPaidChange(v);
+  // What each derived figure is made of — the rows it lights up.
+  const { sum: sumIds, newDebt: newIds, paysOld: oldIds, remainder: remIds } = TOTALS_TRACE;
+  const totalRefs = carried !== null ? [sumIds.accrued, sumIds.debt] : [sumIds.accrued];
+  const newDebtRefs =
+    cmp(owedToUs, '0') === 1
+      ? [newIds.accrued, newIds.paid, newIds.debt]
+      : [newIds.accrued, newIds.paid];
+  const remainderRefs = [remIds.total, remIds.paid];
   // The over-cap hint takes the Field hint slot first: it is the reason the
   // button is disabled (R1), so it must be said even when the drawer could
   // not be read — then the cap is the total (`suggestedPaid`) and the hint
@@ -200,7 +215,7 @@ export function TotalsSection({
             {t('reception.totals.accruedToday')}
             {lineCount > 1 ? t('reception.totals.linesSuffix', { count: lineCount }) : ''}
           </span>
-          <span className="font-mono font-medium">
+          <span data-trace={TOTALS_SOURCE.accrued} className="font-mono font-medium">
             {accrued === null ? (
               <span className="text-muted-foreground">{isPreviewing ? '…' : '—'}</span>
             ) : (
@@ -225,11 +240,11 @@ export function TotalsSection({
           <div className="flex items-baseline justify-between gap-3 text-base">
             <span className="text-muted-foreground">{t('reception.totals.debt')}</span>
             {cmp(carried, '0') === 1 ? (
-              <span className="font-mono font-medium text-amber">
+              <span data-trace={TOTALS_SOURCE.debt} className="font-mono font-medium text-amber">
                 + {formatUah(carried, locale)}
               </span>
             ) : (
-              <span className="font-mono font-medium">
+              <span data-trace={TOTALS_SOURCE.debt} className="font-mono font-medium">
                 − {formatUah(sub('0', carried), locale)}
               </span>
             )}
@@ -241,13 +256,28 @@ export function TotalsSection({
             two sums sit one under the other and are read as a subtraction. */}
         <div className="mt-1 flex items-baseline justify-between gap-x-3 border-t border-border pt-3">
           <span className="text-base font-semibold">{t('reception.totals.total')}</span>
-          <span className="font-mono text-3xl leading-none font-semibold tracking-tight">
+          {/* The figure is a source of its own (the remainder below cites it),
+              wrapped round the term that cites its two rows. */}
+          <span
+            data-trace={TOTALS_SOURCE.total}
+            className="rounded-md font-mono text-3xl leading-none font-semibold tracking-tight"
+          >
             {total === null ? (
               <span className="text-base text-muted-foreground">
                 {isPreviewing && debtStatus !== 'pending' && debtStatus !== 'error' ? '…' : '—'}
               </span>
             ) : (
-              formatUah(total, locale)
+              <TraceTerm
+                refs={totalRefs}
+                hint={t(
+                  carried !== null
+                    ? 'reception.totals.trace.total'
+                    : 'reception.totals.trace.totalAccrued',
+                )}
+                className="px-1.5"
+              >
+                {formatUah(total, locale)}
+              </TraceTerm>
             )}
           </span>
         </div>
@@ -263,6 +293,7 @@ export function TotalsSection({
           <div className="flex min-w-0 items-baseline font-mono text-3xl leading-none font-semibold tracking-tight">
             <DecimalInput
               id="paid_amount"
+              data-trace={TOTALS_SOURCE.paid}
               // The last stop of Enter's walk: here Enter is the submit (§2.1 ⑦).
               {...ENTRY_FIELD}
               variant="ghost"
@@ -348,13 +379,35 @@ export function TotalsSection({
         {newDebt !== null ? (
           <div className="flex items-baseline justify-between gap-3 text-base">
             <span className="text-muted-foreground">{t('reception.totals.newDebt')}</span>
-            <span className="font-mono font-medium text-amber">+ {formatUah(newDebt, locale)}</span>
+            <span className="font-mono font-medium text-amber">
+              +{' '}
+              <TraceTerm
+                refs={newDebtRefs}
+                tone="amber"
+                hint={t(
+                  cmp(owedToUs, '0') === 1
+                    ? 'reception.totals.trace.newDebtOwed'
+                    : 'reception.totals.trace.newDebt',
+                )}
+              >
+                {formatUah(newDebt, locale)}
+              </TraceTerm>
+            </span>
           </div>
         ) : null}
         {paysOld !== null ? (
           <div className="flex items-baseline justify-between gap-3 text-base">
             <span className="text-muted-foreground">{t('reception.totals.paysOld')}</span>
-            <span className="font-mono font-medium text-leaf">− {formatUah(paysOld, locale)}</span>
+            <span className="font-mono font-medium text-leaf">
+              −{' '}
+              <TraceTerm
+                refs={[oldIds.paid, oldIds.accrued]}
+                tone="leaf"
+                hint={t('reception.totals.trace.paysOld')}
+              >
+                {formatUah(paysOld, locale)}
+              </TraceTerm>
+            </span>
           </div>
         ) : null}
         <div
@@ -375,18 +428,27 @@ export function TotalsSection({
           ) : owed ? (
             <>
               <span className="text-base font-semibold">{t('reception.totals.balanceAfter')}</span>
-              <span className="font-mono text-xl font-semibold">
+              <TraceTerm
+                refs={remainderRefs}
+                tone="amber"
+                hint={t('reception.totals.trace.remainder')}
+                className="text-xl font-semibold"
+              >
                 {formatUah(remainder, locale)}
-              </span>
+              </TraceTerm>
             </>
           ) : stillOwesUs ? (
             // B1 — a label about what WE owe never carries a minus: below zero
             // it is the supplier who owes, and the figure is unsigned.
             <>
               <span className="text-base font-semibold">{t('reception.totals.supplierOwes')}</span>
-              <span className="font-mono text-xl font-semibold">
+              <TraceTerm
+                refs={remainderRefs}
+                hint={t('reception.totals.trace.remainder')}
+                className="text-xl font-semibold"
+              >
                 {formatUah(sub('0', remainder), locale)}
-              </span>
+              </TraceTerm>
             </>
           ) : (
             <span className="text-base font-semibold">{t('reception.totals.settled')}</span>

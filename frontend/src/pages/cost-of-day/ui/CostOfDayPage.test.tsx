@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { i18n } from '@/shared/lib/i18n';
 import { CostOfDayPage } from './CostOfDayPage';
@@ -200,6 +200,36 @@ describe('CostOfDayPage', () => {
     const before = Node.DOCUMENT_POSITION_FOLLOWING;
     expect(strip.compareDocumentPosition(table) & before).toBeTruthy();
     expect(table.compareDocumentPosition(checks) & before).toBeTruthy();
+  });
+
+  // «Звідки це число» (client, 24.10): one trace scope spans the chips, the
+  // expenses strip, the table and the звірка, so an operand under the table
+  // lights a figure above it.
+  it('points the day formula’s витрати at the expenses strip and a доплата at its chip', () => {
+    dayMock.mockReturnValue(
+      ok({
+        ...day,
+        top_ups_total: '2000.00',
+        products: [{ ...day.products[0], top_ups: '2000.00' }],
+      }),
+    );
+    const { container } = render(<CostOfDayPage />);
+    const termOf = (root: Element, text: string) =>
+      Array.from(root.querySelectorAll<HTMLElement>('[data-slot="trace-term"]')).find(
+        (el) => (el.textContent ?? '').replace(/\s/g, ' ') === text,
+      ) as HTMLElement;
+
+    const formula = container.querySelector('[data-day-formula]') as HTMLElement;
+    fireEvent.pointerEnter(termOf(formula, '3 800,00 ₴'));
+    const stripTotal = container.querySelector('span[data-trace="day:expenses"]:not([data-slot])');
+    expect(stripTotal).toHaveTextContent('3 800,00 ₴');
+    expect(stripTotal).toHaveAttribute('data-trace-hit', 'plum');
+
+    fireEvent.pointerEnter(termOf(container, '2 000,00 ₴'));
+    const chip = container.querySelector('[data-slot="badge"][data-trace="day:topUps"]');
+    expect(chip).toHaveTextContent(/^Доплати:/);
+    expect(chip).toHaveAttribute('data-trace-hit', 'neutral');
+    expect(stripTotal).not.toHaveAttribute('data-trace-hit');
   });
 
   it('opens the checks when they fail', () => {

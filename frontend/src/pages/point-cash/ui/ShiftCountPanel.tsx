@@ -78,7 +78,9 @@ function CountLine({ count }: { count: CashCount }) {
   return (
     <div className="flex flex-col gap-1">
       <div className="flex flex-wrap items-center gap-2 text-sm">
-        <span className="text-muted-foreground">{t(`pointCash.countHistory.kind.${count.kind}`)}</span>
+        <span className="text-muted-foreground">
+          {t(`pointCash.countHistory.kind.${count.kind}`)}
+        </span>
         <DiscrepancyBadge difference={count.discrepancy} />
       </div>
       <CountTexts count={count} />
@@ -232,7 +234,9 @@ export function ShiftCountPanel({
           <Button size="sm" onClick={onOpenShift}>
             {t('pointCash.panel.actions.open')}
           </Button>
-          <p className="text-xs text-muted-foreground">{t('pointCash.panel.actions.openCaption')}</p>
+          <p className="text-xs text-muted-foreground">
+            {t('pointCash.panel.actions.openCaption')}
+          </p>
         </div>
       ) : openShiftGate === 'failed' ? (
         <p role="alert" className="text-xs text-destructive">

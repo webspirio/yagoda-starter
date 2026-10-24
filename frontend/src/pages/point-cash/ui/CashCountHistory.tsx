@@ -120,7 +120,9 @@ export function CashCountHistory({
                   {row.explanation}
                 </ExpandableText>
               ) : (
-                <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.settled')}</span>
+                <span className="text-xs text-muted-foreground">
+                  {t('pointCash.countHistory.settled')}
+                </span>
               )}
               {operatorNote}
             </div>
@@ -138,7 +140,9 @@ export function CashCountHistory({
                 {t('pointCash.countHistory.explain')}
               </Button>
             ) : (
-              <span className="text-xs text-muted-foreground">{t('pointCash.countHistory.open')}</span>
+              <span className="text-xs text-muted-foreground">
+                {t('pointCash.countHistory.open')}
+              </span>
             )
           ) : row.operator_note_editable ? (
             <Button size="xs" variant="outline" onClick={() => setNoteTarget(row)}>
@@ -209,11 +213,7 @@ export function CashCountHistory({
         />
       ) : null}
       {noteTarget ? (
-        <OperatorNoteDialog
-          count={noteTarget}
-          open
-          onClose={() => setNoteTarget(null)}
-        />
+        <OperatorNoteDialog count={noteTarget} open onClose={() => setNoteTarget(null)} />
       ) : null}
     </>
   );

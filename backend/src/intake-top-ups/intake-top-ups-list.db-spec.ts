@@ -192,6 +192,27 @@ describe('ListIntakeTopUpsQuery.list (Postgres)', () => {
     expect(page.data).toHaveLength(0);
   });
 
+  // Review 2026-10-24 #7: «Додано: …» / «Анульовано … · …» — one batched users read per page.
+  it('names the author and, once voided, the voider (D-8)', async () => {
+    const page = await service.list(operatorAt(pointA), {
+      include_voided: true,
+      page: 1,
+      limit: 50,
+    } as never);
+    const [row] = page.data;
+    expect(row.id).toBe(topUpOnA);
+    expect(row.created_by_name).toBe(`Власник Список-${run}`);
+    expect(row.voided_by_name).toBe(`Власник Список-${run}`);
+
+    const live = await service.list(operatorAt(pointB), {
+      include_voided: true,
+      page: 1,
+      limit: 50,
+    } as never);
+    expect(live.data[0].created_by_name).toBe(`Власник Список-${run}`);
+    expect(live.data[0].voided_by_name).toBeNull();
+  });
+
   it('include_voided=false does NOT hide a row whose PARENT is voided', async () => {
     // The row is still live; it simply counts for nothing. Hiding it here is
     // exactly the silence `counts_toward_balance` exists to prevent.

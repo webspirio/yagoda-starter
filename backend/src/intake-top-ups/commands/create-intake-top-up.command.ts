@@ -7,7 +7,8 @@ import {
 import { DataSource } from 'typeorm';
 import { IntakeTopUp } from '../intake-top-up.entity';
 import { CreateIntakeTopUpDto } from '../dto/create-intake-top-up.dto';
-import { IntakeTopUpResponse, toIntakeTopUpResponse } from '../intake-top-up.mapper';
+import { IntakeTopUpResponse, toIntakeTopUpResponse, topUpUserIds } from '../intake-top-up.mapper';
+import { loadDisplayNames } from '../../users/display-names';
 import { Intake } from '../../intakes/intake.entity';
 import { Supplier } from '../../suppliers/supplier.entity';
 import { AuditService } from '../../audit/audit.service';
@@ -84,7 +85,11 @@ export class CreateIntakeTopUpCommand {
           },
           m,
         );
-        return toIntakeTopUpResponse(saved, intake);
+        return toIntakeTopUpResponse(
+          saved,
+          intake,
+          await loadDisplayNames(m, topUpUserIds([saved])),
+        );
       });
     });
   }

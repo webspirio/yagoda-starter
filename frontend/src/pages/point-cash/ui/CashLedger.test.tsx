@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { expectNoAxeViolations } from '../../../test-axe';
 import type { PointCashBreakdown } from '@/entities/point-cash';
 import { sum } from '@/shared/lib/money';
+import { TraceScope } from '@/shared/ui/trace';
 import { CashLedger } from './CashLedger';
 
 const open = (over: Partial<PointCashBreakdown> = {}): PointCashBreakdown => ({
@@ -61,15 +62,7 @@ const ledger = (
   date = '2026-09-23',
   failed = false,
 ) =>
-  render(
-    <CashLedger
-      date={date}
-      cash={cash}
-      breakdown={breakdown}
-      failed={failed}
-      intakes={[]}
-    />,
-  );
+  render(<CashLedger date={date} cash={cash} breakdown={breakdown} failed={failed} intakes={[]} />);
 
 /** The named difference of a closed day (C7). */
 const difference = () => row('Difference').querySelector('[data-discrepancy]') as HTMLElement;
@@ -242,7 +235,7 @@ describe('CashLedger', () => {
   });
 
   describe('negative-cash notice', () => {
-    it('shows the notice when the total has gone negative — amber, the tile\'s tone (C9)', () => {
+    it("shows the notice when the total has gone negative — amber, the tile's tone (C9)", () => {
       ledger(open(), '-50.00');
       expect(screen.getByText(/Berry cash has gone negative/)).toHaveClass('text-[var(--amber)]');
       expect(value('Berry cash')).toHaveClass('text-[var(--amber)]');
@@ -252,6 +245,86 @@ describe('CashLedger', () => {
       ledger(open(), '54730.00');
       expect(screen.queryByText(/Berry cash has gone negative/)).toBeNull();
     });
+  });
+
+  // 24.10 — «звідки це число»: the rows, added up in boxed operands.
+  describe('traced formula', () => {
+    const formula = () => document.querySelector('[data-ledger-formula]') as HTMLElement;
+    const terms = () => [...formula().querySelectorAll<HTMLElement>('[data-slot="trace-term"]')];
+
+    it('open day — opening − paid + returned + transfers = the total, each operand a term', () => {
+      ledger(open(), '54730.00');
+      expect(formula()).toHaveTextContent('43,730.00 ₴−4,000.00 ₴+0.00 ₴+15,000.00 ₴=54,730.00 ₴');
+      expect(terms().map((el) => el.dataset.trace)).toEqual([
+        'ledger:opening',
+        'ledger:paid',
+        'ledger:returned',
+        'ledger:transfersIn',
+        'ledger:total cash:total',
+      ]);
+    });
+
+    it('pointing at an operand lights its ledger row; the total lights the row and the tile', () => {
+      render(
+        <TraceScope>
+          <span data-trace="cash:total">tile</span>
+          <CashLedger date="2026-09-23" cash="54730.00" breakdown={open()} intakes={[]} />
+        </TraceScope>,
+      );
+      const paidSource = value('Paid out for the day').querySelector('[data-trace]') as HTMLElement;
+      fireEvent.pointerEnter(terms()[1]);
+      expect(paidSource).toHaveAttribute('data-trace-hit', 'neutral');
+      fireEvent.pointerLeave(terms()[1]);
+      expect(paidSource).not.toHaveAttribute('data-trace-hit');
+
+      fireEvent.pointerEnter(terms()[4]);
+      expect(screen.getByText('tile')).toHaveAttribute('data-trace-hit', 'neutral');
+      expect(value('Berry cash').querySelector('[data-trace]')).toHaveAttribute('data-trace-hit');
+    });
+
+    it('closed day — the rows add up to «Should be», a late change with its own operator', () => {
+      ledger(
+        closed({
+          expected: '44820.00',
+          counted: '44820.00',
+          difference: '0.00',
+          late_change: '-1000.00',
+        }),
+        '44820.00',
+        '2026-09-22',
+      );
+      expect(formula()).toHaveTextContent(
+        '21,820.00 ₴−13,000.00 ₴+0.00 ₴+35,000.00 ₴+1,000.00 ₴=44,820.00 ₴',
+      );
+      expect(terms()[terms().length - 1].dataset.trace).toBe('ledger:expected');
+    });
+
+    it('no formula where nothing adds up on screen — carried, none, or a close with no expectation', () => {
+      const carried = ledger(
+        {
+          ...NONE,
+          kind: 'carried',
+          anchor_date: '2026-09-22',
+          closing: { counted: '43730.00', expected: null, difference: null, late_change: null },
+        },
+        '43730.00',
+        '2026-09-24',
+      );
+      expect(formula()).toBeNull();
+      carried.unmount();
+      ledger(closed({ expected: null, difference: null }), '43730.00', '2026-09-22');
+      expect(formula()).toBeNull();
+    });
+  });
+
+  // Review 24.10 — a closed day with no stored expectation has no difference:
+  // «—», never «Matched» read off a defaulted 0.00.
+  it('closed day with no stored expectation — the difference and «Should be» read «—»', () => {
+    ledger(closed({ expected: null, difference: null }), '43730.00', '2026-09-22');
+    expect(difference()).toBeNull();
+    expect(value('Difference')).toHaveTextContent(/^—$/);
+    expect(value('Should be')).toHaveTextContent(/^—$/);
+    expect(screen.queryByText('Matched')).toBeNull();
   });
 
   it('has no axe violations', async () => {

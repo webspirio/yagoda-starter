@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { TraceScope } from '@/shared/ui/trace';
 import type { ComponentProps } from 'react';
 import { Reconciliation } from './Reconciliation';
 import type { ReconciliationGrade, ReconciliationProduct } from '@/entities/reweigh';
@@ -33,19 +34,24 @@ const grade = (over: Partial<ReconciliationGrade> = {}): ReconciliationGrade => 
 });
 
 type Props = ComponentProps<typeof Reconciliation>;
+/** A formula's text as one string — its figures are `TraceTerm`s, split across elements. */
+const flat = (el: Element | null | undefined) => el?.textContent?.replace(/\s+/g, ' ');
+
 const view = (over: Partial<Props> = {}) =>
   render(
-    <Reconciliation
-      products={[weighed()]}
-      grades={[]}
-      missingTotalKg="2.50"
-      missingTotalAmount="175.00"
-      drafts={[]}
-      shiftClosed
-      acceptedAnything
-      pointName="Шипинки"
-      {...over}
-    />,
+    <TraceScope>
+      <Reconciliation
+        products={[weighed()]}
+        grades={[]}
+        missingTotalKg="2.50"
+        missingTotalAmount="175.00"
+        drafts={[]}
+        shiftClosed
+        acceptedAnything
+        pointName="Шипинки"
+        {...over}
+      />
+    </TraceScope>,
   );
 
 describe('Reconciliation', () => {
@@ -79,20 +85,19 @@ describe('Reconciliation', () => {
       missingTotalKg: '1.40',
       missingTotalAmount: '265.19',
     });
-    expect(
-      screen.getByText(
-        'Малина: average purchase price incl. top-ups — 113,044.20 ÷ 596.80 = 189.42 ₴/kg',
-      ),
-    ).toBeInTheDocument();
+    // The numerator says what it is made of (top-ups review, 24.10): receipts = accrued − top-ups.
+    expect(screen.getAllByTestId('rate-line').map(flat)).toEqual([
+      'Малина: average purchase price incl. top-ups — (receipts 98,044.20 ₴ + top-ups 15,000.00 ₴) ÷ 596.80 kg = 189.42 ₴/kg',
+    ]);
     // Only a product with a shortfall has a rate to explain.
     expect(screen.queryByText(/^Кизил: average/)).not.toBeInTheDocument();
   });
 
   it('says plainly «average purchase price» when there are no доплати', () => {
     view();
-    expect(
-      screen.getByText('Малина: average purchase price — 23,870.00 ÷ 341.00 = 70.00 ₴/kg'),
-    ).toBeInTheDocument();
+    expect(flat(screen.getByTestId('rate-line'))).toBe(
+      'Малина: average purchase price — 23,870.00 ₴ ÷ 341.00 kg = 70.00 ₴/kg',
+    );
   });
 
   it('prints the shortfall money as a formula a calculator re-checks, in amber — W3', () => {
@@ -102,7 +107,8 @@ describe('Reconciliation', () => {
       missingTotalAmount: '265.19',
     });
     const row = screen.getByRole('row', { name: /Малина/ });
-    const money = within(row).getByText('1.40 × 189.42 = 265.19');
+    const money = within(row).getByText('265.19 ₴').closest('td');
+    expect(flat(money)).toBe('1.40 kg × 189.42 ₴/kg = 265.19 ₴');
     expect(money).toHaveClass('text-amber');
     expect(within(row).getByText('−1.40')).toHaveClass('text-amber');
   });
@@ -252,5 +258,50 @@ describe('Reconciliation', () => {
   it('adds no grade rows for a single-grade product', () => {
     view({ grades: [grade()] });
     expect(screen.queryByRole('row', { name: /1 сорт/ })).not.toBeInTheDocument();
+  });
+});
+
+// «Звідки це число» (client, 24.10): every figure of a formula points at its source.
+describe('Reconciliation — traced formulas', () => {
+  const short = () =>
+    view({
+      products: [
+        weighed({
+          intake_net_kg: '596.80',
+          reweigh_net_kg: '595.40',
+          missing_kg: '1.40',
+          rate: '189.42',
+          missing_amount: '265.19',
+          accrued: '113044.20',
+          top_ups: '15000.00',
+        }),
+      ],
+      missingTotalKg: '1.40',
+      missingTotalAmount: '265.19',
+    });
+
+  it('the shortfall’s kilograms light «Difference», the rate its own line', () => {
+    short();
+    const row = screen.getByRole('row', { name: /Малина/ });
+    const diff = within(row).getByText('−1.40');
+    const money = within(row).getByText('265.19 ₴').closest('td')!;
+
+    fireEvent.pointerEnter(within(money).getByText('1.40 kg'));
+    expect(diff).toHaveAttribute('data-trace-hit', 'amber');
+
+    fireEvent.pointerEnter(within(money).getByText('189.42 ₴/kg'));
+    expect(diff).not.toHaveAttribute('data-trace-hit');
+    const line = screen.getByTestId('rate-line');
+    expect(within(line).getByText('189.42 ₴/kg')).toHaveAttribute('data-trace-hit', 'sky');
+  });
+
+  it('the rate’s kilograms light «Point», and the total lights each product’s shortfall', () => {
+    short();
+    const row = screen.getByRole('row', { name: /Малина/ });
+    fireEvent.pointerEnter(within(screen.getByTestId('rate-line')).getByText('596.80 kg'));
+    expect(within(row).getByText('596.80')).toHaveAttribute('data-trace-hit', 'neutral');
+
+    fireEvent.pointerEnter(within(screen.getByTestId('missing-total')).getByText('1.40 kg'));
+    expect(within(row).getByText('−1.40')).toHaveAttribute('data-trace-hit', 'amber');
   });
 });

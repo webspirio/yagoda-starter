@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ApiError } from '@/shared/api';
@@ -66,7 +66,9 @@ describe('IssueCratesDialog', () => {
     open();
     await user.selectOptions(screen.getByLabelText('Person'), 's1');
     await user.type(screen.getByLabelText('Crates'), '10');
-    expect(await screen.findByText(/after this issue the point will have −3/i)).toBeInTheDocument();
+    expect(
+      await screen.findByText(/after this issue the point will have −3 cr\./i),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /^issue$/i }));
     await waitFor(() =>
       expect(issueMock).toHaveBeenCalledWith({ supplier_id: 's1', units: 10, mode: 'deposit' }),
@@ -85,7 +87,7 @@ describe('IssueCratesDialog', () => {
     standingMock.mockReturnValue({ data: { on_hand: -5, in_transit: 20 } });
     open();
     expect(screen.getByText(/−5 empty crates at the point/)).toBeInTheDocument();
-    expect(screen.getByText(/20 in transit/i)).toBeInTheDocument();
+    expect(screen.getByText(/20 cr\. in transit/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^issue$/i })).toBeEnabled();
   });
 
@@ -94,10 +96,34 @@ describe('IssueCratesDialog', () => {
     const user = userEvent.setup();
     open();
     await user.type(screen.getByLabelText('Crates'), '6');
-    expect(await screen.findByText('Deposit: 6 × 25.00 ₴ = 150.00 ₴')).toBeInTheDocument();
+    // The operands are boxed terms, so the line is read as one text.
+    await waitFor(() =>
+      expect(document.querySelector('[data-deposit-line]')).toHaveTextContent(
+        'Deposit: 6 cr. × 25.00 ₴ = 150.00 ₴',
+      ),
+    );
 
     await user.selectOptions(screen.getByLabelText('Taken as'), 'receipt');
     expect(screen.queryByText(/^Deposit: /)).not.toBeInTheDocument();
+  });
+
+  // 24.10 — «звідки це число»: the count lights the field it was typed in.
+  it('traces the deposit line: the count and the total light the «Crates» field', async () => {
+    const user = userEvent.setup();
+    open();
+    const field = screen.getByLabelText('Crates');
+    await user.type(field, '6');
+    const terms = [
+      ...document.querySelectorAll<HTMLElement>('[data-deposit-line] [data-slot="trace-term"]'),
+    ];
+    expect(terms).toHaveLength(3);
+    fireEvent.pointerEnter(terms[0]);
+    expect(field).toHaveAttribute('data-trace-hit', 'neutral');
+    fireEvent.pointerLeave(terms[0]);
+    expect(field).not.toHaveAttribute('data-trace-hit');
+    fireEvent.pointerEnter(terms[2]);
+    expect(field).toHaveAttribute('data-trace-hit');
+    expect(terms[1]).toHaveAttribute('data-trace-hit');
   });
 
   it('shows no deposit line while the count is not a whole number', async () => {

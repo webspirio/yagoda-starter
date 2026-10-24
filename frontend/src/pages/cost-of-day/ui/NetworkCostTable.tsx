@@ -3,13 +3,29 @@ import { Trans, useTranslation } from 'react-i18next';
 import { ChevronRight } from 'lucide-react';
 import { Badge } from '@/shared/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
-import { formatDecimal, formatKg, formatUah } from '@/shared/lib/money';
+import {
+  formatDecimal,
+  formatKg,
+  formatUah,
+  formatUahPerKg,
+  unbreakable,
+} from '@/shared/lib/money';
 import type {
   NetworkCostOfDay,
   NetworkCostPoint,
   NetworkCostProduct,
 } from '@/entities/cost-of-day';
-import { AMBER, LEAF, NUM, PLUM, SKY, STICKY, ShortfallValue } from './CostTableRow';
+import { AMBER, LEAF, NUM, PLUM, SKY, STICKY, ShortfallValue, TopUpsNote } from './CostTableRow';
+import {
+  DAY,
+  TOTAL,
+  UNWEIGHED,
+  pointExpensesId,
+  pointRowId,
+  rowId,
+  type RowField,
+} from './trace-ids';
+import { ShortfallTerm, Term } from './terms';
 
 const COLUMNS = 11;
 
@@ -42,8 +58,20 @@ export function NetworkCostTable({ day, locale }: { day: NetworkCostOfDay; local
   const dash = (v: string | null | undefined, f: (s: string) => string = dec) =>
     v === null || v === undefined ? '—' : f(v);
   const anyUnweighed = day.products.some((p) => p.points.some((c) => !c.complete));
+  // A formula's operands carry their units and never break inside one.
+  const uah = (s: string) => unbreakable(formatUah(s, locale));
+  const kg = (s: string) => unbreakable(formatKg(s, locale));
+  const perKg = (s: string) => unbreakable(formatUahPerKg(s, locale));
   // Counting points is not arithmetic on money: «з 1 точки з 6» (audit E1).
   const weighedPoints = day.points.filter((p) => p.weighed).length;
+  // The expenses the day formula spreads are the weighed points' entries in
+  // the expenses line above the table, and the «Частка» total under «Витрати».
+  const spreadExpenses = [
+    TOTAL.expensesShare,
+    ...day.points.filter((p) => p.weighed).map((p) => pointExpensesId(p.shift_id)),
+  ];
+  const totalCell = (column: string) =>
+    t('costOfDay.trace.cell', { column, row: t('costOfDay.table.total') });
 
   const group = (label: string, span: number, tone: string) => (
     <TableHead
@@ -130,31 +158,64 @@ export function NetworkCostTable({ day, locale }: { day: NetworkCostOfDay; local
             {/* Sums only, over the rows weighed in full; «—» until anything is. */}
             <TableRow data-total className="border-t-2 border-border font-semibold">
               <TableCell className={STICKY}>{t('costOfDay.table.total')}</TableCell>
-              <TableCell className={NUM}>{dash(w?.intake_kg)}</TableCell>
-              <TableCell className={NUM}>{w === null ? '—' : dec(day.reweighed_kg)}</TableCell>
-              <TableCell className={NUM}>
+              <TableCell className={NUM} data-trace={TOTAL.intakeKg}>
+                {dash(w?.intake_kg)}
+              </TableCell>
+              <TableCell className={NUM} data-trace={DAY.baseKg}>
+                {w === null ? '—' : dec(day.reweighed_kg)}
+              </TableCell>
+              <TableCell className={NUM} data-trace={TOTAL.shortKg}>
                 <ShortfallValue value={w?.shortfall_kg ?? null} minus locale={locale} />
               </TableCell>
-              <TableCell className={`${NUM} ${SKY}`}>{dash(w?.accrued)}</TableCell>
+              <TableCell className={`${NUM} ${SKY}`} data-trace={TOTAL.accrued}>
+                {dash(w?.accrued)}
+              </TableCell>
               <TableCell className={SKY} />
-              <TableCell className={`${NUM} ${AMBER}`}>
+              <TableCell className={`${NUM} ${AMBER}`} data-trace={TOTAL.shortfall}>
                 <ShortfallValue value={w?.shortfall ?? null} minus locale={locale} />
               </TableCell>
-              <TableCell className={`${NUM} ${AMBER}`}>
+              <TableCell className={`${NUM} ${AMBER}`} data-trace={TOTAL.shortfallShare}>
                 <ShortfallValue value={w?.shortfall_share ?? null} locale={locale} />
               </TableCell>
-              <TableCell className={`${NUM} ${PLUM}`}>{dash(w?.expenses_share)}</TableCell>
-              <TableCell className={`${NUM} ${LEAF}`}>{dash(w?.full_cost)}</TableCell>
+              <TableCell className={`${NUM} ${PLUM}`} data-trace={TOTAL.expensesShare}>
+                {dash(w?.expenses_share)}
+              </TableCell>
+              <TableCell className={`${NUM} ${LEAF}`} data-trace={TOTAL.full}>
+                {dash(w?.full_cost)}
+              </TableCell>
               <TableCell className={LEAF} />
             </TableRow>
 
             {anyUnweighed ? (
               <TableRow className="text-muted-foreground hover:bg-transparent">
                 <TableCell colSpan={COLUMNS} className="text-xs whitespace-normal">
-                  {t('costOfDay.table.unweighed', {
-                    kg: formatKg(day.unweighed.intake_kg, locale),
-                    amount: formatUah(day.unweighed.accrued, locale),
-                  })}
+                  <Trans
+                    t={t}
+                    i18nKey="costOfDay.table.unweighed"
+                    values={{
+                      kg: kg(day.unweighed.intake_kg),
+                      amount: uah(day.unweighed.accrued),
+                    }}
+                    components={{
+                      kg: (
+                        <Term
+                          refs={UNWEIGHED.intakeKg}
+                          hint={t('costOfDay.trace.unweighed', {
+                            column: t('costOfDay.table.point'),
+                          })}
+                        />
+                      ),
+                      amount: (
+                        <Term
+                          refs={UNWEIGHED.accrued}
+                          tone="sky"
+                          hint={t('costOfDay.trace.unweighed', {
+                            column: t('costOfDay.table.accrued'),
+                          })}
+                        />
+                      ),
+                    }}
+                  />
                 </TableCell>
               </TableRow>
             ) : null}
@@ -173,13 +234,38 @@ export function NetworkCostTable({ day, locale }: { day: NetworkCostOfDay; local
                 anyUnweighed ? 'costOfDay.table.dayFormulaWeighed' : 'costOfDay.table.dayFormula'
               }
               values={{
-                accrued: dec(w.accrued),
-                expenses: dec(day.expenses_weighed),
-                kg: formatKg(day.reweighed_kg, locale),
-                avg: dec(day.price_cost_avg),
+                accrued: uah(w.accrued),
+                expenses: uah(day.expenses_weighed),
+                kg: kg(day.reweighed_kg),
+                avg: perKg(day.price_cost_avg),
               }}
               components={{
-                leaf: <span className="font-mono font-semibold text-[var(--leaf)]" />,
+                accrued: (
+                  <Term
+                    refs={TOTAL.accrued}
+                    tone="sky"
+                    hint={totalCell(t('costOfDay.table.accrued'))}
+                  />
+                ),
+                expenses: (
+                  <Term
+                    refs={spreadExpenses}
+                    tone="plum"
+                    hint={t('costOfDay.trace.expensesSpread', {
+                      column: `${t('costOfDay.table.groupExpenses')} · ${t('costOfDay.network.table.share')}`,
+                    })}
+                  />
+                ),
+                kg: <Term refs={DAY.baseKg} hint={totalCell(t('costOfDay.table.base'))} />,
+                // Shown nowhere else: it points at the total row it is made of.
+                avg: (
+                  <Term
+                    refs={[TOTAL.full, TOTAL.accrued, DAY.baseKg, ...spreadExpenses]}
+                    tone="leaf"
+                    hint={totalCell(t('costOfDay.network.table.fullCost'))}
+                    className="font-semibold"
+                  />
+                ),
               }}
             />
           </p>
@@ -188,11 +274,15 @@ export function NetworkCostTable({ day, locale }: { day: NetworkCostOfDay; local
               network it is (audit E1). */}
           {weighedPoints < day.points.length ? (
             <p data-counted>
-              {t('costOfDay.network.counted', {
-                kg: formatKg(day.reweighed_kg, locale),
-                count: weighedPoints,
-                total: day.points.length,
-              })}
+              <Trans
+                t={t}
+                i18nKey="costOfDay.network.counted"
+                count={weighedPoints}
+                values={{ kg: kg(day.reweighed_kg), total: day.points.length }}
+                components={{
+                  kg: <Term refs={DAY.baseKg} hint={totalCell(t('costOfDay.table.base'))} />,
+                }}
+              />
             </p>
           ) : null}
           <p>{t('costOfDay.network.rule')}</p>
@@ -220,15 +310,41 @@ function ProductRows({
   locale: string;
 }) {
   const { t } = useTranslation();
-  const dec = (s: string) => formatDecimal(s, locale);
+  const uah = (s: string) => unbreakable(formatUah(s, locale));
+  const kg = (s: string) => unbreakable(formatKg(s, locale));
   const counted = p.points.filter((c) => c.complete).map((c) => c.point_name);
   const left = p.points.filter((c) => !c.complete).map((c) => c.point_name);
+  // Every operand points at the cell of this product's row it was read from.
+  const id = (field: RowField) => rowId(p.product_id, field);
+  const cell = (column: string) => t('costOfDay.trace.cell', { column, row: p.product_name });
+  const col = {
+    accrued: t('costOfDay.table.accrued'),
+    own: t('costOfDay.table.ownShortfall'),
+    shortfallShare: `${t('costOfDay.table.groupShortfall')} · ${t('costOfDay.network.table.share')}`,
+    expensesShare: `${t('costOfDay.table.groupExpenses')} · ${t('costOfDay.network.table.share')}`,
+    full: t('costOfDay.network.table.fullCost'),
+    base: t('costOfDay.table.base'),
+    cost: t('costOfDay.network.table.cost'),
+  };
+  // «без 100,00 кг» and the «не перезважено» step: the sub-rows of the points
+  // that have not weighed this product.
+  const leftHint = (column: string) =>
+    t('costOfDay.trace.unweighed', { column: `${column} · ${p.product_name}` });
 
   return (
     <>
       <FigureRow
         figures={p}
         locale={locale}
+        rowLabel={p.product_name}
+        trace={(field) =>
+          // A product nobody weighed in full is wholly in the «не перезважено» line.
+          !p.complete && field === 'intakeKg'
+            ? `${id(field)} ${UNWEIGHED.intakeKg}`
+            : !p.complete && field === 'accrued'
+              ? `${id(field)} ${UNWEIGHED.accrued}`
+              : id(field)
+        }
         label={
           <>
             <button
@@ -257,9 +373,19 @@ function ProductRows({
                   {t('costOfDay.network.partial', { n: counted.length, count: p.points.length })}
                 </Badge>
                 <div className="pl-5 text-xs font-normal text-muted-foreground">
-                  {t('costOfDay.network.partialWithout', {
-                    kg: formatKg(p.unweighed.intake_kg, locale),
-                  })}
+                  <Trans
+                    t={t}
+                    i18nKey="costOfDay.network.partialWithout"
+                    values={{ kg: kg(p.unweighed.intake_kg) }}
+                    components={{
+                      kg: (
+                        <Term
+                          refs={id('unweighedKg')}
+                          hint={leftHint(t('costOfDay.table.point'))}
+                        />
+                      ),
+                    }}
+                  />
                 </div>
               </>
             ) : null}
@@ -274,32 +400,83 @@ function ProductRows({
             <ul data-chain className="flex flex-wrap gap-x-6 gap-y-1 font-mono tabular-nums">
               {p.full_cost !== null && p.shortfall_share !== null && p.expenses_share !== null ? (
                 <li>
-                  {t('costOfDay.network.chain.full', {
-                    accrued: dec(p.accrued),
-                    shortfall: dec(p.shortfall),
-                    shortfallShare: dec(p.shortfall_share),
-                    expensesShare: dec(p.expenses_share),
-                    full: dec(p.full_cost),
-                  })}
+                  <Trans
+                    t={t}
+                    i18nKey="costOfDay.network.chain.full"
+                    values={{
+                      accrued: uah(p.accrued),
+                      shortfall: uah(p.shortfall),
+                      shortfallShare: uah(p.shortfall_share),
+                      expensesShare: uah(p.expenses_share),
+                      full: uah(p.full_cost),
+                    }}
+                    components={{
+                      accrued: <Term refs={id('accrued')} tone="sky" hint={cell(col.accrued)} />,
+                      shortfall: <ShortfallTerm refs={id('shortfall')} hint={cell(col.own)} />,
+                      shortfallShare: (
+                        <ShortfallTerm
+                          refs={id('shortfallShare')}
+                          hint={cell(col.shortfallShare)}
+                        />
+                      ),
+                      expensesShare: (
+                        <Term
+                          refs={id('expensesShare')}
+                          tone="plum"
+                          hint={cell(col.expensesShare)}
+                        />
+                      ),
+                      full: <Term refs={id('full')} tone="leaf" hint={cell(col.full)} />,
+                    }}
+                  />
                 </li>
               ) : null}
               {p.full_cost !== null && p.reweigh_net_kg !== null && p.price_cost !== null ? (
                 <li>
-                  {t('costOfDay.network.chain.cost', {
-                    full: dec(p.full_cost),
-                    kg: dec(p.reweigh_net_kg),
-                    cost: dec(p.price_cost),
-                    names: counted.join(', '),
-                  })}
+                  <Trans
+                    t={t}
+                    i18nKey="costOfDay.network.chain.cost"
+                    values={{
+                      full: uah(p.full_cost),
+                      kg: kg(p.reweigh_net_kg),
+                      cost: unbreakable(formatUahPerKg(p.price_cost, locale)),
+                    }}
+                    components={{
+                      full: <Term refs={id('full')} tone="leaf" hint={cell(col.full)} />,
+                      kg: <Term refs={id('baseKg')} hint={cell(col.base)} />,
+                      cost: <Term refs={id('cost')} tone="leaf" hint={cell(col.cost)} />,
+                      // Point names are the owner's text: React children, never markup.
+                      names: <>{counted.join(', ')}</>,
+                    }}
+                  />
                 </li>
               ) : null}
               {p.unweighed !== null ? (
                 <li>
-                  {t('costOfDay.network.chain.unweighed', {
-                    names: left.join(', '),
-                    kg: formatKg(p.unweighed.intake_kg, locale),
-                    amount: formatUah(p.unweighed.accrued, locale),
-                  })}
+                  <Trans
+                    t={t}
+                    i18nKey="costOfDay.network.chain.unweighed"
+                    values={{
+                      kg: kg(p.unweighed.intake_kg),
+                      amount: uah(p.unweighed.accrued),
+                    }}
+                    components={{
+                      names: <>{left.join(', ')}</>,
+                      kg: (
+                        <Term
+                          refs={id('unweighedKg')}
+                          hint={leftHint(t('costOfDay.table.point'))}
+                        />
+                      ),
+                      amount: (
+                        <Term
+                          refs={id('unweighedAccrued')}
+                          tone="sky"
+                          hint={leftHint(t('costOfDay.table.accrued'))}
+                        />
+                      ),
+                    }}
+                  />
                 </li>
               ) : null}
             </ul>
@@ -313,6 +490,18 @@ function ProductRows({
               key={c.shift_id}
               figures={c}
               locale={locale}
+              rowLabel={`${p.product_name} · ${c.point_name}`}
+              trace={(field) => {
+                const own = pointRowId(p.product_id, c.shift_id, field);
+                // A point that has not weighed the product is one of the cells
+                // its «не перезважено» step — and the day's line — sum.
+                if (c.complete) return own;
+                if (field === 'intakeKg')
+                  return `${own} ${id('unweighedKg')} ${UNWEIGHED.intakeKg}`;
+                if (field === 'accrued')
+                  return `${own} ${id('unweighedAccrued')} ${UNWEIGHED.accrued}`;
+                return own;
+              }}
               muted
               label={
                 <>
@@ -336,16 +525,23 @@ function ProductRows({
 function FigureRow({
   figures: f,
   label,
+  rowLabel,
+  trace,
   locale,
   strong = false,
   muted = false,
 }: {
   figures: NetworkCostProduct | NetworkCostPoint;
   label: ReactNode;
+  /** The row in words, for a traced operand's hint. */
+  rowLabel: string;
+  /** Each cell's `data-trace` ids (`shared/ui/trace`). */
+  trace: (field: RowField) => string;
   locale: string;
   strong?: boolean;
   muted?: boolean;
 }) {
+  const { t } = useTranslation();
   const dec = (s: string) => formatDecimal(s, locale);
   const dash = (v: string | null, fmt: (s: string) => string = dec) => (v === null ? '—' : fmt(v));
   // `complete` false: no недостача has been established — «—», never a zero.
@@ -357,40 +553,53 @@ function FigureRow({
       className={muted ? 'bg-muted/40 text-muted-foreground' : ''}
     >
       <TableCell className={`${STICKY} ${muted ? '!pl-9' : 'font-medium'}`}>{label}</TableCell>
-      <TableCell className={NUM}>{dec(f.intake_net_kg)}</TableCell>
-      <TableCell className={NUM}>{dash(f.reweigh_net_kg)}</TableCell>
-      <TableCell className={NUM}>
+      <TableCell className={NUM} data-trace={trace('intakeKg')}>
+        {dec(f.intake_net_kg)}
+      </TableCell>
+      <TableCell className={NUM} data-trace={trace('baseKg')}>
+        {dash(f.reweigh_net_kg)}
+      </TableCell>
+      <TableCell className={NUM} data-trace={trace('shortKg')}>
         <ShortfallValue value={weighed ? f.shortfall_kg : null} minus locale={locale} />
       </TableCell>
-      <TableCell className={`${NUM} ${SKY}`}>
+      <TableCell className={`${NUM} ${SKY}`} data-trace={trace('accrued')}>
         {dec(f.accrued)}
-        {f.top_ups !== '0.00' ? (
-          <div className="text-xs font-normal text-muted-foreground">
-            <TopUps value={f.top_ups} locale={locale} />
-          </div>
-        ) : null}
+        {/* No доплати chip on the network day: the figure points at the
+            «Нараховано» it is part of. */}
+        <TopUpsNote
+          value={f.top_ups}
+          locale={locale}
+          refs={trace('accrued')}
+          hint={t('costOfDay.trace.cell', {
+            column: t('costOfDay.table.accrued'),
+            row: rowLabel,
+          })}
+        />
       </TableCell>
-      <TableCell className={`${NUM} ${SKY} ${muted ? '' : 'text-[var(--sky)]'}`}>
+      <TableCell
+        className={`${NUM} ${SKY} ${muted ? '' : 'text-[var(--sky)]'}`}
+        data-trace={trace('price')}
+      >
         {dec(f.price_was)}
       </TableCell>
-      <TableCell className={`${NUM} ${AMBER}`}>
+      <TableCell className={`${NUM} ${AMBER}`} data-trace={trace('shortfall')}>
         <ShortfallValue value={weighed ? f.shortfall : null} minus locale={locale} />
       </TableCell>
-      <TableCell className={`${NUM} ${AMBER}`}>
+      <TableCell className={`${NUM} ${AMBER}`} data-trace={trace('shortfallShare')}>
         <ShortfallValue value={f.shortfall_share} locale={locale} />
       </TableCell>
-      <TableCell className={`${NUM} ${PLUM}`}>{dash(f.expenses_share)}</TableCell>
-      <TableCell className={`${NUM} ${LEAF}`}>{dash(f.full_cost)}</TableCell>
+      <TableCell className={`${NUM} ${PLUM}`} data-trace={trace('expensesShare')}>
+        {dash(f.expenses_share)}
+      </TableCell>
+      <TableCell className={`${NUM} ${LEAF}`} data-trace={trace('full')}>
+        {dash(f.full_cost)}
+      </TableCell>
       <TableCell
         className={`${NUM} ${LEAF} ${strong ? 'text-base font-bold text-[var(--leaf)]' : ''}`}
+        data-trace={trace('cost')}
       >
         {dash(f.price_cost)}
       </TableCell>
     </TableRow>
   );
-}
-
-function TopUps({ value, locale }: { value: string; locale: string }) {
-  const { t } = useTranslation();
-  return <>{t('costOfDay.table.topUps', { amount: formatDecimal(value, locale) })}</>;
 }

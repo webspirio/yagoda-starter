@@ -1,18 +1,49 @@
 import { Fragment } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { Eyebrow } from '@/shared/ui/eyebrow';
+import { TraceTerm, type TraceTone } from '@/shared/ui/trace';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/shared/ui/table';
 import { cn } from '@/shared/lib/cn';
-import { cmp, formatDecimal, formatKg, formatUah, sub, sum } from '@/shared/lib/money';
+import {
+  cmp,
+  formatDecimal,
+  formatKg,
+  formatUah,
+  formatUahPerKg,
+  sub,
+  sum,
+  unbreakable,
+} from '@/shared/lib/money';
 import type {
   ReconciliationCrates,
   ReconciliationGrade,
   ReconciliationProduct,
 } from '@/entities/reweigh';
 import type { Draft } from '../model/draft';
+import { DRAFTS_TOTAL_TRACE } from '../lib/traceIds';
 
 const ZERO = '0.00';
+
+/** A product's figures in the звірка, scope-local trace ids (the page's scope). */
+const ids = (productId: string) => ({
+  point: `p:${productId}:point`,
+  diff: `p:${productId}:diff`,
+  rate: `p:${productId}:rate`,
+  accrued: `p:${productId}:accrued`,
+  receipts: `p:${productId}:receipts`,
+  topUps: `p:${productId}:topUps`,
+  amount: `p:${productId}:amount`,
+});
+
+/** An empty term: `<Trans>` fills it with its tag's own (formatted) figure. */
+function term(refs: string | readonly string[], hint: string, tone: TraceTone = 'neutral') {
+  return (
+    <TraceTerm refs={refs} tone={tone} hint={hint}>
+      {null}
+    </TraceTerm>
+  );
+}
 
 /**
  * §3.7's звірка, one row per PRODUCT. EVERY FIGURE IS THE SERVER'S —
@@ -36,6 +67,11 @@ const ZERO = '0.00';
  * Three states never collapse into one another (spec §3.9/§3.15): a real
  * difference, «не перезважено» (a STATE, never a zero) and the shift still
  * open (every `missing_kg` null — the claim waits for the close).
+ *
+ * Traced (client, 24.10): every figure of every formula here is a `TraceTerm` —
+ * the shortfall's kilograms point at «Різниця», the rate's kilograms at «Пункт»,
+ * the rate at its own line, the total at the products it adds up — inside the
+ * page's `TraceScope`. Amber is недостача, sky the purchase price.
  */
 export function Reconciliation({
   products,
@@ -64,10 +100,10 @@ export function Reconciliation({
   const hasRows = acceptedAnything && products.length > 0;
   const totalShort =
     missingTotalKg !== null && missingTotalAmount !== null && cmp(missingTotalKg, ZERO) > 0;
+  // The products the total adds up: every priced shortfall.
+  const short = products.filter((p) => p.missing_kg !== null && cmp(p.missing_kg, ZERO) > 0);
   // E5 — each priced shortfall's rate, written as the division it is.
-  const rated = products.filter(
-    (p) => p.rate !== null && p.missing_kg !== null && cmp(p.missing_kg, ZERO) > 0,
-  );
+  const rated = short.filter((p) => p.rate !== null);
 
   return (
     <div className="rounded-xl border border-line2 bg-card">
@@ -121,12 +157,30 @@ export function Reconciliation({
           >
             {/* Unsigned: the label already says «Недостача» (rule 5 of the
                 2026-10-24 audit — a label agrees with its sign). */}
-            {missingTotalKg === null || missingTotalAmount === null
-              ? '—'
-              : t('reweigh.check.totalValue', {
+            {missingTotalKg === null || missingTotalAmount === null ? (
+              '—'
+            ) : (
+              <Trans
+                t={t}
+                i18nKey="reweigh.check.totalValue"
+                values={{
                   kg: formatKg(missingTotalKg, locale),
                   amount: formatUah(missingTotalAmount, locale),
-                })}
+                }}
+                components={{
+                  kg: term(
+                    short.length ? short.map((p) => ids(p.product_id).diff) : 'total:kg',
+                    t('reweigh.check.trace.totalKg'),
+                    totalShort ? 'amber' : 'neutral',
+                  ),
+                  amount: term(
+                    short.length ? short.map((p) => ids(p.product_id).amount) : 'total:amount',
+                    t('reweigh.check.trace.totalAmount'),
+                    totalShort ? 'amber' : 'neutral',
+                  ),
+                }}
+              />
+            )}
           </span>
         </div>
         {rated.map((p) => (
@@ -135,12 +189,7 @@ export function Reconciliation({
             data-testid="rate-line"
             className="mt-2 font-mono text-xs leading-relaxed text-muted-foreground"
           >
-            {t(p.top_ups === ZERO ? 'reweigh.check.rate' : 'reweigh.check.rateTopUps', {
-              product: p.product_name,
-              accrued: formatDecimal(p.accrued, locale),
-              kg: formatDecimal(p.intake_net_kg, locale),
-              rate: formatDecimal(p.rate as string, locale),
-            })}
+            <RateLine product={p} locale={locale} t={t} />
           </p>
         ))}
         {missingTotalKg === null && !shiftClosed ? (
@@ -153,7 +202,12 @@ export function Reconciliation({
         ) : null}
         {draftedKg !== null ? (
           <p className="mt-2 text-xs leading-relaxed text-muted-foreground">
-            {t('reweigh.check.drafted', { kg: formatKg(draftedKg, locale) })}
+            <Trans
+              t={t}
+              i18nKey="reweigh.check.drafted"
+              values={{ kg: formatKg(draftedKg, locale) }}
+              components={{ kg: term(DRAFTS_TOTAL_TRACE, t('reweigh.check.trace.drafted')) }}
+            />
           </p>
         ) : null}
       </div>
@@ -204,7 +258,10 @@ function ReconciliationRow({
         {product.product_name}
         <CratesNote t={t} crates={product.crates} />
       </TableCell>
-      <TableCell className="text-right font-mono tabular-nums whitespace-nowrap">
+      <TableCell
+        data-trace={ids(product.product_id).point}
+        className="text-right font-mono tabular-nums whitespace-nowrap"
+      >
         {formatDecimal(product.intake_net_kg, locale)}
       </TableCell>
       <TableCell className="text-right font-mono tabular-nums whitespace-nowrap">
@@ -214,7 +271,7 @@ function ReconciliationRow({
           formatDecimal(product.reweigh_net_kg, locale)
         )}
       </TableCell>
-      <DiffCell value={product.missing_kg} locale={locale} t={t} />
+      <DiffCell value={product.missing_kg} trace={ids(product.product_id).diff} locale={locale} t={t} />
       <MoneyCell product={product} locale={locale} t={t} />
     </TableRow>
   );
@@ -248,13 +305,24 @@ function GradeRow({ grade, locale, t }: { grade: ReconciliationGrade; locale: st
  * muted. `null` (open shift, or a state that never prices) renders `—` — the
  * one thing it is never allowed to render is `0`.
  */
-function DiffCell({ value, locale, t }: { value: string | null; locale: string; t: TFunction }) {
+function DiffCell({
+  value,
+  trace,
+  locale,
+  t,
+}: {
+  value: string | null;
+  trace: string;
+  locale: string;
+  t: TFunction;
+}) {
   if (value === null) {
     return <TableCell className="text-right font-mono tabular-nums">—</TableCell>;
   }
   const sign = cmp(value, ZERO);
   return (
     <TableCell
+      data-trace={trace}
       className={cn(
         'text-right font-mono tabular-nums whitespace-nowrap',
         sign > 0 ? 'text-amber' : 'text-muted-foreground',
@@ -270,7 +338,8 @@ function DiffCell({ value, locale, t }: { value: string | null; locale: string; 
   );
 }
 
-/** «1,40 × 189,42 = 265,19» for a shortfall (₴ in the header); nothing for a surplus or an
+/** «1,40 кг × 189,42 ₴/кг = 265,19 ₴» for a shortfall — a formula, so every operand
+ *  carries its unit even under a «₴» header (2026-10-24); nothing for a surplus or an
  *  exact match — a surplus makes no money claim (§8.2 правка). */
 function MoneyCell({ product, locale, t }: { product: ReconciliationProduct; locale: string; t: TFunction }) {
   const { missing_kg: kg, missing_amount: amount, rate } = product;
@@ -278,15 +347,66 @@ function MoneyCell({ product, locale, t }: { product: ReconciliationProduct; loc
     return <TableCell className="text-right font-mono tabular-nums">—</TableCell>;
   }
   if (cmp(kg, ZERO) <= 0) return <TableCell />;
+  const id = ids(product.product_id);
+  const name = { product: product.product_name };
   return (
-    <TableCell className="text-right font-mono tabular-nums whitespace-nowrap text-amber">
-      {rate === null
-        ? formatDecimal(amount, locale)
-        : t('reweigh.check.moneyFormula', {
-            kg: formatDecimal(kg, locale),
-            rate: formatDecimal(rate, locale),
-            amount: formatDecimal(amount, locale),
-          })}
+    <TableCell
+      // An unpriced amount is a plain figure — the cell itself is its source.
+      data-trace={rate === null ? id.amount : undefined}
+      className="text-right font-mono tabular-nums whitespace-nowrap text-amber"
+    >
+      {rate === null ? (
+        formatDecimal(amount, locale)
+      ) : (
+        <Trans
+          t={t}
+          i18nKey="reweigh.check.moneyFormula"
+          values={{
+            kg: formatKg(kg, locale),
+            rate: formatUahPerKg(rate, locale),
+            amount: formatUah(amount, locale),
+          }}
+          components={{
+            kg: term(id.diff, t('reweigh.check.trace.diff', name), 'amber'),
+            rate: term(id.rate, t('reweigh.check.trace.rate', name), 'sky'),
+            amount: term(id.amount, t('reweigh.check.trace.amount', name), 'amber'),
+          }}
+        />
+      )}
     </TableCell>
+  );
+}
+
+/**
+ * E5 — «Малина: середня ціна закупки — 23 870,00 ₴ ÷ 341,00 кг = 70,00 ₴/кг»; with
+ * доплати (top-ups review, 24.10) the numerator says what it is made of:
+ * «(квитанції 98 044,20 ₴ + доплати 15 000,00 ₴) ÷ 596,80 кг = 189,42 ₴/кг».
+ * `receipts` is a display split of the server's `accrued`, never a new figure.
+ */
+function RateLine({ product: p, locale, t }: { product: ReconciliationProduct; locale: string; t: TFunction }) {
+  const id = ids(p.product_id);
+  const name = { product: p.product_name };
+  const uah = (value: string) => unbreakable(formatUah(value, locale));
+  const withTopUps = cmp(p.top_ups, ZERO) !== 0;
+  return (
+    <Trans
+      t={t}
+      i18nKey={withTopUps ? 'reweigh.check.rateTopUps' : 'reweigh.check.rate'}
+      values={{
+        product: p.product_name,
+        accrued: uah(p.accrued),
+        receipts: uah(sub(p.accrued, p.top_ups)),
+        topUps: uah(p.top_ups),
+        kg: unbreakable(formatKg(p.intake_net_kg, locale)),
+        rate: unbreakable(formatUahPerKg(p.rate as string, locale)),
+      }}
+      components={{
+        accrued: term(id.accrued, t('reweigh.check.trace.accrued', name), 'sky'),
+        receipts: term(id.receipts, t('reweigh.check.trace.receipts', name), 'sky'),
+        topUps: term(id.topUps, t('reweigh.check.trace.topUps', name), 'sky'),
+        kg: term(id.point, t('reweigh.check.trace.point', name)),
+        rate: term(id.rate, t('reweigh.check.trace.rate', name), 'sky'),
+      }}
+    />
   );
 }

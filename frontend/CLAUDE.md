@@ -138,7 +138,14 @@ badges (none when active, `outline` «Неактивна» otherwise), not plain
 row buttons (`outline`). Berry TEXT is `text-brand`; small amber/sky text resolves to the
 text-safe `--amber-ink`/`--sky-ink` (≥ 4.5:1) through a utilities-layer rule in
 `index.css`, while fills keep `--amber`/`--sky`. The focus ring is neutral. Tables carry the
-unit in the header and plain cells; stand-alone figures carry their unit.
+unit in the header and plain cells; stand-alone figures carry their unit. Every operand of a formula, chain or hint carries its unit
+(«113 044,20 ₴ ÷ 596,80 кг = 189,42 ₴/кг», client 24.10) and is a **traced term**:
+`shared/ui/trace.tsx`'s `TraceTerm` boxes the figure, and pointing at it (hover, focus, tap)
+lights every element in the nearest `TraceScope` whose `data-trace` lists the same id —
+the cell it was read from and every other term citing it — via `data-trace-hit` (styled in
+`index.css`, no re-render). A source is any element with `data-trace="id …"`; ids are
+scope-local (`pages/cost-of-day/ui/trace-ids.ts`, `pages/reception/lib/traceIds.ts`). New
+formulas use it too.
 
 ## Auth
 
@@ -169,6 +176,12 @@ instead of importing the store directly.
 ## i18n
 
 Strings live in `src/shared/lib/i18n/locales/uk.json` (default) and `en.json`; components use `useTranslation()`/`t()`.
+`uk.json` stays one file but ships in two halves (2026-10-24): `vite.config.ts`'s `ukLocaleSplit`
+serves `virtual:uk-core` (first paint) and `virtual:uk-owner` — the namespaces listed in
+`shared/lib/i18n/owner-namespaces.ts`, registered by the lazy owner chunk (`app/owner-pages.ts`
+→ `shared/lib/i18n/owner.ts`) so an operator never downloads them. A new namespace read only by
+owner screens goes on that list; one an eager screen reads must not. The dev compose mounts
+`src/` but NOT `vite.config.ts`: after editing the config, `docker compose up -d --build frontend`.
 `uk.json` is in the first load; `en.json` is a deferred chunk fetched on demand — switch
 language through `switchLanguage(code)`, never a bare `i18n.changeLanguage`, and
 `test-setup.ts` registers `en.json` statically so tests stay synchronous.

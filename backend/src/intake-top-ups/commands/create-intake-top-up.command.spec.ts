@@ -29,7 +29,7 @@ const SUPPLIER = { id: 'supplier-1', is_active: true } as Supplier;
 
 describe('CreateIntakeTopUpCommand', () => {
   let command: CreateIntakeTopUpCommand;
-  let manager: { findOne: jest.Mock; save: jest.Mock };
+  let manager: { findOne: jest.Mock; save: jest.Mock; find: jest.Mock };
   let dataSource: { transaction: jest.Mock; manager: unknown };
   let audit: { record: jest.Mock };
   let allocations: {
@@ -41,6 +41,10 @@ describe('CreateIntakeTopUpCommand', () => {
 
   beforeEach(() => {
     manager = {
+      // `loadDisplayNames` — the one batched `users` read behind `*_by_name` (D-8).
+      find: jest
+        .fn()
+        .mockResolvedValue([{ id: OWNER.sub, first_name: 'Олена', last_name: 'Коваль' }]),
       findOne: jest
         .fn()
         .mockImplementation((entity: unknown) => (entity === Supplier ? SUPPLIER : INTAKE)),
@@ -90,6 +94,8 @@ describe('CreateIntakeTopUpCommand', () => {
     expect(res.counts_toward_balance).toBe(true);
     expect(res.intake.code).toBe('KPG-IN-20260908-04412');
     expect(res.created_by_user_id).toBe('owner-1');
+    // «Додано: Олена Коваль» — the author's name, off one batched read (D-8).
+    expect(res.created_by_name).toBe('Олена Коваль');
   });
 
   it('refuses an operator — #61 is «Як керівник»', async () => {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useParams, useLocation, Link } from 'react-router';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { PageHeader } from '@/shared/ui/page-header';
 import { StatGrid } from '@/shared/ui/stat-grid';
 import { StatTile } from '@/shared/ui/stat-tile';
@@ -8,6 +8,7 @@ import { SectionCard } from '@/shared/ui/section-card';
 import { Button } from '@/shared/ui/button';
 import { Badge } from '@/shared/ui/badge';
 import { Spinner } from '@/shared/ui/spinner';
+import { TraceScope, TraceTerm } from '@/shared/ui/trace';
 import { ApiError, isTruncated } from '@/shared/api';
 import { add, cmp, isZero, formatUah, formatKg } from '@/shared/lib/money';
 import {
@@ -74,7 +75,13 @@ export function SupplierCardPage() {
   // by the same §9.3 rule, with the same required reason.
   const [voidTarget, setVoidTarget] = useState<
     | { kind: 'payout'; id: string; code: string; amount: string; shiftClosed: boolean }
-    | { kind: 'topUp'; id: string; code: string }
+    | {
+        kind: 'topUp';
+        id: string;
+        code: string;
+        amount: string;
+        countsTowardBalance: boolean;
+      }
     | null
   >(null);
   const [voidOpen, setVoidOpen] = useState(false);
@@ -101,7 +108,13 @@ export function SupplierCardPage() {
   // A top-up has no code of its own, so the dialog is titled with its PARENT
   // receipt's — that is what the owner recognises.
   const openVoidTopUp = (target: IntakeTopUp) => {
-    setVoidTarget({ kind: 'topUp', id: target.id, code: target.intake.code });
+    setVoidTarget({
+      kind: 'topUp',
+      id: target.id,
+      code: target.intake.code,
+      amount: target.amount,
+      countsTowardBalance: target.counts_toward_balance,
+    });
     setVoidKey((k) => k + 1);
     setVoidOpen(true);
   };
@@ -210,6 +223,9 @@ export function SupplierCardPage() {
 
   const st = settlement.data;
   const intakesById = new Map(loadedIntakes.map((i) => [i.id, i]));
+  const topUpsById = new Map((topUps.data?.data ?? []).map((u) => [u.id, u]));
+  const money = (v: string) => formatUah(v, i18n.language);
+  const debtTone = cmp(debt, '0') === 1 ? 'amber' : 'leaf';
   const openByLineId = new Map(st.lines.map((l) => [l.id, l.open]));
   const lineDate = new Map(st.lines.map((l) => [l.id, l.business_date]));
   const coversByPayoutId = new Map(
@@ -276,84 +292,148 @@ export function SupplierCardPage() {
         </p>
       ) : null}
 
-      <StatGrid columns={4} className="mb-1.5">
-        <StatTile
-          label={t('supplierCard.tiles.seasonIntakes')}
-          value={String(balance.data.intakes_count)}
-        />
-        <StatTile
-          label={t('supplierCard.tiles.kgTotal')}
-          value={formatKg(balance.data.kg_total, i18n.language)}
-        />
-        {/* Credited to the supplier: receipts AND top-ups, so it can never
+      {/* ONE trace scope over every figure the breakdown line cites: the tiles, the open
+          balances and the history (2026-10-24: «звідки це число»). */}
+      <TraceScope>
+        <StatGrid columns={4} className="mb-1.5">
+          <StatTile
+            label={t('supplierCard.tiles.seasonIntakes')}
+            value={String(balance.data.intakes_count)}
+          />
+          <StatTile
+            label={t('supplierCard.tiles.kgTotal')}
+            value={formatKg(balance.data.kg_total, i18n.language)}
+          />
+          {/* Credited to the supplier: receipts AND top-ups, so it can never
             read less than a balance nothing has been paid against (#153). */}
-        <StatTile
-          label={t('supplierCard.tiles.accrued')}
-          value={formatUah(add(st.intakes_total, st.top_ups_total), i18n.language)}
-        />
-        <StatTile
-          label={t('supplierCard.tiles.balance')}
-          value={formatUah(debt, i18n.language)}
-          tone={cmp(debt, '0') === 1 ? 'amber' : 'leaf'}
-          hint={balanceHint}
-        />
-      </StatGrid>
+          <StatTile
+            label={t('supplierCard.tiles.accrued')}
+            value={
+              <span data-trace="card:accrued">
+                {money(add(st.intakes_total, st.top_ups_total))}
+              </span>
+            }
+            hint={
+              isZero(st.top_ups_total) ? undefined : (
+                <Trans
+                  i18nKey="supplierCard.tiles.accruedTopUps"
+                  values={{ uah: money(st.top_ups_total) }}
+                  components={{
+                    topUps: (
+                      <TraceTerm refs="card:topUps" hint={t('supplierCard.trace.topUps')}>
+                        {null}
+                      </TraceTerm>
+                    ),
+                  }}
+                />
+              )
+            }
+          />
+          <StatTile
+            label={t('supplierCard.tiles.balance')}
+            value={<span data-trace="card:debt">{money(debt)}</span>}
+            tone={debtTone}
+            hint={balanceHint}
+          />
+        </StatGrid>
 
-      {/* §103: `debt` decomposed into the same three terms the SQL sums it
+        {/* §103: `debt` decomposed into the same three terms the SQL sums it
           from, each one named — the only place the season's payout total
           appears on the card. A zero top-up term is dropped, not printed. */}
-      <p className="mb-5 text-right text-xs text-muted-foreground">
-        {t(isZero(st.top_ups_total) ? 'supplierCard.breakdownNoTopUps' : 'supplierCard.breakdown', {
-          intakes: formatUah(st.intakes_total, i18n.language),
-          topUps: formatUah(st.top_ups_total, i18n.language),
-          payouts: formatUah(st.payouts_total, i18n.language),
-          debt: formatUah(debt, i18n.language),
-        })}
-      </p>
-
-      <OpenBalances
-        lines={st.lines}
-        unallocated={st.unallocated}
-        intakesById={intakesById}
-        locale={i18n.language}
-        onOpenReceipt={openReceipt}
-      />
-
-      <SectionCard eyebrow={t('supplierCard.timeline.title')}>
-        <SupplierTimeline
-          intakes={intakeRows}
-          payouts={payoutRows}
-          topUps={topUpRows}
-          me={me.data}
-          openByLineId={openByLineId}
-          coversByPayoutId={coversByPayoutId}
-          onOpenReceipt={openReceipt}
-          onOpenPayoutReceipt={payoutReceipt.openReceipt}
-          onVoidPayout={openVoidPayout}
-          onAddTopUp={inactive ? undefined : openTopUp}
-          onVoidTopUp={openVoidTopUp}
-        />
-        {horizonDate !== null ? (
-          <p className="mt-3 text-xs text-muted-foreground">
-            <span>
-              {t('supplierCard.timeline.since', {
-                date: formatShortDate(horizonDate, i18n.language),
-              })}
-            </span>
-            {journalLink !== null ? (
-              <>
-                {' — '}
-                <Link
-                  to={journalLink}
-                  className="underline underline-offset-2 hover:text-foreground"
+        {/* Each term lights what it sums: the receipts / top-ups / payouts in the history (and
+          «Нараховано», which the first two make up), and the result lights «Залишок» and the
+          open balances that add up to it. */}
+        <p className="mb-5 text-right text-xs text-muted-foreground">
+          <Trans
+            i18nKey={
+              isZero(st.top_ups_total) ? 'supplierCard.breakdownNoTopUps' : 'supplierCard.breakdown'
+            }
+            values={{
+              intakes: money(st.intakes_total),
+              topUps: money(st.top_ups_total),
+              payouts: money(st.payouts_total),
+              debt: money(debt),
+            }}
+            components={{
+              intakes: (
+                <TraceTerm
+                  refs={['card:intakes', 'card:accrued']}
+                  hint={t('supplierCard.trace.intakes')}
                 >
-                  {t('supplierCard.timeline.olderInJournal')}
-                </Link>
-              </>
-            ) : null}
-          </p>
-        ) : null}
-      </SectionCard>
+                  {null}
+                </TraceTerm>
+              ),
+              topUps: (
+                <TraceTerm
+                  refs={['card:topUps', 'card:accrued']}
+                  hint={t('supplierCard.trace.topUps')}
+                >
+                  {null}
+                </TraceTerm>
+              ),
+              payouts: (
+                <TraceTerm refs="card:payouts" tone="leaf" hint={t('supplierCard.trace.payouts')}>
+                  {null}
+                </TraceTerm>
+              ),
+              debt: (
+                <TraceTerm
+                  refs={['card:debt', 'card:open']}
+                  tone={debtTone}
+                  hint={t('supplierCard.trace.debt')}
+                >
+                  {null}
+                </TraceTerm>
+              ),
+            }}
+          />
+        </p>
+
+        <OpenBalances
+          lines={st.lines}
+          unallocated={st.unallocated}
+          intakesById={intakesById}
+          topUpsById={topUpsById}
+          locale={i18n.language}
+          onOpenReceipt={openReceipt}
+        />
+
+        <SectionCard eyebrow={t('supplierCard.timeline.title')}>
+          <SupplierTimeline
+            intakes={intakeRows}
+            payouts={payoutRows}
+            topUps={topUpRows}
+            me={me.data}
+            openByLineId={openByLineId}
+            coversByPayoutId={coversByPayoutId}
+            onOpenReceipt={openReceipt}
+            onOpenPayoutReceipt={payoutReceipt.openReceipt}
+            onVoidPayout={openVoidPayout}
+            onAddTopUp={inactive ? undefined : openTopUp}
+            onVoidTopUp={openVoidTopUp}
+          />
+          {horizonDate !== null ? (
+            <p className="mt-3 text-xs text-muted-foreground">
+              <span>
+                {t('supplierCard.timeline.since', {
+                  date: formatShortDate(horizonDate, i18n.language),
+                })}
+              </span>
+              {journalLink !== null ? (
+                <>
+                  {' — '}
+                  <Link
+                    to={journalLink}
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    {t('supplierCard.timeline.olderInJournal')}
+                  </Link>
+                </>
+              ) : null}
+            </p>
+          ) : null}
+        </SectionCard>
+      </TraceScope>
 
       <ReceiptDialog
         key={receipt.receiptId ?? 'none'}
@@ -384,15 +464,22 @@ export function SupplierCardPage() {
                 payoutAmount: voidTarget.amount,
                 reopens: reopenedCodes(st, voidTarget.id, null),
               }
-            : {})}
+            : {
+                topUp: {
+                  amount: voidTarget.amount,
+                  supplierName: supplierName(s),
+                  countsTowardBalance: voidTarget.countsTowardBalance,
+                },
+              })}
         />
       ) : null}
 
       {topUpTarget ? (
         <TopUpDialog
           key={topUpKey}
-          intake={{ id: topUpTarget.id, code: topUpTarget.code }}
+          intake={topUpTarget}
           supplierName={supplierName(s)}
+          balanceBefore={debt}
           open={topUpOpen}
           onClose={() => setTopUpOpen(false)}
         />

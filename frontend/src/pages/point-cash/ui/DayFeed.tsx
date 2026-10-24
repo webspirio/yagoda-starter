@@ -12,6 +12,18 @@ import { ReceiptVoidButton } from '@/widgets/receipt';
 import type { DayFeedRow } from '../model/useDayDocuments';
 
 /**
+ * Which of «Звірка каси»'s figures a row's amount is part of — the `data-trace`
+ * source its terms light (`DayLedger`). A voided receipt is in none of them.
+ * A voided payout is lit by «анульовані» even when its cash already came back:
+ * the feed cannot tell the two apart, the ledger's own row can.
+ */
+function feedTrace(row: DayFeedRow): string | undefined {
+  if (row.kind === 'intake') return row.voided ? undefined : 'feed:intake';
+  if (row.voided) return 'feed:voidedPayout';
+  return row.standalonePayout ? 'feed:withoutBerry' : 'feed:atReception';
+}
+
+/**
  * «Документи дня» — every receipt and payout the shift on screen wrote, newest
  * first (#221: lifted from «Каса за день»). An intake row opens its receipt
  * and, when `canVoidIntake` allows, offers «Анулювати» beside it; a standalone
@@ -100,10 +112,15 @@ export function DayFeed({
                 <span className="min-w-0 truncate">
                   {supplierNameById.get(row.supplierId) ?? '—'}
                 </span>
-                {row.voided ? <span className="shrink-0 text-xs">{t('day.feed.voided')}</span> : null}
+                {row.voided ? (
+                  <span className="shrink-0 text-xs">{t('day.feed.voided')}</span>
+                ) : null}
               </span>
             </span>
-            <span className="shrink-0 whitespace-nowrap font-mono tabular-nums">
+            <span
+              data-trace={feedTrace(row)}
+              className="shrink-0 whitespace-nowrap font-mono tabular-nums"
+            >
               {formatUah(row.amount, i18n.language)}
             </span>
           </>

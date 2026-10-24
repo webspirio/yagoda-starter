@@ -458,6 +458,10 @@ function renderReception() {
 }
 
 /** Fills the draft line so the «Add line» gate opens: gross, tare units, grade. */
+/** The draft line's formula as one string: its figures are `TraceTerm`s, so the
+ *  text is split across elements and no single text node holds it. */
+const lineFormula = () => screen.getByTestId('line-formula').textContent?.replace(/\s+/g, ' ');
+
 async function fillDraft(user: ReturnType<typeof userEvent.setup>, gross = '126,40') {
   const grossInput = screen.getByLabelText('Gross, kg');
   await user.clear(grossInput);
@@ -764,7 +768,7 @@ describe('ReceptionPage — a one-line receipt', () => {
     await fillDraft(user);
 
     // Net weight and the amount are the SERVER's, never computed here.
-    expect(screen.getByText(/= 120\.40 kg ×/)).toBeInTheDocument();
+    expect(lineFormula()).toMatch(/= 120\.40 kg ×/);
     expect(screen.getByText('Accrued today').closest('div')).toHaveTextContent('1,204.00 ₴');
 
     const submit = screen.getByRole('button', { name: 'Accept without payout' });
@@ -1151,7 +1155,7 @@ describe('ReceptionPage — the draft line preview', () => {
     await fillDraft(user);
 
     // 10.00 with a −5.00 discount reads as the 5.00 paid, not a sum to do.
-    expect(screen.getByText(/× 5\.00 = 602 ₴$/)).toBeInTheDocument();
+    expect(lineFormula()).toMatch(/× 5\.00 ₴\/kg = 602 ₴$/);
     expect(screen.queryByText(/10\.00−5\.00/)).toBeNull();
   });
 
@@ -1165,9 +1169,28 @@ describe('ReceptionPage — the draft line preview', () => {
     await fillDraft(user);
 
     // Whole already: printed once, no «→».
-    expect(
-      screen.getByText('126.40 − 6.00 tare = 120.40 kg × 10.00 = 1,204 ₴'),
-    ).toBeInTheDocument();
+    expect(lineFormula()).toBe('126.40 kg − 6.00 kg tare = 120.40 kg × 10.00 ₴/kg = 1,204 ₴');
+  });
+
+  // «Звідки це число» (client, 24.10): each operand points at the field it came from.
+  it('lights up the field each figure of the formula came from, and «Accrued today» from the amount', async () => {
+    const user = userEvent.setup();
+    previewMock.mockReturnValue(SETTLED);
+
+    renderReception();
+    await user.click(screen.getByRole('button', { name: 'pick-nina' }));
+    await fillDraft(user);
+
+    const formula = screen.getByTestId('line-formula');
+    const gross = screen.getByLabelText('Gross, kg');
+    fireEvent.pointerEnter(within(formula).getByText('126.40 kg'));
+    expect(gross).toHaveAttribute('data-trace-hit', 'neutral');
+
+    fireEvent.pointerEnter(within(formula).getByText(/^1,204/));
+    expect(gross).not.toHaveAttribute('data-trace-hit');
+    expect(screen.getByText('Accrued today').closest('div')?.querySelector('[data-trace-hit]')).toHaveTextContent(
+      '1,204.00 ₴',
+    );
   });
 
   it('prints the exact product and the whole-hryvnia amount when §2.12 rounding moved it', async () => {
@@ -1198,9 +1221,13 @@ describe('ReceptionPage — the draft line preview', () => {
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
-    expect(
-      screen.getByText('52.30 − 1.20 tare = 51.10 kg × 28.00 = 1,430.80 → 1,431 ₴'),
-    ).toBeInTheDocument();
+    expect(lineFormula()).toBe(
+      '52.30 kg − 1.20 kg tare = 51.10 kg × 28.00 ₴/kg = 1,430.80 ₴ → 1,431 ₴',
+    );
+    const formula = screen.getByTestId('line-formula');
+    // Every operand keeps its unit on its own line when the formula wraps (2026-10-24).
+    expect(formula.textContent).toContain('28.00\u00a0₴/kg');
+    expect(formula.textContent).toContain('1.20\u00a0kg\u00a0tare');
   });
 
   it('names the pallet in the formula when there is one, in §2.4 order', async () => {
@@ -1233,9 +1260,9 @@ describe('ReceptionPage — the draft line preview', () => {
     await user.click(screen.getByRole('button', { name: 'pick-nina' }));
     await fillDraft(user);
 
-    expect(
-      screen.getByText('552.30 − 14.30 pallet − 120.00 tare = 418.00 kg × 65.00 = 27,170 ₴'),
-    ).toBeInTheDocument();
+    expect(lineFormula()).toBe(
+      '552.30 kg − 14.30 kg pallet − 120.00 kg tare = 418.00 kg × 65.00 ₴/kg = 27,170 ₴',
+    );
   });
 });
 
@@ -2042,7 +2069,7 @@ describe('ReceptionPage — line editor ergonomics (#117)', () => {
     const delta = screen.getByText('+3.00');
     expect(delta.closest('div')).toHaveTextContent('Price, ₴/kg');
     expect(delta.compareDocumentPosition(price) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(price).toHaveAccessibleDescription('+3.00 vs the grade price');
+    expect(price).toHaveAccessibleDescription('+3.00 ₴/kg vs the grade price');
 
     await user.click(screen.getByRole('button', { name: 'Price up' }));
     expect(price).toHaveValue('13.00');

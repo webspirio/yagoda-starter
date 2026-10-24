@@ -6,7 +6,19 @@ import { Eyebrow } from '@/shared/ui/eyebrow';
 import { formatKg, sum } from '@/shared/lib/money';
 import { useTareTypeOptionsQuery } from '@/entities/tare-type';
 import type { Draft } from '../model/draft';
-import { netFormula } from '../lib/formula';
+import { netFormula, netParts } from '../lib/formula';
+import { NetFormula, type NetTraceIds } from './NetFormula';
+import { DRAFTS_TOTAL_TRACE } from '../lib/traceIds';
+
+/** A draft's own figures — only its net is shown again, at the row's end. */
+const draftTrace = (key: string): NetTraceIds => ({
+  gross: `dr:${key}:gross`,
+  pallet: `dr:${key}:pallet`,
+  units: (i) => `dr:${key}:units:${i}`,
+  weight: (i) => `dr:${key}:weight:${i}`,
+  tareKg: `dr:${key}:tareKg`,
+  net: `dr:${key}:net`,
+});
 
 /**
  * The strip of positions typed so far — the mock's `:586-640`, verbatim in
@@ -15,8 +27,8 @@ import { netFormula } from '../lib/formula';
  * Nothing here is persisted: there is no document yet (Task 12 posts one line
  * at a time), so a page reload loses this list.
  *
- * Each line reads as its own formula (W4, «300,60 − 15,60 − 48 × 1,20 =
- * 227,40») from the parts the draft already carries; the per-unit weights come
+ * Each line reads as its own formula (W4, «300,60 кг − 15,60 кг − 48 шт. ×
+ * 1,20 кг = 227,40 кг») from the parts the draft already carries; the per-unit weights come
  * from `useTareTypeOptionsQuery` — the same catalogue the form computed the
  * preview with, and React Query dedupes it against `WeighingForm`'s call.
  */
@@ -61,7 +73,7 @@ export function DraftLines({
               product: draft.product_name,
               grade: draft.product_grade_name,
             });
-            const formula = netFormula(t, locale, {
+            const line = {
               gross: draft.gross_kg,
               pallet: draft.pallet_kg,
               tare: draft.tare.map((term) => ({
@@ -70,7 +82,10 @@ export function DraftLines({
               })),
               tareKg: draft.tare_weight_kg,
               net: draft.net_kg,
-            });
+            };
+            const formula = netFormula(t, locale, line);
+            const parts = netParts(line);
+            const ids = draftTrace(draft.key);
             return (
               <li
                 key={draft.key}
@@ -78,10 +93,14 @@ export function DraftLines({
                 className="flex flex-wrap items-center gap-x-2.5 gap-y-1 px-4 py-2.5 text-sm"
               >
                 <span className="font-medium">{productGrade}</span>
-                {formula ? (
-                  <span className="font-mono text-xs text-muted-foreground">{formula}</span>
+                {parts ? (
+                  <span className="font-mono text-xs text-muted-foreground">
+                    <NetFormula line={line} parts={parts} ids={ids} />
+                  </span>
                 ) : null}
-                <span className="ml-auto font-mono font-semibold">{formatKg(draft.net_kg, locale)}</span>
+                <span data-trace={ids.net} className="ml-auto rounded-md font-mono font-semibold">
+                  {formatKg(draft.net_kg, locale)}
+                </span>
                 <Button
                   type="button"
                   variant="ghost"
@@ -96,7 +115,9 @@ export function DraftLines({
           })}
           <li className="flex items-baseline justify-between px-4 py-2.5 text-sm">
             <span className="text-muted-foreground">{t('reweigh.drafts.total')}</span>
-            <span className="font-mono font-semibold">{formatKg(total, locale)}</span>
+            <span data-trace={DRAFTS_TOTAL_TRACE} className="rounded-md font-mono font-semibold">
+              {formatKg(total, locale)}
+            </span>
           </li>
         </ul>
       ) : (

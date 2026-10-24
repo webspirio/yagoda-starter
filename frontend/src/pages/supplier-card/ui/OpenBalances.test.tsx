@@ -5,7 +5,9 @@ import type { SettlementLine } from '@/entities/supplier';
 import type { Intake } from '@/entities/intake';
 import { OpenBalances } from './OpenBalances';
 
-const line = (over: Partial<SettlementLine> & Pick<SettlementLine, 'id' | 'open'>): SettlementLine => ({
+const line = (
+  over: Partial<SettlementLine> & Pick<SettlementLine, 'id' | 'open'>,
+): SettlementLine => ({
   kind: 'intake',
   code: over.id.toUpperCase(),
   intake_id: over.id,
@@ -45,7 +47,9 @@ describe('OpenBalances', () => {
         lines={[line({ id: 'r1', open: '0.00' })]}
         unallocated="0.00"
         intakesById={new Map()}
-        locale="en" onOpenReceipt={() => {}}
+        topUpsById={new Map()}
+        locale="en"
+        onOpenReceipt={() => {}}
       />,
     );
     expect(container).toBeEmptyDOMElement();
@@ -61,7 +65,9 @@ describe('OpenBalances', () => {
         ]}
         unallocated="0.00"
         intakesById={new Map([['r1', receipt('r1')]])}
-        locale="en" onOpenReceipt={() => {}}
+        topUpsById={new Map()}
+        locale="en"
+        onOpenReceipt={() => {}}
       />,
     );
     expect(screen.getByText('Open balances — what exactly is owed')).toBeInTheDocument();
@@ -80,7 +86,9 @@ describe('OpenBalances', () => {
         lines={[line({ id: 'r9', open: '10.00' })]}
         unallocated="0.00"
         intakesById={new Map()}
-        locale="en" onOpenReceipt={() => {}}
+        topUpsById={new Map()}
+        locale="en"
+        onOpenReceipt={() => {}}
       />,
     );
     expect(screen.getByRole('listitem')).toHaveTextContent('R9');
@@ -93,7 +101,9 @@ describe('OpenBalances', () => {
         lines={[line({ id: 't1', kind: 'top_up', code: 'R1', intake_id: 'r1', open: '200.00' })]}
         unallocated="0.00"
         intakesById={new Map()}
-        locale="en" onOpenReceipt={() => {}}
+        topUpsById={new Map()}
+        locale="en"
+        onOpenReceipt={() => {}}
       />,
     );
     expect(screen.getByRole('listitem')).toHaveTextContent('Top-up on R1');
@@ -101,7 +111,14 @@ describe('OpenBalances', () => {
 
   it('shows the overpayment as one row under the list, even with nothing open', () => {
     render(
-      <OpenBalances lines={[]} unallocated="50.00" intakesById={new Map()} locale="en" onOpenReceipt={() => {}} />,
+      <OpenBalances
+        lines={[]}
+        unallocated="50.00"
+        intakesById={new Map()}
+        topUpsById={new Map()}
+        locale="en"
+        onOpenReceipt={() => {}}
+      />,
     );
     expect(screen.getByText('Overpayment — not allocated')).toBeInTheDocument();
     expect(screen.getByText('50.00 ₴')).toBeInTheDocument();
@@ -117,6 +134,7 @@ describe('OpenBalances', () => {
         ]}
         unallocated="0.00"
         intakesById={new Map()}
+        topUpsById={new Map()}
         locale="en"
         onOpenReceipt={onOpenReceipt}
       />,
@@ -136,6 +154,7 @@ describe('OpenBalances', () => {
         ]}
         unallocated="0.00"
         intakesById={new Map()}
+        topUpsById={new Map()}
         locale="en"
         onOpenReceipt={() => {}}
       />,
@@ -151,6 +170,7 @@ describe('OpenBalances', () => {
         lines={[line({ id: 'r1', open: '10.00', business_date: '2026-07-12' })]}
         unallocated="0.00"
         intakesById={new Map()}
+        topUpsById={new Map()}
         locale="en"
         onOpenReceipt={() => {}}
       />,
@@ -161,13 +181,18 @@ describe('OpenBalances', () => {
 
   it('shows the oldest ten, then «Show all (N)» for the rest (audit D4)', async () => {
     const lines = Array.from({ length: 13 }, (_, n) =>
-      line({ id: `r${n + 1}`, open: '10.00', business_date: `2026-07-${String(n + 1).padStart(2, '0')}` }),
+      line({
+        id: `r${n + 1}`,
+        open: '10.00',
+        business_date: `2026-07-${String(n + 1).padStart(2, '0')}`,
+      }),
     );
     render(
       <OpenBalances
         lines={lines}
         unallocated="0.00"
         intakesById={new Map()}
+        topUpsById={new Map()}
         locale="en"
         onOpenReceipt={() => {}}
       />,

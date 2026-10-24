@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from 'react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import { Check, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { Button } from '@/shared/ui/button';
 import { Eyebrow } from '@/shared/ui/eyebrow';
@@ -17,6 +17,7 @@ import {
   type DayExpense,
 } from '@/entities/day-expense';
 import type { CostOfDay } from '@/entities/cost-of-day';
+import { DAY } from './trace-ids';
 
 // Why the amount inputs gate on the grammar, not the mask (#72):
 // `DecimalInput`'s mask is a TYPING mask, not a validator: '.' and '12.' both
@@ -165,15 +166,25 @@ export function ExpensesStrip({
     <div className="max-w-2xl overflow-hidden rounded-lg ring-1 ring-[var(--plum)]/40">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 px-3 pt-3 pb-2">
         <Eyebrow className="text-[var(--plum)]">{t('costOfDay.expenses.title')}</Eyebrow>
+        {/* The two figures the table's formulas cite (`shared/ui/trace`): the
+            day's expenses, and their per-kg half down the «₴/кг» column. */}
         <span className="font-mono text-sm font-semibold tabular-nums text-[var(--plum)]">
-          {day.expenses_per_kg === null
-            ? t('costOfDay.expenses.totalNoRate', {
-                amount: formatUah(day.expenses_amount, locale),
-              })
-            : t('costOfDay.expenses.total', {
-                amount: formatUah(day.expenses_amount, locale),
-                perKg: formatDecimal(day.expenses_per_kg, locale),
-              })}
+          <Trans
+            t={t}
+            i18nKey={
+              day.expenses_per_kg === null
+                ? 'costOfDay.expenses.totalNoRate'
+                : 'costOfDay.expenses.total'
+            }
+            values={{
+              amount: formatUah(day.expenses_amount, locale),
+              perKg: day.expenses_per_kg === null ? '' : formatDecimal(day.expenses_per_kg, locale),
+            }}
+            components={{
+              amount: <span data-trace={DAY.expenses} />,
+              rate: <span data-trace={DAY.expensesPerKg} />,
+            }}
+          />
         </span>
       </div>
 

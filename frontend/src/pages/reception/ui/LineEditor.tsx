@@ -1,6 +1,6 @@
-import { useState, type ChangeEvent } from 'react';
+import { useState, type ChangeEvent, type ReactNode } from 'react';
 import { Layers, Minus, Package, Plus, Trash2 } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import {
   useFieldArray,
   useWatch,
@@ -14,6 +14,7 @@ import { SelectField } from '@/shared/ui/select-field';
 import { DecimalInput } from '@/shared/ui/decimal-input';
 import { useDecimalField } from '@/shared/ui/use-decimal-field';
 import { TextInput } from '@/shared/ui/text-input';
+import { TraceTerm } from '@/shared/ui/trace';
 import { cn } from '@/shared/lib/cn';
 import {
   add,
@@ -22,10 +23,13 @@ import {
   div,
   formatDecimal,
   formatKg,
+  formatUah,
+  formatUahPerKg,
   maskDecimalInput,
   mul,
   parseCrateCount,
   sub,
+  unbreakable,
 } from '@/shared/lib/money';
 import type { PricedGrade } from '@/entities/product-grade';
 import type { TareTypeOption } from '@/entities/tare-type';
@@ -33,6 +37,7 @@ import { formatBonusSign } from '../lib/formatBonusSign';
 import { formatWholeHryvnia } from '../lib/formatWholeHryvnia';
 import { WarningTooltip } from './WarningTooltip';
 import { ENTRY_EXIT, ENTRY_FIELD, ENTRY_LINE, ENTRY_WAIT } from '../lib/entryFields';
+import { ACCRUED_TRACE, DRAFT_TRACE } from '../lib/traceIds';
 import type { IntakeFormValues, IntakePreviewItem } from '../model/intakeForm';
 
 /** §5.2 — the largest line of the season was 701,5 kg; above this we ask. */
@@ -49,6 +54,12 @@ function arrowDirection(key: string): 1 | -1 | null {
   if (key === 'ArrowUp') return 1;
   if (key === 'ArrowDown') return -1;
   return null;
+}
+
+/** A `<Trans>` slot that renders a node of its own — an optional part of the
+ *  formula («− 14,30 кг піддон»), itself translated — ignoring the (empty) tag. */
+function Slot({ node }: { node: ReactNode }) {
+  return <>{node}</>;
 }
 
 /** `cmp` throws on a half-typed decimal ("12.", "-", ""), which is not an error
@@ -454,6 +465,7 @@ export function LineEditor({
             {(a11y) => (
               <WarningTooltip text={priceHint}>
                 <div
+                  data-trace={DRAFT_TRACE.price}
                   className={cn(
                     'flex h-10 items-center gap-1 rounded-lg border p-1',
                     priceHint !== null ? amber : 'border-border bg-background',
@@ -539,6 +551,7 @@ export function LineEditor({
                       setValue(`items.${index}.gross_kg`, e.target.value, { shouldDirty: true })
                     }
                     {...grossField.inputProps}
+                    data-trace={DRAFT_TRACE.gross}
                     disabled={disabled}
                     placeholder="0,00"
                     className={cn(
@@ -562,7 +575,9 @@ export function LineEditor({
                 price stepper above instead of a figure hanging past them. */}
             <div className="mb-1.5 flex items-baseline justify-between gap-2 text-sm font-medium text-muted-foreground">
               <span>{t('reception.weight.tare')}</span>
-              <span className="font-mono font-normal">{formatKg(tareKg, locale)}</span>
+              <span data-trace={DRAFT_TRACE.tare} className="font-mono font-normal">
+                {formatKg(tareKg, locale)}
+              </span>
             </div>
             <div className="flex flex-col gap-1.5">
               {revealPallet ? (
@@ -589,6 +604,7 @@ export function LineEditor({
                           })
                         }
                         {...palletField.inputProps}
+                        data-trace={DRAFT_TRACE.pallet}
                         disabled={disabled}
                         className="h-10 rounded-lg pr-9 text-center font-mono font-semibold"
                       />
@@ -720,11 +736,13 @@ export function LineEditor({
             so this reads destructive rather than repeating the message: one
             alert per refusal, not two.
             R4 (spec 2026-10-23): the line reads as its own formula, §2.4's
-            order, every figure the server's — «52,30 − 1,20 тара = 51,10 кг ×
-            28,00 = 1 430,80 → 1 431 ₴». The pallet only when there is one; the
+            order, every figure the server's and every one with its unit —
+            «52,30 кг − 1,20 кг тара = 51,10 кг × 28,00 ₴/кг = 1 430,80 ₴ →
+            1 431 ₴» (2026-10-24), no term ever broken across a line. The pallet only when there is one; the
             exact product (`amount_exact`) only when §2.12's whole-hryvnia
             rounding moved it. */}
         <p
+          data-testid="line-formula"
           className={cn(
             'rounded-md bg-muted/50 px-3 py-2 font-mono text-sm tabular-nums',
             hasLineError
@@ -735,33 +753,11 @@ export function LineEditor({
             isPreviewPending && 'opacity-60',
           )}
         >
-          {previewItem
-            ? t('reception.line.formula', {
-                gross: formatDecimal(previewItem.gross_kg, locale),
-                pallet:
-                  cmp(previewItem.pallet_kg, '0') !== 0
-                    ? t('reception.line.palletPart', {
-                        kg: formatDecimal(previewItem.pallet_kg, locale),
-                      })
-                    : '',
-                tare: t('reception.line.tarePart', {
-                  kg: formatDecimal(previewItem.tare_weight_kg, locale),
-                }),
-                net: formatDecimal(previewItem.net_kg, locale),
-                // The line's own price, as the operator set it in «Ціна» —
-                // not the grade's price plus a signed bonus to add up.
-                price: formatDecimal(add(previewItem.price, previewItem.bonus), locale),
-                amount:
-                  cmp(previewItem.amount, previewItem.amount_exact) !== 0
-                    ? t('reception.line.amountRounded', {
-                        exact: formatDecimal(previewItem.amount_exact, locale),
-                        amount: formatWholeHryvnia(previewItem.amount, locale),
-                      })
-                    : t('reception.line.amountWhole', {
-                        amount: formatWholeHryvnia(previewItem.amount, locale),
-                      }),
-              })
-            : t('reception.line.pending')}
+          {previewItem ? (
+            <DraftFormula item={previewItem} locale={locale} />
+          ) : (
+            t('reception.line.pending')
+          )}
         </p>
 
         {/* The hints' text for a screen reader, which never hovers — each
@@ -875,5 +871,70 @@ export function LineEditor({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The draft line as its own formula (R4): «52,30 кг − 1,20 кг тара = 51,10 кг ×
+ * 28,00 ₴/кг = 1 430,80 ₴ → 1 431 ₴», every figure the server's preview and every
+ * one a `TraceTerm` that lights up the field it came from — Брутто, Піддон, the
+ * tare heading, Ціна — while the amount lights «Нараховано сьогодні», which it is
+ * part of. The pallet only when there is one; the exact product only when
+ * §2.12's whole-hryvnia rounding moved it.
+ */
+function DraftFormula({ item, locale }: { item: IntakePreviewItem; locale: string }) {
+  const { t } = useTranslation();
+  const kg = (value: string) => unbreakable(formatKg(value, locale));
+  // An empty term: `<Trans>` fills it with the tag's own (formatted) figure.
+  const term = (refs: string, hintKey: string) => (
+    <TraceTerm refs={refs} hint={t(hintKey)}>
+      {null}
+    </TraceTerm>
+  );
+  const rounded = cmp(item.amount, item.amount_exact) !== 0;
+  const pallet =
+    cmp(item.pallet_kg, '0') !== 0 ? (
+      <Trans
+        t={t}
+        i18nKey="reception.line.palletPart"
+        values={{ kg: kg(item.pallet_kg) }}
+        components={{ kg: term(DRAFT_TRACE.pallet, 'reception.line.trace.pallet') }}
+      />
+    ) : null;
+  const amount = (
+    <Trans
+      t={t}
+      i18nKey={rounded ? 'reception.line.amountRounded' : 'reception.line.amountWhole'}
+      values={{
+        exact: unbreakable(formatUah(item.amount_exact, locale)),
+        amount: formatWholeHryvnia(item.amount, locale),
+      }}
+      components={{
+        exact: term(DRAFT_TRACE.exact, 'reception.line.trace.exact'),
+        amount: term(ACCRUED_TRACE, 'reception.line.trace.amount'),
+      }}
+    />
+  );
+  return (
+    <Trans
+      t={t}
+      i18nKey="reception.line.formula"
+      values={{
+        gross: kg(item.gross_kg),
+        tare: kg(item.tare_weight_kg),
+        net: kg(item.net_kg),
+        // The line's own price, as the operator set it in «Ціна» — not the
+        // grade's price plus a signed bonus to add up.
+        price: unbreakable(formatUahPerKg(add(item.price, item.bonus), locale)),
+      }}
+      components={{
+        gross: term(DRAFT_TRACE.gross, 'reception.line.trace.gross'),
+        tare: term(DRAFT_TRACE.tare, 'reception.line.trace.tare'),
+        net: term(DRAFT_TRACE.net, 'reception.line.trace.net'),
+        price: term(DRAFT_TRACE.price, 'reception.line.trace.price'),
+        pallet: <Slot node={pallet} />,
+        amount: <Slot node={amount} />,
+      }}
+    />
   );
 }

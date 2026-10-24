@@ -2,10 +2,12 @@ import type * as React from 'react';
 import { Fragment } from 'react';
 import { Link } from 'react-router';
 import { ChevronDown } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Eyebrow } from '@/shared/ui/eyebrow';
+import { TraceScope, TraceTerm, type TraceTone } from '@/shared/ui/trace';
 import { cn } from '@/shared/lib/cn';
-import { add, cmp, formatKg, formatUah, sub, sum } from '@/shared/lib/money';
+import { add, cmp, formatCount, formatKg, formatUah, sub, sum } from '@/shared/lib/money';
 import { isTruncated } from '@/shared/api';
 import { usePointCashForPointQuery } from '@/entities/point-cash';
 import { useIntakesQuery } from '@/entities/intake';
@@ -34,6 +36,11 @@ export type StripShift =
  *
  * The shift's status is NOT here: it sits in the page header, and a day
  * with no open shift replaces the form itself (`ShiftClosedState`).
+ *
+ * Traced (client, 24.10): each term under a meter is a `TraceTerm`; pointing at
+ * one lights the meter's figure it adds up to. The figure lists every term's id,
+ * so no term lights another. (Not the bar's segments: a lit element takes the
+ * highlight's pale fill, which would wash a segment's own colour out.)
  */
 export function PointStrip({
   pointId,
@@ -89,31 +96,55 @@ export function PointStrip({
   const terms = breakdown?.kind === 'open' ? breakdown : null;
   const isNonZero = (value: string | null): value is string =>
     value !== null && cmp(value, '0') !== 0;
-  const cashTerms =
+  const cashTerms: StripTerm[] =
     terms === null
       ? []
       : [
-          t('reception.state.openingCash', { uah: formatUah(terms.opening ?? '0.00', locale) }),
+          {
+            id: CASH_TRACE.opening,
+            key: 'reception.state.openingCash',
+            hint: 'reception.state.trace.opening',
+            uah: terms.opening ?? '0.00',
+          },
           isNonZero(terms.transfers_in)
-            ? t('reception.state.cashIn', { uah: formatUah(terms.transfers_in, locale) })
+            ? {
+                id: CASH_TRACE.cashIn,
+                key: 'reception.state.cashIn',
+                hint: 'reception.state.trace.cashIn',
+                uah: terms.transfers_in,
+              }
             : null,
-          t('reception.state.paidOut', { uah: formatUah(terms.payouts ?? '0.00', locale) }),
+          {
+            id: CASH_TRACE.paidOut,
+            key: 'reception.state.paidOut',
+            hint: 'reception.state.trace.paidOut',
+            uah: terms.payouts ?? '0.00',
+          },
           isNonZero(terms.returns)
-            ? t('reception.state.returned', { uah: formatUah(terms.returns, locale) })
+            ? {
+                id: CASH_TRACE.returned,
+                key: 'reception.state.returned',
+                hint: 'reception.state.trace.returned',
+                uah: terms.returns,
+              }
             : null,
-        ].filter((part): part is string => part !== null);
-  // Each term whole on a phone, where the line wraps: never «15 000,00 / ₴».
-  // The « · » sits OUTSIDE the unbreakable span, so the line can wrap between terms.
-  const cashAside = cashTerms.map((term, i) => (
-    <Fragment key={term}>
-      {i > 0 ? ' · ' : null}
-      <span className="whitespace-nowrap">{term}</span>
-    </Fragment>
-  ));
+        ]
+          .filter((part) => part !== null)
+          .map((part) => ({
+            id: part.id,
+            hint: part.hint,
+            key: part.key,
+            values: { uah: formatUah(part.uah, locale) },
+          }));
+  // Each term whole on a phone, where the line wraps: never «15 000,00 / ₴» —
+  // a `TraceTerm` never breaks. The « · » sits between the terms, so the line
+  // can wrap there.
+  const cashAside = <StripTerms terms={cashTerms} t={t} />;
   // What went out of the drawer net of the voids that brought it back.
   const paidOut = terms === null ? null : sub(terms.payouts ?? '0.00', terms.returns ?? '0.00');
   const crates = standing.data ?? null;
-  const n = (value: number) => value.toLocaleString(locale).replace('-', '−');
+  // Grouped, with the typographic «−» of a negative count (empties may go below zero).
+  const n = (value: number) => formatCount(value, locale);
   const cratesAside =
     crates === null
       ? ''
@@ -127,47 +158,104 @@ export function PointStrip({
     // One compact row at `xl`: two meters (label over «figure + bar») and
     // today's receipts. The shift's own status lives in the page header.
     // Below `xl` the meters sit two to a row, one to a row on a phone.
-    <section className="mb-4 rounded-xl border border-line2 bg-card">
-      <div className="grid gap-x-6 gap-y-3 px-4 py-2.5 sm:grid-cols-2 xl:flex xl:items-center">
-        <Meter
-          to={pointCashHref}
-          title={t('reception.state.cashTitle')}
-          aside={cashAside}
-          asideTitle={cashTerms.join(' · ')}
-          // Loading reads «…», a failed read «—» — never a zero (rule 8).
-          value={cashNow === null ? (cash.isError ? '—' : '…') : formatUah(cashNow, locale)}
-          className="xl:flex-[1.4]"
-        >
-          <CashBar cash={cashNow} paidOut={paidOut} />
-        </Meter>
+    <TraceScope>
+      <section className="mb-4 rounded-xl border border-line2 bg-card">
+        <div className="grid gap-x-6 gap-y-3 px-4 py-2.5 sm:grid-cols-2 xl:flex xl:items-center">
+          <Meter
+            to={pointCashHref}
+            title={t('reception.state.cashTitle')}
+            aside={cashAside}
+            asideTitle={cashTerms.map((term) => plain(t(term.key, term.values))).join(' · ')}
+            trace={cashTerms.map((term) => term.id).join(' ')}
+            // Loading reads «…», a failed read «—» — never a zero (rule 8).
+            value={cashNow === null ? (cash.isError ? '—' : '…') : formatUah(cashNow, locale)}
+            className="xl:flex-[1.4]"
+          >
+            <CashBar cash={cashNow} paidOut={paidOut} />
+          </Meter>
 
-        <Meter
-          to={cratesHref}
-          title={t('reception.state.crates')}
-          aside={crates === null ? '' : <CratesLegend crates={crates} n={n} />}
-          asideTitle={cratesAside}
-          value={
-            crates === null
-              ? '…'
-              : t('reception.state.cratesValue', {
-                  total: n(crates.total),
-                  // «—» is «не задано», never zero (§6.9 / §8.2).
-                  target: crates.allotment === null ? '—' : n(crates.allotment),
-                })
-          }
-          className="xl:flex-1"
-        >
-          <CratesBar crates={crates} />
-        </Meter>
+          <Meter
+            to={cratesHref}
+            title={t('reception.state.crates')}
+            aside={crates === null ? '' : <CratesLegend crates={crates} n={n} />}
+            asideTitle={cratesAside}
+            trace={crates === null ? undefined : Object.values(CRATES_TRACE).join(' ')}
+            value={
+              crates === null
+                ? '…'
+                : t('reception.state.cratesValue', {
+                    total: n(crates.total),
+                    // «—» is «не задано», never zero (§6.9 / §8.2).
+                    target: crates.allotment === null ? '—' : n(crates.allotment),
+                  })
+            }
+            className="xl:flex-1"
+          >
+            <CratesBar crates={crates} />
+          </Meter>
 
-        <TodayCell
-          onShowToday={onShowToday}
-          openText={cmp(openToday, '0') === 1 ? openTodayText : null}
-          truncated={todayTruncated}
-          summary={todaySummary}
-        />
-      </div>
-    </section>
+          <TodayCell
+            onShowToday={onShowToday}
+            openText={cmp(openToday, '0') === 1 ? openTodayText : null}
+            truncated={todayTruncated}
+            summary={todaySummary}
+          />
+        </div>
+      </section>
+    </TraceScope>
+  );
+}
+
+/** The meters' trace ids — scope-local to the strip. */
+const CASH_TRACE = {
+  opening: 'cash:opening',
+  cashIn: 'cash:in',
+  paidOut: 'cash:paid',
+  returned: 'cash:returned',
+} as const;
+const CRATES_TRACE = {
+  onHand: 'crates:onHand',
+  inField: 'crates:inField',
+  withBerry: 'crates:withBerry',
+} as const;
+
+/** A locale string with its `<n>` tags dropped — the plain text of a term for a
+ *  `title`, which carries no markup. */
+const plain = (text: string) => text.replace(/<\/?n>/g, '');
+
+interface StripTerm {
+  id: string;
+  /** The locale key, whose `<n>…</n>` is the figure. */
+  key: string;
+  hint: string;
+  values: Record<string, string>;
+  tone?: TraceTone;
+}
+
+/** «на ранок 15 000,00 ₴ · − видано 4 200,00 ₴» — each figure a `TraceTerm`. */
+function StripTerms({ terms, t }: { terms: StripTerm[]; t: TFunction }) {
+  return terms.map((term, i) => (
+    <Fragment key={term.id}>
+      {i > 0 ? ' · ' : null}
+      <StripTermText term={term} t={t} />
+    </Fragment>
+  ));
+}
+
+function StripTermText({ term, t }: { term: StripTerm; t: TFunction }) {
+  return (
+    <Trans
+      t={t}
+      i18nKey={term.key}
+      values={term.values}
+      components={{
+        n: (
+          <TraceTerm refs={term.id} tone={term.tone} hint={t(term.hint)}>
+            {null}
+          </TraceTerm>
+        ),
+      }}
+    />
   );
 }
 
@@ -261,6 +349,7 @@ function Meter({
   aside,
   asideTitle,
   value,
+  trace,
   className,
   children,
 }: {
@@ -270,6 +359,8 @@ function Meter({
   /** The aside as plain text, for its hover title when `aside` is a node. */
   asideTitle?: string;
   value: string;
+  /** The `data-trace` of the figure — the ids of the terms that add up to it. */
+  trace?: string;
   className?: string;
   children: React.ReactNode;
 }) {
@@ -297,7 +388,8 @@ function Meter({
       <div className="mt-1 flex min-w-0 items-center gap-3">
         <span
           title={value}
-          className="shrink-0 font-mono text-lg leading-6 font-semibold tracking-tight"
+          data-trace={trace || undefined}
+          className="shrink-0 rounded-md font-mono text-lg leading-6 font-semibold tracking-tight"
         >
           {value}
         </span>
@@ -349,34 +441,49 @@ function CratesLegend({ crates, n }: { crates: CrateStanding; n: (value: number)
   const { t } = useTranslation();
   const items = [
     {
-      key: 'onHand',
+      id: CRATES_TRACE.onHand,
       dot: 'bg-[var(--leaf)]',
-      text: t('reception.state.cratesOnHand', { count: n(crates.on_hand) }),
-      negative: crates.on_hand < 0,
+      key: 'reception.state.cratesOnHand',
+      hint: 'reception.state.trace.onHand',
+      count: crates.on_hand,
+      tone: 'leaf' as const,
     },
     {
-      key: 'inField',
+      id: CRATES_TRACE.inField,
       dot: 'bg-[var(--amber)]',
-      text: t('reception.state.cratesInField', { count: n(crates.in_field) }),
-      negative: false,
+      key: 'reception.state.cratesInField',
+      hint: 'reception.state.trace.inField',
+      count: crates.in_field,
+      tone: 'amber' as const,
     },
     {
-      key: 'withBerry',
+      id: CRATES_TRACE.withBerry,
       dot: 'bg-primary',
-      text: t('reception.state.cratesWithBerry', { count: n(crates.with_berry) }),
-      negative: false,
+      key: 'reception.state.cratesWithBerry',
+      hint: 'reception.state.trace.withBerry',
+      count: crates.with_berry,
+      tone: 'berry' as const,
     },
   ];
   return (
     <>
       {items.map((item, i) => (
-        <span key={item.key} className={cn(item.negative && 'text-destructive')}>
+        <span key={item.id} className={cn(item.count < 0 && 'text-destructive')}>
           {i > 0 ? ' · ' : null}
           <span
             className={cn('mr-1 inline-block size-2 rounded-[2px] align-middle', item.dot)}
             aria-hidden="true"
           />
-          {item.text}
+          <StripTermText
+            t={t}
+            term={{
+              id: item.id,
+              key: item.key,
+              hint: item.hint,
+              tone: item.tone,
+              values: { count: n(item.count) },
+            }}
+          />
         </span>
       ))}
     </>

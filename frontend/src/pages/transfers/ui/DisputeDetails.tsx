@@ -86,7 +86,9 @@ function DisputeDetails({
           </p>
         ) : null}
         {transfer.dispute_note ? (
-          <p className="text-muted-foreground">{t('transfers.dispute.note', { note: transfer.dispute_note })}</p>
+          <p className="text-muted-foreground">
+            {t('transfers.dispute.note', { note: transfer.dispute_note })}
+          </p>
         ) : null}
         {transfer.resolved_at != null ? (
           <p className="text-leaf">

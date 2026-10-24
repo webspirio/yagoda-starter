@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
+import type { Plugin } from 'vite';
+import { OWNER_NAMESPACES } from './src/shared/lib/i18n/owner-namespaces';
 
 /**
  * The `VITE_*` keys of the repo-root `.env`, with real environment variables layered
@@ -30,6 +32,35 @@ function rootViteEnv(): Record<string, string> {
     if (key.startsWith('VITE_') && value !== undefined) out[key] = value;
   }
   return out;
+}
+
+/**
+ * `uk.json` served as two halves: `virtual:uk-core` (every namespace an eager screen
+ * reads — first paint) and `virtual:uk-owner` (`OWNER_NAMESPACES`, imported only by the
+ * lazy owner chunk). One source file, two modules, so the bundler can put each half in
+ * its own chunk — a named import from one JSON module cannot do that, because a module
+ * shared by two chunks lands whole in the earlier one. See `owner-namespaces.ts`.
+ */
+function ukLocaleSplit(): Plugin {
+  const file = fileURLToPath(new URL('./src/shared/lib/i18n/locales/uk.json', import.meta.url));
+  const ids = { 'virtual:uk-core': false, 'virtual:uk-owner': true } as const;
+  const owner = new Set<string>(OWNER_NAMESPACES);
+  return {
+    name: 'uk-locale-split',
+    resolveId(id) {
+      return id in ids ? `\0${id}` : null;
+    },
+    load(id) {
+      if (!id.startsWith('\0virtual:uk-')) return null;
+      const wantOwner = ids[id.slice(1) as keyof typeof ids];
+      this.addWatchFile(file);
+      const all = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+      const half = Object.fromEntries(
+        Object.entries(all).filter(([ns]) => owner.has(ns) === wantOwner),
+      );
+      return `export default ${JSON.stringify(half)};`;
+    },
+  };
 }
 
 export default defineConfig(() => ({
@@ -61,7 +92,7 @@ export default defineConfig(() => ({
   define: Object.fromEntries(
     Object.entries(rootViteEnv()).map(([k, v]) => [`import.meta.env.${k}`, JSON.stringify(v)]),
   ),
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), ukLocaleSplit()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

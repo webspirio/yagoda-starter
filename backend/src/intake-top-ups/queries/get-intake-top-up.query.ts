@@ -3,7 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { IntakeTopUp } from '../intake-top-up.entity';
 import { IntakeTopUpResponse } from '../intake-top-up.mapper';
-import { RawTopUpRow, toTopUpResponse, topUpRows } from './intake-top-up-rows';
+import { RawTopUpRow, rawTopUpUserIds, toTopUpResponse, topUpRows } from './intake-top-up-rows';
+import { loadDisplayNames } from '../../users/display-names';
 import { resolvePointFilter } from '../../auth/access/point-scope';
 import type { AuthenticatedUser } from '../../auth/jwt.strategy';
 
@@ -17,6 +18,6 @@ export class GetIntakeTopUpQuery {
       .andWhere('t.id = :id', { id })
       .getRawOne<RawTopUpRow>();
     if (!row) throw new NotFoundException('Intake top-up not found');
-    return toTopUpResponse(row);
+    return toTopUpResponse(row, await loadDisplayNames(this.repo.manager, rawTopUpUserIds([row])));
   }
 }

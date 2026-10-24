@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router';
 import type { Intake } from '@/entities/intake';
 import type { Shift } from '@/entities/shift';
 import type { CrateStanding } from '@/entities/crate';
 import type { PointCashBreakdown } from '@/entities/point-cash';
+import { expectNoAxeViolations } from '../../../test-axe';
 import { PointStrip } from './PointStrip';
 
 const { pointCashMock, intakesMock, crateStandingMock } = vi.hoisted(() => ({
@@ -178,9 +179,9 @@ describe('PointStrip — the figures', () => {
 
     // Every crate of the point against the allotment, in one bar.
     expect(screen.getByText('Crates')).toBeInTheDocument();
-    expect(screen.getByText('39 of 40')).toBeInTheDocument();
+    expect(screen.getByText('39 cr. of 40')).toBeInTheDocument();
     expect(
-      screen.getByTitle('at the point 25 · with people 12 · with berries 2'),
+      screen.getByTitle('at the point 25 cr. · with people 12 cr. · with berries 2 cr.'),
     ).toBeInTheDocument();
   });
 
@@ -227,7 +228,7 @@ describe('PointStrip — the figures', () => {
   it('reads «… of —» when the point has no allotment — never a zero', () => {
     crateStandingMock.mockReturnValue(standing({ allotment: null, shortfall: null }));
     renderStrip();
-    expect(screen.getByText('39 of —')).toBeInTheDocument();
+    expect(screen.getByText('39 cr. of —')).toBeInTheDocument();
   });
 
   it('draws the three parts against the allotment, the rest of the track empty', () => {
@@ -247,6 +248,36 @@ describe('PointStrip — the figures', () => {
     const { container } = renderStrip();
     const onHand = container.querySelector('[data-segment="onHand"]') as HTMLElement;
     expect(onHand.style.width).toBe('50%');
+  });
+});
+
+// «Звідки це число» (client, 24.10): each term points at the figure it adds up to.
+describe('PointStrip — traced terms', () => {
+  it('lights the drawer figure from a cash term, and the crates figure from a crate term', () => {
+    renderStrip();
+    const drawer = screen.getByText('4,500.00 ₴');
+    const crates = screen.getByText('39 cr. of 40');
+
+    fireEvent.pointerEnter(screen.getByText('1,500.00 ₴'));
+    expect(drawer).toHaveAttribute('data-trace-hit', 'neutral');
+    // No term lights another.
+    expect(screen.getByText('1,300.00 ₴')).not.toHaveAttribute('data-trace-hit');
+    expect(crates).not.toHaveAttribute('data-trace-hit');
+
+    fireEvent.pointerEnter(screen.getByText('12 cr.'));
+    expect(crates).toHaveAttribute('data-trace-hit', 'amber');
+    expect(drawer).not.toHaveAttribute('data-trace-hit');
+  });
+
+  it('has no axe violations with its terms focusable inside the meters’ links', async () => {
+    const { container } = renderStrip();
+    await expectNoAxeViolations(container);
+  });
+
+  it('prints a negative count of empties with the typographic minus', () => {
+    crateStandingMock.mockReturnValue(standing({ on_hand: -3, total: 11 }));
+    renderStrip();
+    expect(screen.getByText('−3 cr.')).toBeInTheDocument();
   });
 });
 

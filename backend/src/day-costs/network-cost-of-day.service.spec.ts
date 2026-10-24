@@ -30,7 +30,9 @@ interface ShiftFixture {
  */
 const build = (shifts: ShiftFixture[]) => {
   const byId = (params: unknown[]) => shifts.find((s) => s.shift_id === params[0]);
-  const dataSource = {
+  // Audit M5: the whole network day is ONE REPEATABLE READ snapshot — every
+  // read, the shift list and each point's day, goes through its manager.
+  const manager = {
     query: jest.fn(async (sql: string, params: unknown[] = []) => {
       if (sql.includes('FROM shifts s')) {
         return shifts.map((s) => ({
@@ -46,6 +48,12 @@ const build = (shifts: ShiftFixture[]) => {
       throw new Error(`unexpected query: ${sql}`);
     }),
   };
+  const dataSource = {
+    query: jest.fn(async () => {
+      throw new Error('read outside the REPEATABLE READ transaction');
+    }),
+    transaction: jest.fn(async (_level: string, fn: (m: typeof manager) => unknown) => fn(manager)),
+  };
   const shiftsService = {
     findOneRaw: jest.fn(async (id: string) => {
       const s = shifts.find((f) => f.shift_id === id);
@@ -55,7 +63,8 @@ const build = (shifts: ShiftFixture[]) => {
     }),
   };
   const costOfDay = new CostOfDayService(dataSource as never, shiftsService as never);
-  return new NetworkCostOfDayService(dataSource as never, costOfDay);
+  const service = new NetworkCostOfDayService(dataSource as never, costOfDay);
+  return Object.assign(service, { mocks: { dataSource, shiftsService, manager } });
 };
 
 const grade = (
@@ -264,5 +273,20 @@ describe('NetworkCostOfDayService.forDate', () => {
     expect(out.price_cost_avg).toBeNull();
     expect(out.checks).toBeNull();
     expect(out.accrued).toBe('0.00');
+  });
+
+  // Audit M5 — a network row is a sum of point rows; it equals them only if
+  // every point's day is read at the same instant: one transaction, not one
+  // per point.
+  it('reads every point’s day inside ONE REPEATABLE READ transaction', async () => {
+    const service = build([shypynky, haiove]);
+    await service.forDate(owner, '2026-08-04');
+
+    const { dataSource, shiftsService, manager } = service.mocks;
+    expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+    expect(dataSource.transaction.mock.calls[0][0]).toBe('REPEATABLE READ');
+    expect(dataSource.query).not.toHaveBeenCalled();
+    expect(shiftsService.findOneRaw).toHaveBeenCalledWith('s-shp', manager);
+    expect(shiftsService.findOneRaw).toHaveBeenCalledWith('s-hai', manager);
   });
 });

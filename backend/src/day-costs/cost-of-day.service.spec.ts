@@ -53,7 +53,10 @@ const build = (
   latestTopUpAt: Date | null = null,
   closedAt: Date | null = new Date('2026-09-17T18:00:00Z'),
 ) => {
-  const dataSource = {
+  // Audit M5: every read goes through the REPEATABLE READ transaction's
+  // manager — the bare data source answers nothing, so a read that slips
+  // out of the snapshot fails the whole suite rather than one test.
+  const manager = {
     query: jest.fn(async (sql: string) => {
       if (sql.includes('reweigh_items')) return grades;
       if (sql.includes('FROM day_expenses')) return [{ total: expenses }];
@@ -61,6 +64,12 @@ const build = (
       if (sql.includes('FROM intakes i')) return receipts;
       throw new Error(`unexpected query: ${sql}`);
     }),
+  };
+  const dataSource = {
+    query: jest.fn(async () => {
+      throw new Error('read outside the REPEATABLE READ transaction');
+    }),
+    transaction: jest.fn(async (_level: string, fn: (m: typeof manager) => unknown) => fn(manager)),
   };
   const shifts = { findOneRaw: jest.fn(async () => ({ id: 's-1', closed_at: closedAt })) };
   return new CostOfDayService(dataSource as never, shifts as never);
@@ -320,6 +329,41 @@ describe('CostOfDayService.forShift', () => {
     const out = await svc.forShift(owner, 's-1');
     expect(out.closed_at).toBe('2026-09-17T18:00:00.000Z');
     expect(out.provisional).toBe(false);
+  });
+
+  // Audit M5 — grade totals, top-ups, expenses and the latest top-up's time
+  // are one instant's only if they are read in ONE REPEATABLE READ snapshot,
+  // the shift row included.
+  it('reads the whole day inside one REPEATABLE READ transaction, the shift included', async () => {
+    const outside = jest.fn();
+    const inside = jest.fn(async (sql: string) => {
+      if (sql.includes('reweigh_items')) return DAY;
+      if (sql.includes('FROM day_expenses')) return [{ total: '3800.00' }];
+      if (sql.includes('MAX(ti.created_at)')) return [{ latest: null }];
+      if (sql.includes('FROM intakes i')) return [];
+      throw new Error(`unexpected query: ${sql}`);
+    });
+    const manager = { query: inside };
+    const transaction = jest.fn(async (_level: string, fn: (m: typeof manager) => unknown) =>
+      fn(manager),
+    );
+    const findOneRaw = jest.fn(async () => ({ id: 's-1', closed_at: null }));
+    const service = new CostOfDayService(
+      { query: outside, transaction } as never,
+      { findOneRaw } as never,
+    );
+
+    await service.forShift(owner, 's-1');
+
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(transaction.mock.calls[0][0]).toBe('REPEATABLE READ');
+    expect(outside).not.toHaveBeenCalled();
+    expect(findOneRaw).toHaveBeenCalledWith('s-1', manager);
+    const sqls = inside.mock.calls.map(([sql]) => sql);
+    expect(sqls.some((q) => q.includes('reweigh_items'))).toBe(true);
+    expect(sqls.some((q) => q.includes('FROM intakes i'))).toBe(true);
+    expect(sqls.some((q) => q.includes('FROM day_expenses'))).toBe(true);
+    expect(sqls.some((q) => q.includes('MAX(ti.created_at)'))).toBe(true);
   });
 });
 

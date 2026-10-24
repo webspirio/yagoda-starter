@@ -31,9 +31,13 @@ export interface IntakeTopUp {
   /** The receipt this money is for. `voided_at` here is the PARENT's. */
   intake: { id: string; code: string; voided_at: string | null };
   created_by_user_id: string;
+  /** «Додано: …» — the author's display name; null when the server found no user row. */
+  created_by_name: string | null;
   created_at: string;
   voided_at: string | null;
   voided_by_user_id: string | null;
+  /** «Анульовано … · …» — null while live. */
+  voided_by_name: string | null;
   void_reason: string | null;
 }
 

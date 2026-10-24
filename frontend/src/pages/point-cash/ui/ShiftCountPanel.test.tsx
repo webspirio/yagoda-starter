@@ -339,9 +339,9 @@ describe('ShiftCountPanel — a failed shift/counts read is not «no shift»', (
       />,
     );
 
-    expect(
-      screen.getByRole('alert'),
-    ).toHaveTextContent('The shift could not be read — reload the page');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'The shift could not be read — reload the page',
+    );
     expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Recount the drawer/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Close shift' })).toBeNull();
@@ -362,9 +362,9 @@ describe('ShiftCountPanel — a failed shift/counts read is not «no shift»', (
       />,
     );
 
-    expect(
-      screen.getByRole('alert'),
-    ).toHaveTextContent('The shift could not be read — reload the page');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'The shift could not be read — reload the page',
+    );
     expect(screen.queryByRole('button')).toBeNull();
   });
 
@@ -387,9 +387,9 @@ describe('ShiftCountPanel — a failed shift/counts read is not «no shift»', (
       />,
     );
 
-    expect(
-      screen.getByRole('alert'),
-    ).toHaveTextContent('The shift could not be read — reload the page');
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'The shift could not be read — reload the page',
+    );
     expect(screen.queryByText('Shift open')).toBeNull();
     expect(screen.queryByText('Opening')).toBeNull();
     expect(screen.queryByRole('button')).toBeNull();
@@ -747,7 +747,9 @@ describe('ShiftCountPanel — the four action states, per role', () => {
     );
 
     expect(
-      screen.getByText('There is no shift for this day — there is nothing for a recount to attach to.'),
+      screen.getByText(
+        'There is no shift for this day — there is nothing for a recount to attach to.',
+      ),
     ).toBeInTheDocument();
     expect(screen.queryByRole('button')).toBeNull();
   });
@@ -773,7 +775,6 @@ describe('ShiftCountPanel — the four action states, per role', () => {
       ),
     ).toBeNull();
   });
-
 });
 
 /**
@@ -803,7 +804,9 @@ describe('ShiftCountPanel — «Open shift» waits for the point to have none op
 
     expect(screen.queryByRole('button', { name: 'Open shift' })).toBeNull();
     expect(
-      screen.getByText('A shift from another day is still open — close it before opening a new one'),
+      screen.getByText(
+        'A shift from another day is still open — close it before opening a new one',
+      ),
     ).toBeInTheDocument();
   });
 
@@ -933,7 +936,12 @@ describe('ShiftCountPanel — wiring the actions', () => {
 // said about a closed shift that this panel did not are said here now.
 describe('ShiftCountPanel — what came over from «Каса за день»', () => {
   const closed = (over: Partial<Shift> = {}) =>
-    shift({ status: 'closed', closed_by_name: 'Petro', closed_at: '2026-09-22T18:00:00.000Z', ...over });
+    shift({
+      status: 'closed',
+      closed_by_name: 'Petro',
+      closed_at: '2026-09-22T18:00:00.000Z',
+      ...over,
+    });
 
   const renderPanel = (props: Partial<Parameters<typeof ShiftCountPanel>[0]> = {}) =>
     render(
