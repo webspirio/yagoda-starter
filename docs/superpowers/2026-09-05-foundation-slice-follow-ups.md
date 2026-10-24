@@ -1016,14 +1016,15 @@ changed its SQL-shape assertions). The first run failed 36 tests — see the les
 Spec: `docs/superpowers/specs/2026-09-17-yagoda-reweigh-slice.md`, §3 (decisions) and §7 (out of
 scope). Each item below is deferred, not forgotten.
 
-- **§8.5 strategies ② «по сумі закупки» and ③ «усе на один товар».** Only `by_weight` is built
-  (spec §3.7); a per-request parameter was rejected because a stored column with one legal value
-  is state pretending to be a decision. Strategy ③ specifically **cannot become a request
-  parameter on its own** — it must also say *which* berry the whole basket lands on, and that is
-  per-day data, not a request-time choice. Closing it means the columnless `reweighs` header
-  finally earns two columns: `expense_allocation` and `allocation_product_id`. Blocked on the
-  rules file's own open question at the source — «→ Правка: узнать як вони це роблять» — so there
-  is nothing to build against yet.
+- **§8.5 strategy ③ «усе на один товар».** ② shipped on 2026-10-24 as two splits, `value`
+  («по сумі закупки») and `own` («своя недостача + % витрат»), beside the original `weight` —
+  a VIEW switch, nothing stored, by the network owner's call that day (spec
+  `docs/superpowers/specs/2026-10-24-cost-of-day-split-strategies-design.md`, plan
+  `docs/superpowers/plans/2026-10-24-cost-of-day-split-strategies.md`; rules §8.5 «Правка
+  24.10.2026»). ③ is still deferred for the original reason: it must say *which* berry the whole
+  basket lands on, and that is per-day data, not a request-time choice — closing it means the
+  columnless `reweighs` header finally earns `allocation_product_id`. Still blocked on the rules
+  file's own open question, «узнать як вони це роблять», now open for ③ only.
 - **Per-grade attribution of a доплата.** `intake_top_ups` carries no `product_grade_id` (spec
   §3.13), so a top-up is split pro-rata across a receipt's lines by `amount` even when only ONE
   grade's price was actually renegotiated. Pro-rata is the right default with no grade named; a
