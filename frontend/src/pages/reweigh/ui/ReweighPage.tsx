@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/shared/ui/page-header';
 import { SelectField } from '@/shared/ui/select-field';
+import { HeaderSlot } from '@/shared/ui/header-slot';
 import { DateStepper } from '@/shared/ui/date-stepper';
 import { Spinner } from '@/shared/ui/spinner';
 import { toast } from '@/shared/ui/toast';
@@ -200,20 +201,22 @@ export function ReweighPage() {
     <div className="flex flex-wrap items-center gap-2">
       {canPick ? (
         <>
-          <span className="text-xs text-muted-foreground">{t('reweigh.fromPoint')}</span>
-          <SelectField
-            aria-label={t('reweigh.fromPoint')}
-            value={pointId ?? ''}
-            onChange={(e) => setPointId(e.target.value || null)}
-            className="w-44"
-          >
-            <option value="">{t('reweigh.fromPoint')}</option>
-            {receptionPoints.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))}
-          </SelectField>
+          <HeaderSlot slot="scope">
+            <span className="text-xs text-muted-foreground">{t('reweigh.fromPoint')}</span>
+            <SelectField
+              aria-label={t('reweigh.fromPoint')}
+              value={pointId ?? ''}
+              onChange={(e) => setPointId(e.target.value || null)}
+              className="w-44"
+            >
+              <option value="">{t('reweigh.fromPoint')}</option>
+              {receptionPoints.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </SelectField>
+          </HeaderSlot>
         </>
       ) : null}
       <span className="text-xs text-muted-foreground">{t('reweigh.berryOn')}</span>

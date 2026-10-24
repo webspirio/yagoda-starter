@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { DashboardPage, type StatItem } from '@/shared/ui/templates/dashboard-page';
 import { DateStepper } from '@/shared/ui/date-stepper';
 import { SelectField } from '@/shared/ui/select-field';
+import { HeaderSlot } from '@/shared/ui/header-slot';
 import { Button } from '@/shared/ui/button';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
@@ -336,54 +337,56 @@ export function PointCashPage() {
   const actions = (
     <div className="flex flex-wrap items-center gap-2">
       {canPick ? (
-        <SelectField
-          aria-label={t('pointCash.pickPoint')}
-          value={pointId ?? ''}
-          onChange={(e) => setPointId(e.target.value)}
-          className="w-48"
-        >
-          {/* No «Оберіть точку» entry: `useWorkingPoint` always resolves the
-              owner to a point. A deactivated one reached by `?point=` is in
-              neither list below, so it gets its own entry — otherwise the
-              select would show the first active point over its figures.
-              Its name comes from `pointRow`, so it is generic until that
-              read lands — or for good, if it failed. */}
-          {pointId && points && !points.some((p) => p.id === pointId) ? (
-            <option value={pointId}>{pointName || t('common.inactivePoint')}</option>
-          ) : null}
-          {groupedPoints ? (
-            <>
-              {/* R6 — the owner's select lists points with a target first, so
-                  a point still waiting on one does not compete for attention
-                  with the points the owner actually has to fund today. */}
-              <optgroup label={t('pointCash.pick.withTarget')}>
-                {groupedPoints.withTarget.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </optgroup>
-              <optgroup label={t('pointCash.pick.withoutTarget')}>
-                {groupedPoints.withoutTarget.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </optgroup>
-            </>
-          ) : (
-            // `pointCashAll` has not settled yet (or this render is not the
-            // owner's) — the flat, ungrouped `points` list is what the select
-            // showed before grouping existed, kept here as the one render
-            // that must never come up empty while the grouping read is on
-            // its way.
-            (points ?? []).map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}
-              </option>
-            ))
-          )}
-        </SelectField>
+        <HeaderSlot slot="scope">
+          <SelectField
+            aria-label={t('pointCash.pickPoint')}
+            value={pointId ?? ''}
+            onChange={(e) => setPointId(e.target.value)}
+            className="w-48"
+          >
+            {/* No «Оберіть точку» entry: `useWorkingPoint` always resolves the
+                owner to a point. A deactivated one reached by `?point=` is in
+                neither list below, so it gets its own entry — otherwise the
+                select would show the first active point over its figures.
+                Its name comes from `pointRow`, so it is generic until that
+                read lands — or for good, if it failed. */}
+            {pointId && points && !points.some((p) => p.id === pointId) ? (
+              <option value={pointId}>{pointName || t('common.inactivePoint')}</option>
+            ) : null}
+            {groupedPoints ? (
+              <>
+                {/* R6 — the owner's select lists points with a target first, so
+                    a point still waiting on one does not compete for attention
+                    with the points the owner actually has to fund today. */}
+                <optgroup label={t('pointCash.pick.withTarget')}>
+                  {groupedPoints.withTarget.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label={t('pointCash.pick.withoutTarget')}>
+                  {groupedPoints.withoutTarget.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </optgroup>
+              </>
+            ) : (
+              // `pointCashAll` has not settled yet (or this render is not the
+              // owner's) — the flat, ungrouped `points` list is what the select
+              // showed before grouping existed, kept here as the one render
+              // that must never come up empty while the grouping read is on
+              // its way.
+              (points ?? []).map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))
+            )}
+          </SelectField>
+        </HeaderSlot>
       ) : null}
       <DateStepper
         label={formatShortDate(date, locale)}

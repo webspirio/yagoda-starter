@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Printer } from 'lucide-react';
 import { PageHeader } from '@/shared/ui/page-header';
 import { SelectField } from '@/shared/ui/select-field';
+import { HeaderSlot } from '@/shared/ui/header-slot';
 import { DateStepper } from '@/shared/ui/date-stepper';
 import { Button } from '@/shared/ui/button';
 import { Spinner } from '@/shared/ui/spinner';
@@ -159,23 +160,25 @@ export function CostOfDayPage() {
   const actions = (
     <div className="print-hide flex flex-wrap items-center gap-2">
       {canPick ? (
-        <SelectField
-          aria-label={t('costOfDay.point')}
-          value={allPoints ? ALL_POINTS : (pointId ?? '')}
-          onChange={(e) =>
-            e.target.value === ALL_POINTS
-              ? setPointParam(ALL_POINTS)
-              : setPointId(e.target.value || null)
-          }
-          className="w-44"
-        >
-          <option value={ALL_POINTS}>{t('costOfDay.network.allPoints')}</option>
-          {points.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </SelectField>
+        <HeaderSlot slot="scope">
+          <SelectField
+            aria-label={t('costOfDay.point')}
+            value={allPoints ? ALL_POINTS : (pointId ?? '')}
+            onChange={(e) =>
+              e.target.value === ALL_POINTS
+                ? setPointParam(ALL_POINTS)
+                : setPointId(e.target.value || null)
+            }
+            className="w-44"
+          >
+            <option value={ALL_POINTS}>{t('costOfDay.network.allPoints')}</option>
+            {points.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </SelectField>
+        </HeaderSlot>
       ) : null}
       <DateStepper
         label={formatShortDate(date, locale)}

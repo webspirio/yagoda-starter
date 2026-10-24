@@ -32,7 +32,9 @@ import { persister } from '@/shared/api';
 import { Button } from '@/shared/ui/button';
 import { Toaster } from '@/shared/ui/sonner';
 import { ThemeToggle } from '@/shared/ui/theme-toggle';
+import { HeaderSlotTarget, HeaderSlotsProvider } from '@/shared/ui/header-slot';
 import { RouteFallback } from './RouteFallback';
+import { ShellScope } from './ShellScope';
 import { useSidebarCollapsed } from './sidebar-collapsed';
 
 /** Routes that render bare, without the app chrome. */
@@ -108,8 +110,20 @@ function initials(name: string): string {
  * `Shell.tsx`, not a white surface: the light theme then has two grounds —
  * dark chrome and paper — with white objects (cards, the scope pill) on the
  * paper, instead of a white bar stacked over paper over white cards.
+ *
+ * The top bar has two places a screen fills itself (`shared/ui/header-slot`, client
+ * 24.10): its point select and its one-line title. The provider wraps the whole shell, so
+ * a screen inside `<Outlet />` reaches the bar above it.
  */
 export function AppLayout() {
+  return (
+    <HeaderSlotsProvider>
+      <AppShell />
+    </HeaderSlotsProvider>
+  );
+}
+
+function AppShell() {
   const { t } = useTranslation();
   const location = useLocation();
   const token = useSession((s) => s.token);
@@ -306,9 +320,18 @@ export function AppLayout() {
             {menuOpen ? <X size={18} /> : <Menu size={18} />}
           </Button>
 
-          <span className="rounded-md bg-card px-2.5 py-1 text-sm text-muted-foreground ring-1 ring-foreground/10">
-            {scope}
-          </span>
+          {/* The screen's own scope and title line, when it put them here (client,
+              24.10); otherwise `ShellScope`'s default. A select in the bar is the
+              bar's height, whatever size its screen asked for. */}
+          <div className="flex min-w-0 shrink-0 items-center gap-2 [&_select]:h-8 [&_select]:max-w-[40vw] [&_select]:text-sm">
+            <ShellScope isOwner={role === 'network_owner'} />
+            <HeaderSlotTarget slot="scope" className="flex items-center gap-2 empty:hidden" />
+          </div>
+          <HeaderSlotTarget
+            slot="title"
+            // A phone has room for the point select and the account, not a title line.
+            className="hidden min-w-0 flex-1 items-center gap-3 empty:hidden sm:flex [&_select]:h-8"
+          />
 
           <div className="ml-auto flex items-center gap-3">
             {me ? (

@@ -8,6 +8,7 @@ import type { Column } from '@/shared/ui/data-table';
 import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
 import { SelectField } from '@/shared/ui/select-field';
+import { HeaderSlot } from '@/shared/ui/header-slot';
 import { TextInput } from '@/shared/ui/text-input';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
@@ -266,19 +267,21 @@ export function DebtsPage() {
         toolbar={
           <div className="flex flex-wrap items-center gap-2">
             {canPick ? (
-              <SelectField
-                aria-label={t('debts.allPoints')}
-                value={pointId ?? ''}
-                onChange={(e) => setPointId(e.target.value || null)}
-                className="w-48"
-              >
-                <option value="">{t('debts.allPoints')}</option>
-                {(points ?? []).map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </SelectField>
+              <HeaderSlot slot="scope">
+                <SelectField
+                  aria-label={t('debts.allPoints')}
+                  value={pointId ?? ''}
+                  onChange={(e) => setPointId(e.target.value || null)}
+                  className="w-48"
+                >
+                  <option value="">{t('debts.allPoints')}</option>
+                  {(points ?? []).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </SelectField>
+              </HeaderSlot>
             ) : null}
             <TextInput
               type="search"

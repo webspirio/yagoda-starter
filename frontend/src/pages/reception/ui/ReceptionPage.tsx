@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useFieldArray, useForm, useWatch } from 'react-hook-form';
 import { Card } from '@/shared/ui/card';
+import { HeaderSlot } from '@/shared/ui/header-slot';
 import { Eyebrow } from '@/shared/ui/eyebrow';
 import { Button } from '@/shared/ui/button';
 import { SelectField } from '@/shared/ui/select-field';
@@ -394,28 +395,31 @@ export function ReceptionPage() {
   };
 
   const pointName = (points ?? []).find((p) => p.id === pointId)?.name ?? '';
+  // In the top bar's scope slot (client, 24.10), where every screen's point is picked.
+  const pointPicker = canPick ? (
+    <HeaderSlot slot="scope">
+      <SelectField
+        aria-label={t('reception.pickPoint')}
+        value={pointId ?? ''}
+        onChange={(e) => setPointId(e.target.value)}
+        className="w-48"
+      >
+        {/* A deactivated point reached by `?point=` is not in `points`
+            (active only) — without its own entry the select would show
+            the first active point over this point's shift and receipts. */}
+        {pointId && points && !points.some((p) => p.id === pointId) ? (
+          <option value={pointId}>{t('common.inactivePoint')}</option>
+        ) : null}
+        {(points ?? []).map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </SelectField>
+    </HeaderSlot>
+  ) : null;
   const actions = (
     <>
-      {canPick ? (
-        <SelectField
-          aria-label={t('reception.pickPoint')}
-          value={pointId ?? ''}
-          onChange={(e) => setPointId(e.target.value)}
-          className="h-8 w-full sm:w-48"
-        >
-          {/* A deactivated point reached by `?point=` is not in `points`
-              (active only) — without its own entry the select would show
-              the first active point over this point's shift and receipts. */}
-          {pointId && points && !points.some((p) => p.id === pointId) ? (
-            <option value={pointId}>{t('common.inactivePoint')}</option>
-          ) : null}
-          {(points ?? []).map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </SelectField>
-      ) : null}
       {/* Owner only (#221): /prices is the owner's screen, and the operator
           already sees each grade's price on its option in the form below. */}
       {isOwner ? (
@@ -676,19 +680,30 @@ export function ReceptionPage() {
 
   return (
     <>
-      {/* ≤ 40 px tall (spec §5.1): 32 px actions + `pb-1.5`. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 pb-4">
-        <div className="flex min-w-0 flex-col gap-0.5 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3">
-          <h1 className="font-display text-xl leading-tight font-medium">{t('reception.title')}</h1>
-          <span className="truncate text-sm text-muted-foreground" title={headerCaption}>
+      {/* The title line lives in the app's top bar (client, 24.10), so the page
+          starts at the strip; one row, the caption and the shift status giving
+          way first on a narrow screen. */}
+      {pointPicker}
+      <HeaderSlot slot="title">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <h1 className="min-w-0 truncate font-display text-lg leading-tight font-medium">
+            {t('reception.title')}
+          </h1>
+          <span
+            className="hidden min-w-0 truncate text-sm text-muted-foreground xl:inline"
+            title={headerCaption}
+          >
             {headerCaption}
           </span>
-          {pointId !== null ? <ShiftStatus shift={stripShift} /> : null}
+          {pointId !== null ? (
+            <span className="hidden lg:inline-flex">
+              <ShiftStatus shift={stripShift} />
+            </span>
+          ) : null}
+          {/* The sidebar has both links on a phone, where the bar has no room. */}
+          <div className="ml-auto hidden shrink-0 items-center gap-2 md:flex">{actions}</div>
         </div>
-        <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:items-center [&>*:first-child]:col-span-2">
-          {actions}
-        </div>
-      </div>
+      </HeaderSlot>
       {body}
       <CountDrawerDialog
         key={openDialogInstance}

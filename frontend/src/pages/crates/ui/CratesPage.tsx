@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { PageHeader } from '@/shared/ui/page-header';
 import { Button } from '@/shared/ui/button';
 import { SelectField } from '@/shared/ui/select-field';
+import { HeaderSlot } from '@/shared/ui/header-slot';
 import { EmptyState } from '@/shared/ui/empty-state';
 import { Spinner } from '@/shared/ui/spinner';
 import { Switch } from '@/shared/ui/switch';
@@ -75,25 +76,27 @@ export function CratesPage() {
           description={t('crates.description')}
           actions={
             canPick ? (
-              <div className="w-full max-w-xs">
-                <SelectField
-                  aria-label={t('crates.pickPoint')}
-                  value={pointId ?? ''}
-                  onChange={(e) => setPointId(e.target.value)}
-                >
-                  {/* A deactivated point reached by `?point=` is not in
-                      `points` (active only); without its own entry the
-                      select would show the first active point instead. */}
-                  {pointId && points && !points.some((p) => p.id === pointId) ? (
-                    <option value={pointId}>{t('common.inactivePoint')}</option>
-                  ) : null}
-                  {(points ?? []).map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </SelectField>
-              </div>
+              <HeaderSlot slot="scope">
+                <div className="w-full max-w-xs">
+                  <SelectField
+                    aria-label={t('crates.pickPoint')}
+                    value={pointId ?? ''}
+                    onChange={(e) => setPointId(e.target.value)}
+                  >
+                    {/* A deactivated point reached by `?point=` is not in
+                        `points` (active only); without its own entry the
+                        select would show the first active point instead. */}
+                    {pointId && points && !points.some((p) => p.id === pointId) ? (
+                      <option value={pointId}>{t('common.inactivePoint')}</option>
+                    ) : null}
+                    {(points ?? []).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </SelectField>
+                </div>
+              </HeaderSlot>
             ) : undefined
           }
         />
