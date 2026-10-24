@@ -268,6 +268,21 @@ describe('NetworkCostOfDayService.forDate (DB)', () => {
     expect(out.checks).toEqual({ points_ok: true, total_ok: true });
   });
 
+  it('passes the split to every point and still reconciles — spec 2026-10-24', async () => {
+    const tag = randomUUID();
+    const businessDate = businessDateFor(tag, '2020-02-');
+    const { gradeId } = await seedProduct(`Малина ${tag}`);
+    await seedTwoPoints(tag, businessDate, gradeId);
+
+    const out = await service.forDate(actor(), businessDate, 'own');
+    expect(out.split).toBe('own');
+    const raspberry = out.products.find((p) => p.product_name === `Малина ${tag}`)!;
+    // One product per point: its own недостача IS the point's whole недостача,
+    // so the row matches the weight split's to the kopiyka.
+    expect(raspberry.full_cost).toBe('165400.00');
+    expect(out.checks).toEqual({ points_ok: true, total_ok: true });
+  });
+
   it('leaves a point that weighed nothing out of the row — real DB, real null', async () => {
     const tag = randomUUID();
     const businessDate = businessDateFor(tag, '2020-02-');

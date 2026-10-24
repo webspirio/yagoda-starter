@@ -289,4 +289,31 @@ describe('NetworkCostOfDayService.forDate', () => {
     expect(shiftsService.findOneRaw).toHaveBeenCalledWith('s-shp', manager);
     expect(shiftsService.findOneRaw).toHaveBeenCalledWith('s-hai', manager);
   });
+  describe('§8.5 split strategies (spec 2026-10-24 §3.4)', () => {
+    it('passes the split to every point’s day and echoes it', async () => {
+      const spy = jest.spyOn(CostOfDayService.prototype, 'forShiftIn');
+      const out = await build([shypynky, haiove]).forDate(owner, '2026-08-04', 'value');
+      expect(out.split).toBe('value');
+      expect(spy).toHaveBeenCalledTimes(2);
+      for (const call of spy.mock.calls) expect(call[2]).toBe('value');
+      spy.mockRestore();
+    });
+
+    it('defaults to weight', async () => {
+      const out = await build([shypynky, haiove]).forDate(owner, '2026-08-04');
+      expect(out.split).toBe('weight');
+    });
+
+    it('keeps total_ok on a point whose weighed accrued is zero, under value', async () => {
+      const free: ShiftFixture = {
+        shift_id: 's-free',
+        point_id: 'pt-free',
+        point_name: 'Безкоштовна',
+        grades: [grade('Малина', 'g-free', '50.00', '0.00', '49.00')],
+        expenses: '500.00',
+      };
+      const out = await build([shypynky, free]).forDate(owner, '2026-08-04', 'value');
+      expect(out.checks).toEqual({ points_ok: true, total_ok: true });
+    });
+  });
 });

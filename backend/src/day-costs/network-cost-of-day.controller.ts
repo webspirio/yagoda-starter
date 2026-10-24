@@ -21,6 +21,6 @@ export class NetworkCostOfDayController {
     @CurrentUser() actor: AuthenticatedUser,
     @Query() query: NetworkCostOfDayQueryDto,
   ): Promise<NetworkCostOfDayResponse> {
-    return this.networkCost.forDate(actor, query.date);
+    return this.networkCost.forDate(actor, query.date, query.split ?? 'weight');
   }
 }

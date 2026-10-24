@@ -334,6 +334,25 @@ describe('CostOfDayService.forShift (DB)', () => {
     expect(out.full_cost).toBe('115540.80');
     expect(out.price_cost_avg).toBe('189.07');
     expect(out.checks).toEqual({ shares_ok: true, total_ok: true });
+
+    // Spec 2026-10-24 — the same day split by money: the day's sums do not
+    // move, only the split between Кизил and Малина does.
+    for (const [split, cornelCost, raspCost] of [
+      ['value', '38.73', '193.03'],
+      ['own', '38.64', '193.04'],
+    ] as const) {
+      const byMoney = await service.forShift(actor(), shift.id, split);
+      expect(byMoney.split_applied).toBe(split);
+      expect(byMoney.expenses_pct).toBe('1.67');
+      expect(byMoney.products.find((p) => p.product_id === cornel.id)!.price_cost).toBe(cornelCost);
+      expect(byMoney.products.find((p) => p.product_id === raspberry.id)!.price_cost).toBe(
+        raspCost,
+      );
+      expect(sum(byMoney.products.map((p) => p.expenses_share!))).toBe('1900.00');
+      expect(byMoney.full_cost).toBe('115540.80');
+      expect(byMoney.price_cost_avg).toBe('189.07');
+      expect(byMoney.checks).toEqual({ shares_ok: true, total_ok: true });
+    }
   });
 
   /**
